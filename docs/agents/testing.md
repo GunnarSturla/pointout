@@ -44,6 +44,22 @@ is not implemented.
 server, with the plugin, against the real example app, so the module graph and the
 sourcemaps are real. Tests POST and GET against it.
 
+Three helpers sit beside it, all of them fixture code under the same rule:
+
+- `test/harness/temp-app.mjs` builds a throwaway consumer in a temp directory — a
+  checkout that may or may not be a git repository, linked worktrees and sibling repos
+  on demand, and a written `vite.config.js` that loads the plugin the way a consumer
+  does, carrying whatever Vite settings the test needs Vite itself to have. It is how
+  root discovery and cwd routing are exercised against real git. Its `tempApps()`
+  holds the apps and servers one file opened: `afterEach(apps.cleanup)` closes them,
+  last opened first, so a server always outlives its app.
+- `test/harness/registry.mjs` writes fake session entries into the registry directory
+  the plugin was pointed at. The field names are the harness's, spelled out rather than
+  imported: the plugin pins on that shape, and the test is what says so.
+- `test/harness/logger.mjs` is a Vite `Logger` that records instead of printing. The
+  startup posture block is read through it — the server's own output, which is the kind
+  of observation these conventions ask for, and a passing run stays quiet.
+
 **Seam 2** exists because a browser is the only honest way to produce a real owner stack.
 Few journeys, chosen for what only a browser can show. It runs against the same server,
 booted by `test/harness/serve.mjs` on a fixed port.
@@ -62,7 +78,7 @@ exactly these strings, and `test/harness/fixture-env.mjs` sets them.
 | --- | --- |
 | `VITE_AGENT_INSPECT_REGISTRY_DIR` | the session registry directory, so a test can write fake session JSON and key files |
 | `VITE_AGENT_INSPECT_SOCKET_DIR` | the socket directory, so a test can bind a unix socket per fake session, record every frame written to it, and send Receipts and idle notices back |
-| `PATH` | a fake `screencapture` is placed first: it writes a known PNG, an empty file, hangs or fails, on `FAKE_SCREENCAPTURE_MODE` |
+| `PATH` | a fake `screencapture` is placed first: it writes a known PNG, an empty file, hangs or fails, on `FAKE_SCREENCAPTURE_MODE`. On `gitShim`, a fake `git` goes in front too: it records its arguments to `fixture.gitCalls()` and execs the real one, so a test can count the subprocesses the server spawns |
 | `CLAUDE_PID` | the pid the started-this-server preselect matches |
 
 Each override is test-only. A consumer never sets any of them.

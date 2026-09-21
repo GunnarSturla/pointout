@@ -1,4 +1,6 @@
 import { fileURLToPath } from 'node:url'
+import { installAgentEndpoints } from './server/http.js'
+import { announcePosture, createServerFacts } from './server/index.js'
 
 /** The id a consumer's page (and a test) refers to the Overlay by. */
 const OVERLAY_MODULE_ID = 'virtual:vite-agent-inspect/overlay'
@@ -14,12 +16,14 @@ const overlayEntry = fileURLToPath(new URL('./overlay/index.js', import.meta.url
  * The Vite plugin. Dev only: it applies to `serve`, so a production build
  * contains no Overlay code and no `/__agent` string.
  *
- * @param {object} [options] Reserved. Ticket 02 adds `root`, the repo-root
- *   override a normal consumer never sets.
+ * @param {object} [options]
+ * @param {string} [options.root] The repo root, overriding discovery. A normal
+ *   consumer never sets it.
  * @returns {import('vite').Plugin}
  */
 export function agentInspect(options = {}) {
-  void options
+  /** Worked out once at `configResolved`; every request reads it. */
+  let facts = null
 
   return {
     name: 'vite-agent-inspect',
@@ -29,6 +33,15 @@ export function agentInspect(options = {}) {
       // The Overlay's real source lives inside this package. When the package
       // is linked rather than installed, it can sit outside Vite's root.
       return { server: { fs: { allow: [packageRoot] } } }
+    },
+
+    configResolved(config) {
+      facts = createServerFacts({ viteRoot: config.root, options })
+    },
+
+    configureServer(server) {
+      installAgentEndpoints(server, facts)
+      announcePosture(server, facts)
     },
 
     resolveId(id) {

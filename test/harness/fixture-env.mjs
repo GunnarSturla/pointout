@@ -1,4 +1,12 @@
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 
@@ -13,6 +21,10 @@ export const ENV_PATH = 'PATH'
 /** A 1×1 PNG. What the fake `screencapture` writes when it is asked to succeed. */
 const KNOWN_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+
+// Resolved before any fixture patches `PATH`, so the `git` shim below can hand
+// the call on to the real thing rather than to itself.
+const REAL_GIT = resolveRealGit()
 
 // The fake reads its behaviour at call time, so a test can change its mind
 // between picks: `png` (default) writes the known file, `empty` writes a
@@ -34,8 +46,12 @@ esac
  * session files into, a socket directory to bind fake session sockets in, a
  * `PATH` with a fake `screencapture` first, and a `CLAUDE_PID` for the
  * preselect. Returns the patch; it is applied by the caller.
+ *
+ * `gitShim` rides on the same `PATH` override: it puts a `git` in front that
+ * records its arguments and then execs the real one, so a test can count the
+ * subprocesses the server spawns without knowing anything about its internals.
  */
-export function createFixtureEnv({ claudePid = process.pid } = {}) {
+export function createFixtureEnv({ claudePid = process.pid, gitShim = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'vite-agent-inspect-'))
   const registryDir = join(dir, 'registry')
   const socketDir = join(dir, 'sockets')
@@ -49,12 +65,37 @@ export function createFixtureEnv({ claudePid = process.pid } = {}) {
   writeFileSync(screencapture, FAKE_SCREENCAPTURE)
   chmodSync(screencapture, 0o755)
 
+  const gitLog = join(dir, 'git-calls.log')
+  if (gitShim) {
+    writeFileSync(gitLog, '')
+    const git = join(binDir, 'git')
+    writeFileSync(
+      git,
+      [
+        '#!/bin/sh',
+        '# Test double for git. Written by test/harness/fixture-env.mjs.',
+        `printf '%s\\n' "$*" >> ${JSON.stringify(gitLog)}`,
+        `exec ${JSON.stringify(REAL_GIT)} "$@"`,
+        '',
+      ].join('\n'),
+    )
+    chmodSync(git, 0o755)
+  }
+
   return {
     dir,
     registryDir,
     socketDir,
     binDir,
     knownPng,
+    /** Every argument line the `git` shim recorded, oldest first. */
+    gitCalls() {
+      try {
+        return readFileSync(gitLog, 'utf8').split('\n').filter(Boolean)
+      } catch {
+        return []
+      }
+    },
     env: {
       [ENV_REGISTRY_DIR]: registryDir,
       [ENV_SOCKET_DIR]: socketDir,
@@ -80,5 +121,13 @@ export function applyEnv(patch) {
       if (value === undefined) delete process.env[key]
       else process.env[key] = value
     }
+  }
+}
+
+function resolveRealGit() {
+  try {
+    return execFileSync('which', ['git'], { encoding: 'utf8' }).trim() || '/usr/bin/git'
+  } catch {
+    return '/usr/bin/git'
   }
 }

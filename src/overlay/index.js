@@ -5,8 +5,7 @@
 // in dev and absent from a production build. Ticket 04 builds the shadow host
 // and the tracer bullet through it. Zero motion anywhere (spec §9).
 
-/** Every endpoint the Overlay talks to hangs off this base (spec §20). */
-const API_BASE = '/__agent'
+import { API_BASE } from '../api.js'
 
 /**
  * The marker a seam-2 smoke test reads to know the Overlay module was served,
