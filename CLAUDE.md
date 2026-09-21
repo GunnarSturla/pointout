@@ -18,6 +18,16 @@ and no hosted tracker. See `docs/agents/issue-tracker.md`.
 The five canonical triage roles, each label string equal to its name. See
 `docs/agents/triage-labels.md`.
 
+### Testing
+
+Three seams; `npm test` runs seams 1 and 2. No test imports a server module. See
+`docs/agents/testing.md` — read it before writing a test.
+
+### Borrowed code
+
+Targeted, non-UI and credited: a per-file provenance header plus an entry in
+`LICENSE-THIRDPARTY`. See `docs/agents/provenance.md`.
+
 ### Domain docs
 
 Single-context: `CONTEXT.md` at the root, ADRs in `docs/adr/`. See

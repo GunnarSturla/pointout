@@ -1,0 +1,29 @@
+# Third-party code in vite-agent-inspect
+
+This file carries the licence of every piece of code borrowed into this repository,
+alongside the per-file provenance header that names it. The header format, the rules
+for what may be borrowed, and the five borrows v0 expects are documented in
+`docs/agents/provenance.md`.
+
+## Entry format
+
+Add one section per borrowing project, in the same commit as the file that borrows:
+
+```
+## <project>
+
+Source:  <url>
+Version: <tag, version or commit sha> (<date taken>)
+Used in: <repo-relative path of each file that borrows>
+Taken:   <what was taken, in a clause>
+
+<the full, verbatim licence text>
+```
+
+Verbatim means verbatim, including the copyright line and its years. A summary, an
+SPDX identifier alone, or a link is not a licence.
+
+## Entries
+
+None yet. The first borrow lands with ticket 02 (herdr's fail-closed same-origin
+guard) and adds the first section above this line.

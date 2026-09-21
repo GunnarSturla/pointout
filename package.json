@@ -1,0 +1,38 @@
+{
+  "name": "vite-agent-inspect",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pick an element in the running app, type a request about it, and have it reach the Claude Code session you are already working in.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "require": "./src/cjs-entry.cjs",
+      "import": "./src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "workspaces": [
+    "examples/react-app"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace vite-agent-inspect-example",
+    "build:example": "npm run build --workspace vite-agent-inspect-example",
+    "test": "npm run test:seam1 && npm run test:seam2",
+    "test:seam1": "vitest run",
+    "test:seam2": "playwright test",
+    "test:seam3": "vitest run --config vitest.seam3.config.js"
+  },
+  "peerDependencies": {
+    "react": ">=19.0.0",
+    "vite": "^8.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}
