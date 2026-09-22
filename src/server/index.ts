@@ -2,6 +2,7 @@ import type { ViteDevServer } from 'vite'
 import type { CaptureService } from './capture/index.js'
 import { socketDirectory } from './claude/reply-socket.js'
 import type { DeliveryRoute } from './delivery.js'
+import type { Discovery } from './discovery.js'
 import { discoverRepoRoot } from './paths.js'
 import type { RootMethod } from './paths.js'
 import {
@@ -64,9 +65,15 @@ export function announcePosture(
   facts: ServerFacts,
   route: DeliveryRoute,
   captures: CaptureService,
+  discovery: Discovery,
 ): void {
   const print = () => {
     const { registry, candidates } = readCandidates(facts)
+
+    // Written here rather than on a `listening` handler of its own: the entry
+    // names the port, which exists only now, and the line below states where it
+    // went — so the two cannot disagree about whether it happened (spec §18).
+    discovery.publish(listeningPort(server))
 
     const posture = createPosture()
       .add('root', rootLine(facts.root, facts.rootMethod))
@@ -74,6 +81,7 @@ export function announcePosture(
       .add('registry', registryLine(registry, candidates.length))
       .add('reply socket', route.postureLine)
       .add('screen capture', captures.postureLine)
+      .add('discovery entry', discovery.postureLine)
 
     const address = server.httpServer?.address()
     const host = address && typeof address === 'object' ? address.address : null
@@ -84,6 +92,12 @@ export function announcePosture(
 
   if (server.httpServer) server.httpServer.once('listening', print)
   else print()
+}
+
+/** The port Vite ended up on, or 0 in middleware mode, where there is none. */
+function listeningPort(server: ViteDevServer): number {
+  const address = server.httpServer?.address()
+  return address && typeof address === 'object' ? address.port : 0
 }
 
 function parsePid(value: string | undefined): number | null {

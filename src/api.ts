@@ -17,6 +17,32 @@ export const STATUS_PATH = '/status'
 export const CAPTURE_PATH = '/capture'
 
 /**
+ * The hook floor's drain (spec §18, §20). POST only, and the drain CLI is its
+ * one caller: the Overlay never asks for it, but both halves of the package
+ * name it, so it is written here beside the rest.
+ */
+export const DRAIN_PATH = '/drain'
+
+/**
+ * The harness caps a hook's output string — `additionalContext` included — at
+ * 10,000 characters, and replaces anything longer with a file path and a
+ * preview. The drain CLI subtracts the cost of its own JSON envelope from this
+ * and sends the rest as the budget; the server fits its rendering inside it
+ * (spec §18).
+ */
+export const HOOK_OUTPUT_LIMIT = 10_000
+
+/**
+ * What `text` costs inside the JSON string a hook prints — the unit the drain
+ * budget is stated in, because escaping is what a plain character count misses.
+ * Written once because both halves count with it: the CLI to say how much room
+ * is left, the server to decide what fits.
+ */
+export function encodedLength(text: string): number {
+  return JSON.stringify(text).length - 2
+}
+
+/**
  * Which capture a `DELETE ${CAPTURE_PATH}/<id>` names, or null when the path
  * names none. `path` is relative to `API_BASE` and carries no query, like
  * `parsePickAction` below.

@@ -4,6 +4,8 @@ import { createCaptureService } from './server/capture/index.js'
 import type { CaptureService } from './server/capture/index.js'
 import { createClaudeRoute } from './server/claude/route.js'
 import type { DeliveryRoute } from './server/delivery.js'
+import { createDiscovery } from './server/discovery.js'
+import type { Discovery } from './server/discovery.js'
 import { installAgentEndpoints } from './server/http.js'
 import { announcePosture, createServerFacts } from './server/index.js'
 import type { AgentInspectOptions, ServerFacts } from './server/index.js'
@@ -36,6 +38,8 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
   let route: DeliveryRoute | null = null
   /** Screen Capture, once `configureServer` has probed for it. */
   let captures: CaptureService | null = null
+  /** The hook discovery entry, once `configureServer` has minted its secret. */
+  let discovery: Discovery | null = null
 
   // Vite runs `configResolved` before `configureServer`, so this never fires.
   // It throws rather than shrugging: a plugin that quietly served no endpoints
@@ -82,16 +86,27 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
       captures = await createCaptureService({ logger: server.config.logger })
       server.httpServer?.once('close', captures.close)
 
-      installAgentEndpoints(server, resolved, route, captures)
-      announcePosture(server, resolved, route, captures)
+      // The secret is minted and the dead dev servers' entries are swept now;
+      // the entry itself is written once there is a port, which the posture
+      // block is what waits for (spec §18, §21).
+      discovery = createDiscovery({
+        root: resolved.root,
+        warn: (message) => server.config.logger.warn(message),
+      })
+      server.httpServer?.once('close', discovery.close)
+
+      installAgentEndpoints(server, resolved, route, captures, discovery)
+      announcePosture(server, resolved, route, captures, discovery)
     },
 
-    // The socket is unlinked and the captures are deleted on shutdown (spec §10,
-    // §16). `httpServer` covers the ordinary dev server; this covers middleware
-    // mode, where there is none. Closing twice is a no-op.
+    // The socket is unlinked, the captures are deleted and the discovery entry
+    // is removed on shutdown (spec §10, §16, §18). `httpServer` covers the
+    // ordinary dev server; this covers middleware mode, where there is none.
+    // Closing twice is a no-op.
     buildEnd() {
       route?.close()
       captures?.close()
+      discovery?.close()
     },
 
     resolveId(id) {

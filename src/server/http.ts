@@ -3,6 +3,7 @@ import type { Connect, Logger, ViteDevServer } from 'vite'
 import {
   API_BASE,
   CAPTURE_PATH,
+  DRAIN_PATH,
   NONCE_PARAM,
   PICK_PATH,
   SESSIONS_PATH,
@@ -15,6 +16,8 @@ import type { CaptureService } from './capture/index.js'
 import { parseCaptureBody } from './capture/region.js'
 import { now } from './clock.js'
 import type { DeliveryRoute } from './delivery.js'
+import type { Discovery } from './discovery.js'
+import { drainQueue, parseDrainBody, refuseDrainCaller } from './drain.js'
 import { refuseForeignOrigin, refuseNonLoopback, refuseWrongNonce } from './guard.js'
 import type { Refusal } from './guard.js'
 import { DONE, FAILED, SENT, TTL_FAILURE, WORKING, createLedger } from './ledger.js'
@@ -36,9 +39,10 @@ import type { ServerFacts } from './index.js'
 /**
  * `read` is loopback-only, like everything here. `ingress` additionally requires
  * an Origin this server is serving on: the callers differ, and a browser sends
- * no Origin on a same-origin GET. `credential` is the agent's own shell, which
- * carries the Pick's nonce and sends no Origin at all — so an Origin is checked
- * there only when one is present (spec §11).
+ * no Origin on a same-origin GET. `credential` is a caller that carries one of
+ * its own — the agent's shell with the Pick's nonce, or the drain CLI with this
+ * server's secret — and sends no Origin at all, so an Origin is checked there
+ * only when one is present (spec §11).
  */
 type Policy = 'read' | 'ingress' | 'credential'
 
@@ -53,6 +57,8 @@ interface RequestContext {
   route: DeliveryRoute
   /** Screen Capture, available or disabled with its reason (spec §10). */
   captures: CaptureService
+  /** The hook discovery entry, whose secret is the drain's credential (§18). */
+  discovery: Discovery
   logger: Logger
   /** This server's own loopback origin: the ack and done URLs hang off it. */
   origin(): string
@@ -100,6 +106,7 @@ const ENDPOINTS: Endpoint[] = [
   },
   pickActionEndpoint('ack'),
   pickActionEndpoint('done'),
+  { method: 'POST', path: DRAIN_PATH, policy: 'credential', handle: drainPicks },
 ]
 
 export function installAgentEndpoints(
@@ -107,6 +114,7 @@ export function installAgentEndpoints(
   facts: ServerFacts,
   route: DeliveryRoute,
   captures: CaptureService,
+  discovery: Discovery,
 ): void {
   const { logger } = server.config
   const ownOrigins = onceOwnOrigins(server)
@@ -115,6 +123,7 @@ export function installAgentEndpoints(
     server,
     route,
     captures,
+    discovery,
     logger,
     queue: createPickQueue(),
     ledger: createLedger(now),
@@ -256,6 +265,46 @@ function recordPickAction(
   const state = action === 'ack' ? WORKING : DONE
   ledger.advance(record.pick.id, state)
   sendJson(response, 200, { pickId: record.pick.id, state })
+}
+
+/**
+ * The hook floor (spec §15, §18). The drain CLI asks on every prompt and at the
+ * end of every turn, so the empty answer is the common one and costs nothing;
+ * a drain that claims Picks says so in the log, because nothing else tells the
+ * developer it happened — the harness writes no transcript entry for a hook.
+ */
+async function drainPicks(
+  request: Connect.IncomingMessage,
+  response: ServerResponse,
+  { facts, queue, ledger, discovery, logger, origin }: RequestContext,
+): Promise<void> {
+  const body = await readRequestBody(request)
+  if (!body.ok) return sendRefusal(logger, response, body.refusal)
+
+  const parsed = parseDrainBody(body.value)
+  if (!parsed.ok) return sendRefusal(logger, response, parsed.refusal)
+
+  const refused = refuseDrainCaller(parsed.value, {
+    secret: discovery.secret,
+    root: facts.root,
+  })
+  if (refused) return sendRefusal(logger, response, refused)
+
+  const drained = drainQueue({
+    queue,
+    ledger,
+    origin: origin(),
+    budget: parsed.value.budget,
+  })
+  if (drained.reason) logger.warn(`vite-agent-inspect: ${drained.reason}`)
+  else if (drained.drained > 0) {
+    logger.info(
+      `vite-agent-inspect: ${drained.drained} ` +
+        `${drained.drained === 1 ? 'pick' : 'picks'} drained into ${parsed.value.event}` +
+        (drained.remaining > 0 ? `, ${drained.remaining} still queued` : ''),
+    )
+  }
+  sendJson(response, 200, drained)
 }
 
 /**

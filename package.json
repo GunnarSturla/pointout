@@ -13,6 +13,9 @@
     },
     "./package.json": "./package.json"
   },
+  "bin": {
+    "vite-agent-inspect": "./dist/cli/main.js"
+  },
   "engines": {
     "node": ">=22.12.0"
   },

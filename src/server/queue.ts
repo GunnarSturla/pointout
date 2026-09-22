@@ -35,6 +35,13 @@ export interface PickQueue {
   /** The entry, while it is still here. Undefined once it has left. */
   get(pickId: string): QueueEntry | undefined
   /**
+   * Every entry still `queued-unaddressed`, oldest first: exactly what the hook
+   * floor may take (spec §15). An entry written to a socket is not here, which
+   * is what keeps a developer who types before the agent acks from receiving
+   * the same Pick twice.
+   */
+  drainable(): QueueEntry[]
+  /**
    * Take an entry out: an ack or a done, and nothing else in v0. Returns what
    * was there, and undefined when it had already left — both of which the ack
    * survives, because an ack is evidence about the Pick, not about the queue.
@@ -72,6 +79,9 @@ export function createPickQueue(): PickQueue {
     },
 
     get: (pickId) => entries.get(pickId),
+
+    drainable: () =>
+      [...entries.values()].filter((entry) => entry.state === QUEUED_UNADDRESSED),
 
     remove(pickId) {
       const entry = entries.get(pickId)
