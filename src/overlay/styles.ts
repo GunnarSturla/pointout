@@ -52,6 +52,19 @@ export const OVERLAY_STYLESHEET = `
    stood — it never flies off, and the Pick made of it still sends. */
 .highlight[data-gone] { opacity: 0 }
 
+/* The shutter (spec §10): closed for the frame a Screen Capture is taken in.
+   Everything the Overlay draws on the page leaves it at once — the Highlight
+   and its chip, the resting Highlights, the Stack and the Picker — and the
+   Panel stays, because its entrance is never gated on a capture. Closing is
+   always instant, so no capture ever catches the Overlay halfway out; only
+   the opening is eased, and only inside the opt-in block below. */
+:host([data-shutter]) .highlight,
+:host([data-shutter]) .stack,
+:host([data-shutter]) .picker-peek {
+  visibility: hidden;
+  opacity: 0;
+}
+
 .chip {
   position: absolute;
   inset-inline-start: 0;
@@ -292,6 +305,45 @@ export const OVERLAY_STYLESHEET = `
   font-size: 12px;
 }
 
+/* The camera toggle, leftmost in the footer (spec §7). Off is quiet, on is the
+   accent, and one this dev server cannot honour is visibly unavailable — still
+   there, still asking to be clicked for its reason. */
+.camera {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgb(127 127 127 / 45%);
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+.camera[data-on] {
+  border-color: #4f7cff;
+  background: rgb(79 124 255 / 14%);
+  color: #4f7cff;
+  opacity: 1;
+}
+
+.camera[aria-disabled='true'] {
+  border-style: dashed;
+  opacity: 0.45;
+  cursor: help;
+}
+
+.camera-off,
+.camera-failed {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.camera-failed { color: #b3261e }
+
 .cancel {
   flex: none;
   padding: 5px 10px;
@@ -383,7 +435,23 @@ export const OVERLAY_STYLESHEET = `
      Under reduce it still moves between exactly these two positions — it
      arrives at once, which is the whole difference. */
   .picker-peek {
-    transition: translate 220ms cubic-bezier(0.23, 1, 0.32, 1);
+    transition:
+      translate 220ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 120ms linear;
   }
+
+  /* The shutter opening (spec §10): what closed at once comes back over the
+     same 120 ms the Highlight fades by when its element leaves. The Highlight
+     already eases its opacity above and the Picker beside its reveal; the
+     Stack has nothing else that moves. Under reduce it is all there again at
+     once, which is the whole difference. */
+  .stack { transition: opacity 120ms linear }
+
+  /* Closing is never eased: no capture may catch the Overlay halfway out, and
+     an opening that started from a half-finished close would not read the
+     same twice. */
+  :host([data-shutter]) .highlight,
+  :host([data-shutter]) .stack,
+  :host([data-shutter]) .picker-peek { transition: none }
 }
 `

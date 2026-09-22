@@ -12,8 +12,17 @@ import {
   parsePickAction,
 } from '../api.js'
 import type { PickAction } from '../api.js'
-import { DONE, QUEUED_UNADDRESSED, SENT, SENT_AWAITING_ACK, WORKING } from '../wire.js'
+import {
+  CAPTURE_DISABLED,
+  UNKNOWN_CAPTURE,
+  DONE,
+  QUEUED_UNADDRESSED,
+  SENT,
+  SENT_AWAITING_ACK,
+  WORKING,
+} from '../wire.js'
 import type {
+  CaptureDeleted,
   CaptureStarted,
   NamedTarget,
   PickAccepted,
@@ -340,7 +349,7 @@ async function startCapture(
   if (captures.disabledReason) {
     return sendRefusal(logger, response, {
       status: 409,
-      body: { error: 'capture-disabled', reason: captures.disabledReason },
+      body: { error: CAPTURE_DISABLED, reason: captures.disabledReason },
     })
   }
 
@@ -370,14 +379,15 @@ function abortCapture(
     return sendRefusal(logger, response, {
       status: 404,
       body: {
-        error: 'unknown-capture',
+        error: UNKNOWN_CAPTURE,
         reason:
           'refused to abort a capture this dev server is not holding. It was ' +
           'aborted already, or it was never started here.',
       },
     })
   }
-  sendJson(response, 200, { captureId: id, deleted: true })
+  const answer: CaptureDeleted = { captureId: id, deleted: true }
+  sendJson(response, 200, answer)
 }
 
 /**

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Logger } from 'vite'
+import { NO_CAPTURE } from '../../wire.js'
 import type { CaptureCoordinates, CaptureRequest } from '../../wire.js'
 import { regionFor } from './region.js'
 import { openCaptureDirectory } from './directory.js'
@@ -133,6 +134,13 @@ export async function createCaptureService({
 
     async resolve(request) {
       if (!request) return null
+      // The toggle was on and the page holds nothing to name: the capture it
+      // asked for at pick time never started. Said, not left out (spec §21).
+      if (request.id === NO_CAPTURE) {
+        return request.keep
+          ? intended('the page asked for one at pick time and none was started')
+          : null
+      }
       const capture = captures.get(request.id)
       captures.delete(request.id)
 

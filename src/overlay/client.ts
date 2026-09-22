@@ -5,8 +5,12 @@
 // Every refusal this reads is shown at the point it happens (spec §21); nothing
 // here swallows one.
 
-import { API_BASE, PICK_PATH, SESSIONS_PATH, STATUS_PATH } from '../api.js'
+import { API_BASE, CAPTURE_PATH, PICK_PATH, SESSIONS_PATH, STATUS_PATH } from '../api.js'
+import { CAPTURE_DISABLED, UNKNOWN_CAPTURE } from '../wire.js'
 import type {
+  CaptureCoordinates,
+  CaptureDeleted,
+  CaptureStarted,
   Candidate,
   NamedTarget,
   PickAccepted,
@@ -126,6 +130,58 @@ export async function sendPick(body: PickBody): Promise<Sent> {
     ...(reason ? { reason } : {}),
     ...(trimmed ? { trimmed } : {}),
   }
+}
+
+/**
+ * Start a Screen Capture of what the developer is looking at (spec §10). The
+ * page ships coordinates only; the dev server captures the display around them. `disabled`
+ * says the refusal was the endpoint's standing one — this dev server cannot
+ * capture at all, and the reason is the toggle's — rather than one capture
+ * that did not start.
+ */
+export async function startCapture(
+  coordinates: CaptureCoordinates,
+): Promise<
+  { ok: true; captureId: string } | { ok: false; reason: string; disabled: boolean }
+> {
+  const answer = await request<CaptureStarted>(CAPTURE_PATH, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(coordinates),
+  })
+  if (!answer.ok) {
+    return {
+      ok: false,
+      reason: answer.reason,
+      disabled: answer.refusal.error === CAPTURE_DISABLED,
+    }
+  }
+  if (typeof answer.body.captureId !== 'string') {
+    return {
+      ok: false,
+      reason: 'the dev server started a capture and did not say which one.',
+      disabled: false,
+    }
+  }
+  return { ok: true, captureId: answer.body.captureId }
+}
+
+/**
+ * Abort a capture and delete what it wrote (spec §10). A server that is no
+ * longer holding it has done what was asked already; anything else is the
+ * reason the capture may still be on disk. `keepalive` lets the request outlive
+ * a page that is going away.
+ */
+export async function abortCapture(
+  captureId: string,
+  { keepalive = false }: { keepalive?: boolean } = {},
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const answer = await request<CaptureDeleted>(
+    `${CAPTURE_PATH}/${encodeURIComponent(captureId)}`,
+    { method: 'DELETE', keepalive },
+  )
+  if (answer.ok || answer.refusal.error === UNKNOWN_CAPTURE) return { ok: true }
+  return { ok: false, reason: answer.reason }
 }
 
 /**

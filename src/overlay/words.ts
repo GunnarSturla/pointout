@@ -105,3 +105,31 @@ export function doneReportedBy(name: string): string {
 export function noneAcknowledgedYet(sent: number): string {
   return `${sent} sent, none acknowledged yet`
 }
+
+/** The camera toggle's name, which is what a screen reader announces (spec §7). */
+export const SCREEN_CAPTURE = 'Screen Capture'
+
+/**
+ * The toggle, shown disabled rather than hidden, and why (story 73, 74): the
+ * dev server's own reason, which names the platform or the permission.
+ */
+export function captureUnavailable(reason: string): string {
+  return `Screen Capture is off: ${reason}`
+}
+
+/**
+ * The open Pick's capture did not start (spec §21). Said only while the toggle
+ * is on, because only then was a capture meant to travel with the Pick.
+ */
+export function captureFailed(reason: string): string {
+  return `No Screen Capture for this pick: ${reason}`
+}
+
+/**
+ * A capture this page let go of — a move, a discard — that the dev server
+ * could not be asked to delete. Said whatever the toggle, because it is the
+ * developer's screen on disk; and where it goes next is said too.
+ */
+export function captureNotDeleted(reason: string): string {
+  return `A Screen Capture could not be deleted (${reason}). The dev server removes it when it stops.`
+}

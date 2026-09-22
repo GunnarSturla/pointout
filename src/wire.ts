@@ -307,6 +307,32 @@ export interface CaptureStarted {
   captureId: string
 }
 
+/** What a DELETE answers for a capture this server was holding: aborted, and gone. */
+export interface CaptureDeleted {
+  captureId: string
+  deleted: true
+}
+
+/**
+ * The `error` a capture endpoint that cannot capture refuses with, beside the
+ * reason why (spec §10, §21). The Overlay reads it as the camera toggle's
+ * standing state rather than as one capture that failed: the reason is shown on
+ * the toggle, and the page stops asking.
+ */
+export const CAPTURE_DISABLED = 'capture-disabled'
+
+/**
+ * The id a Pick names when its camera toggle was on and it holds no capture —
+ * this dev server cannot capture, or the one the page asked for did not start.
+ * Sent with \`keep: true\`, it is how the agent is told a capture was intended
+ * and failed rather than finding nothing where one should be (spec §10, §21).
+ * No capture this server mints is ever called this.
+ */
+export const NO_CAPTURE = 'none'
+
+/** The \`error\` a DELETE refuses with for a capture this server is not holding. */
+export const UNKNOWN_CAPTURE = 'unknown-capture'
+
 // ---------------------------------------------------------------------------
 // The hook floor's drain: POST /__agent/drain
 // ---------------------------------------------------------------------------
