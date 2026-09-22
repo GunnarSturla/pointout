@@ -106,7 +106,9 @@ export function startOverlay(document: Document): OverlayHandle {
    * Push the controller's state down. The Picker peeks only when there is
    * nothing to come back to: armed, a Panel open or a Pick outstanding all hold
    * it out (spec §8), and an open Panel that has ridden off-screen puts the way
-   * back to it on the Picker (spec §7).
+   * back to it on the Picker (spec §7). A `held` Pick is outstanding until it is
+   * dismissed, so this is also §8's rule that a `held` Pick pulls the Picker back
+   * out — and the Stack, which exists for as long as any chip does.
    */
   const render = () => {
     offeredWayBack = panelOffScreen()

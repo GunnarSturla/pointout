@@ -4,8 +4,8 @@
 // surfaces — so it is written once and imported, not retyped.
 //
 // The chip words at the foot of this file are §17's table as far as the Overlay
-// draws it today: `sent`, `working`, `done` and `failed`. `held` and `unknown`
-// belong here beside these when they land.
+// draws it today: `sent`, `held`, `working`, `done` and `failed`. `unknown`
+// belongs here beside these when the report-back clock lands.
 
 /** Zero Candidates. The Note input is replaced by this, and there is no Target. */
 export const NO_SESSION = 'No Claude session is running in this folder'
@@ -13,7 +13,10 @@ export const NO_SESSION = 'No Claude session is running in this folder'
 /** The registry could not be read. The input stays; delivery is the hook floor's. */
 export const CANT_SEE_SESSIONS = "Can't see your sessions — sending the slower way"
 
-/** The one action that unblocks a session waiting on a permission prompt. */
+/**
+ * The one action that unblocks a session waiting on a permission prompt — and a
+ * `held` Pick, which is the same prompt seen from the Pick's side (spec §17).
+ */
 export const APPROVE_IN_TERMINAL = 'approve it in your terminal'
 
 /** Step 4 of §14's chain: nothing preselected, and the footer says why Send is off. */
@@ -74,6 +77,15 @@ export const SEND_AGAIN = 'send it again, or pick another session'
  * at all, so that the chip still fails closed out loud (spec §21).
  */
 export const NOT_DELIVERED = 'Not delivered.'
+
+/**
+ * Spec §17's `held`: a Receipt said the Target is holding this Pick until the
+ * developer approves it. Its next action is `APPROVE_IN_TERMINAL`, the phrase
+ * the Target row uses for a session blocked on a permission prompt.
+ */
+export function askingToApprove(name: string): string {
+  return `${name} is asking you to approve this pick`
+}
 
 /** Spec §17's `working`: the Target acked, which is the agent's own signal. */
 export function workingOn(name: string): string {
