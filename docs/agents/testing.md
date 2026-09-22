@@ -41,8 +41,8 @@ the transcript on disk — and never on what the model says.
 `npm test` runs seams 1 and 2. **Seam 3 is never in the default run**: it spawns a real
 session on the developer's own account, touches the real registry, and its model tier
 costs tokens. It needs the `claude` CLI and a login, skips with that reason when either
-is missing, and never runs in CI. Tickets 20 and 21 build it; today it reports that it
-is not implemented.
+is missing, and never runs in CI. Ticket 20 built its no-model tier; ticket 21 builds
+the model tier on the same launcher.
 
 **Seam 1** is where most tests live. `test/harness/dev-server.ts` starts a real Vite dev
 server, with the plugin, against the real example app, so the module graph and the
@@ -83,6 +83,39 @@ silently attached to.
 **Seam 3** exists because the first two fake the harness, and v0 depends on undocumented
 surfaces that have already churned. A suite that fakes them can pass forever against a
 harness that has moved.
+
+Its fixture code is `test/harness/claude-session.ts`, under the same rule as the rest of
+`test/harness/`. It starts a throwaway `claude` under a pty (a few lines of Python's
+standard `pty` module, run with `python3 -c`, after spike 07's launcher, from which
+nothing is imported) with every `CLAUDE*` variable scrubbed, in a scratch git repository
+holding a copy of the example app. It answers the folder-trust prompt, and it starts the
+real dev server from the same directory with no override, so the dev server reads
+`~/.claude/sessions/` and binds in `/tmp/cc-socks/`. The throwaway session is in the real
+registry for the length of the run, and it is the dev server's only Candidate: a canary
+checks that before anything is sent. The session runs with `--safe-mode
+--strict-mcp-config --tools "" --model haiku`, and `ANTHROPIC_BASE_URL` points at a
+loopback port the suite holds, which drops every connection unread. So the one turn the
+no-model tier makes the session take reaches no model, and a canary checks that it went
+there. Raw frames are read at a probe socket beside the harness's own, named with sixteen
+hex digits so that no pid can own it. The safety rules are listed at the top of that file,
+each beside the code that enforces it.
+
+**Measured by ticket 20, on Claude Code 2.1.280:**
+
+- **A user frame whose `session_id` does not match is dropped silently.** It is not
+  delivered: the registry stays `idle` and the TUI never shows it. No Receipt comes back
+  within 10 s either. The same frame with the right `session_id` is taken, which is the
+  control. So the mismatch is **not** a zero-cost delivery canary, and spec §15's *"the
+  drop comes back as a Receipt"* is false on this version. A mismatch shows up in v0 only
+  as silence, and silence ends in `unknown`.
+- **An idle notice from a session that has never finished a turn carries no
+  `finished_at`.** After one turn, even an interrupted one, it does. That is why the
+  canary interrupts its blackholed control turn before it subscribes.
+- **The registry entry is written only once the folder-trust prompt is accepted.** The
+  key file and the socket exist before that. The prompt opens on *No, exit*.
+- **A session that inherits `CLAUDE_CODE_CHILD_SESSION` still publishes a key file and a
+  socket**, which it did not in 2.1.278 (spike 07). It never writes a registry entry, so
+  it is still never a Candidate.
 
 ## Faking the harness — the four overrides
 
