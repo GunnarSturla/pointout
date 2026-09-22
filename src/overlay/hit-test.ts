@@ -1,22 +1,32 @@
-// The hit test — first rule only (spec §4). The remaining rules (piercing open
-// shadow roots, descending into same-origin iframes, collapsing to the nearest
-// `<svg>`) and the armed `pointer-events` forcing are ticket 08.
+// The hit test (spec §4): four rules, applied in order, that turn a point into
+// the element the developer meant.
 //
-// The one rule here is written as the general rule it is: **ignore any fixed,
-// full-viewport element**. That covers the Overlay's own host, a scrim the app
-// draws, and another tool's canvas as one rule rather than three. The Overlay's
-// own surfaces collapse to the host under `elementsFromPoint`, which does not
-// pierce a shadow root, so the same rule is what keeps the Picker and the Panel
-// out of their own hit test.
+//   1. ignore any fixed, full-viewport element. Written as the general rule it
+//      is, so the Overlay's own host, the shield it lays over a dense page, a
+//      scrim the app draws and another devtool's canvas are one rule and not
+//      four. `elementsFromPoint` does not pierce a shadow root, so every surface
+//      the Overlay draws collapses to that host and needs no exemption.
+//   2. pierce open shadow roots, to the element React rendered inside one;
+//   3. descend into same-origin frames (both from `deep-element.ts`);
+//   4. collapse anything inside an `<svg>` to the nearest `<svg>` ancestor,
+//      because a developer who clicked an icon means the icon, not the third
+//      `<path>` of its artwork.
+//
+// No manual widening — stepping out to the parent — in v0.
+
+import { deepElementFrom } from './deep-element.js'
 
 /** A box within this many pixels of the viewport's edge counts as reaching it. */
 const EDGE_TOLERANCE = 1
+
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 
 /** The element under a point that a Pick may be made of, or null. */
 export function elementAtPoint(document: Document, x: number, y: number): Element | null {
   for (const element of document.elementsFromPoint(x, y)) {
     if (coversViewport(element)) continue
-    return element
+    const deep = deepElementFrom(element, x, y)
+    if (deep) return nearestSvg(deep)
   }
   return null
 }
@@ -34,4 +44,15 @@ function coversViewport(element: Element): boolean {
     box.right >= view.innerWidth - EDGE_TOLERANCE &&
     box.bottom >= view.innerHeight - EDGE_TOLERANCE
   )
+}
+
+/**
+ * The `<svg>` an element is drawn inside, or the element itself. Only SVG
+ * content collapses: HTML inside a `<foreignObject>` is a real element of the
+ * page and a developer pointing at it means it.
+ */
+function nearestSvg(element: Element): Element {
+  if (element.namespaceURI !== SVG_NAMESPACE) return element
+  if (element.localName === 'svg') return element
+  return element.closest('svg') ?? element
 }

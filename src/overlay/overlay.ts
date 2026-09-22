@@ -8,6 +8,8 @@
 // forcing; ticket 09 the Highlight lifecycle and the opt-in to motion; ticket 10
 // the Target row; ticket 12 the Picker's peek and the Stack.
 
+import { createHittability } from './armed.js'
+import { viewportBox } from './deep-element.js'
 import { readOwner, readOwnerChain } from './fiber.js'
 import { createHighlight } from './highlight.js'
 import { elementAtPoint } from './hit-test.js'
@@ -31,6 +33,7 @@ export function startOverlay(document: Document): OverlayHandle {
 
   const { host, shadow } = mountOverlayRoot(document)
   const highlight = createHighlight(document, shadow)
+  const hittability = createHittability(document, shadow)
 
   const picker = part(document, 'button', 'picker')
   picker.type = 'button'
@@ -49,10 +52,13 @@ export function startOverlay(document: Document): OverlayHandle {
     mode = 'armed'
     armedBy = by
     picker.setAttribute('data-armed', '')
-    // Armed state changes the cursor and nothing else (spec §4). On the document
-    // element, so it inherits, and so no page element's own rules are touched.
+    // Armed state changes the cursor and nothing else it can avoid (spec §4). On
+    // the document element, so it inherits, and so no page element's own rules
+    // are touched. Hittability is the one other thing arming changes, and it
+    // changes `pointer-events` only where the page had taken it away.
     pageCursor = document.documentElement.style.cursor
     document.documentElement.style.cursor = 'crosshair'
+    hittability.arm()
   }
 
   const off = () => {
@@ -63,6 +69,7 @@ export function startOverlay(document: Document): OverlayHandle {
     highlight.hide()
     picker.removeAttribute('data-armed')
     document.documentElement.style.cursor = pageCursor
+    hittability.disarm()
   }
 
   const closePanel = () => {
@@ -76,12 +83,23 @@ export function startOverlay(document: Document): OverlayHandle {
       closePanel()
       mode = 'armed'
       armedBy = armedBy ?? 'picker'
+      // Armed again, so the page is hittable again — and re-measured, because
+      // what is on it may have changed while the Panel was open.
+      hittability.arm()
       return
     }
     if (mode === 'armed') off()
   }
 
-  const ours = (event: Event): boolean => event.composedPath().includes(host)
+  /**
+   * The Overlay's own chrome. The shield is not: it is the Overlay's way of
+   * taking the pointer *on the page's behalf*, so an event that landed on it is
+   * an event about the page.
+   */
+  const ours = (event: Event): boolean => {
+    const path = event.composedPath()
+    return path.includes(host) && !hittability.onShield(path)
+  }
 
   const onPointerMove = (event: PointerEvent) => {
     if (mode !== 'armed') return
@@ -107,6 +125,9 @@ export function startOverlay(document: Document): OverlayHandle {
     hovered = element
     highlight.show(element, readOwner(element))
     mode = 'picked'
+    // Picked is not armed: the page goes back to the hittability its author gave
+    // it while the Note is being written.
+    hittability.disarm()
     panel = openPanel({
       document,
       view,
@@ -176,7 +197,9 @@ export function startOverlay(document: Document): OverlayHandle {
  * the geometry: a Pick that was moved carries the element it ended on.
  */
 function pointerOf(view: Window, element: Element): Omit<PickBody, 'note' | 'target'> {
-  const rect = element.getBoundingClientRect()
+  // In the top document's coordinates, so a Pick made inside a frame carries
+  // the geometry a developer — and a Screen Capture — would see (ticket 08).
+  const rect = viewportBox(element)
   const id = element.id || undefined
   const testId = element.getAttribute('data-testid') || undefined
   const owners = readOwnerChain(element)

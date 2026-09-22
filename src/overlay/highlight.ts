@@ -8,6 +8,7 @@
 // Placed instantly, every time. Nothing here declares any motion; the frozen and
 // resting treatments and the lifecycle are ticket 09.
 
+import { viewportBox } from './deep-element.js'
 import { part } from './root.js'
 import type { OwnerFacts } from './fiber.js'
 
@@ -36,7 +37,9 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
   let on: Element | null = null
 
   const place = (element: Element) => {
-    const rect = element.getBoundingClientRect()
+    // The box is fixed in the top document, and the element may be inside a
+    // frame, so its own client rect is not where it is (ticket 08).
+    const rect = viewportBox(element)
     box.style.left = `${rect.left}px`
     box.style.top = `${rect.top}px`
     box.style.width = `${rect.width}px`

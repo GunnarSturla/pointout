@@ -22,6 +22,16 @@ export const OVERLAY_STYLESHEET = `
 
 *, *::before, *::after { box-sizing: border-box }
 
+/* The shield: raised instead of the armed rule on a page too dense to restyle
+   (spec §4). It is invisible, takes the pointer so the page beneath it does not,
+   and is skipped by the hit test's first rule like everything else the host
+   draws. */
+.shield {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+}
+
 .highlight {
   position: fixed;
   pointer-events: none;
