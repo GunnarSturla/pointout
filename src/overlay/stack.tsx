@@ -13,7 +13,8 @@
 // box.
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { DONE, FAILED, QUEUED_UNADDRESSED, SENT, WORKING } from '../wire.js'
+import { DONE, FAILED, HELD, QUEUED_UNADDRESSED, SENT, WORKING } from '../wire.js'
+import type { PickState } from '../wire.js'
 import { readStatus } from './client.js'
 import { viewportBox } from './deep-element.js'
 import type { Reflow } from './reflow.js'
@@ -51,7 +52,7 @@ export interface StackProps {
 
 /** What the last poll said about one Pick. */
 interface Told {
-  state: string
+  state: PickState
   reason: string | null
   name: string | null
 }
@@ -133,8 +134,7 @@ export const Stack = memo(function Stack({ view, reflow, picks, onDismiss }: Sta
             key={pick.pickId}
             pickId={pick.pickId}
             state={state}
-            text={chipWords(state, reason, name)}
-            next={nextAction(state)}
+            {...say(state, reason, name)}
             onHover={setLit}
           />
         ))}
@@ -187,22 +187,32 @@ function Chip({
   )
 }
 
-/** The words for one Pick, from Pick-specific evidence and nothing else. */
-function chipWords(state: string, reason: string | null, name: string): string {
-  if (state === WORKING) return words.workingOn(name)
-  if (state === DONE) return words.doneReportedBy(name)
-  if (state === FAILED) return reason ?? words.NOT_DELIVERED
-  return words.SENT
-}
-
 /**
- * The sub-line: the next action, or the route a Pick nobody is addressed to
- * will actually take. Both are facts about this Pick; neither is a guess.
+ * What one chip says: its words, and the sub-line under them — the next action,
+ * or the route a Pick nobody is addressed to will actually take. One arm per
+ * state of §17's table, from Pick-specific evidence and nothing else.
  */
-function nextAction(state: string): string | null {
-  if (state === FAILED) return words.SEND_AGAIN
-  if (state === QUEUED_UNADDRESSED) return words.NEXT_PROMPT
-  return null
+function say(
+  state: PickState,
+  reason: string | null,
+  name: string,
+): { text: string; next: string | null } {
+  switch (state) {
+    // §17 gives `held` fixed words, so they come from the state; the server
+    // leaves `reason` null for it on purpose.
+    case HELD:
+      return { text: words.askingToApprove(name), next: words.APPROVE_IN_TERMINAL }
+    case WORKING:
+      return { text: words.workingOn(name), next: null }
+    case DONE:
+      return { text: words.doneReportedBy(name), next: null }
+    case FAILED:
+      return { text: reason ?? words.NOT_DELIVERED, next: words.SEND_AGAIN }
+    case QUEUED_UNADDRESSED:
+      return { text: words.SENT, next: words.NEXT_PROMPT }
+    case SENT:
+      return { text: words.SENT, next: null }
+  }
 }
 
 /**
