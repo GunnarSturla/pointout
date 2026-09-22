@@ -6,17 +6,24 @@
 //
 // Ticket 08 adds the rest of the hit-test rules and the armed `pointer-events`
 // forcing; ticket 09 the Highlight lifecycle and the opt-in to motion; ticket 10
-// the Target row; ticket 12 the Picker's peek and the Stack.
+// the Target row; ticket 12 the Picker's peek, the Stack, and the Panel state
+// rules — which is where the fourth thing a click can mean lives: while a Pick
+// is open, Alt-click *moves* an unsubmitted Pick and *starts a new one* from a
+// submitted Panel (spec §7). It is written down because it is invisible from
+// the gesture.
 
 import { createHittability } from './armed.js'
 import { viewportBox } from './deep-element.js'
+import type { ViewportBox } from './deep-element.js'
 import { describeElement } from './describe.js'
 import { readOwner, readOwnerChain } from './fiber.js'
 import { createHighlight } from './highlight.js'
 import { elementAtPoint } from './hit-test.js'
 import { openPanel } from './panel.js'
 import type { Panel } from './panel.js'
-import { mountOverlayRoot, part } from './root.js'
+import { createPicker } from './picker.js'
+import { mountOverlayRoot } from './root.js'
+import { createStack } from './stack.js'
 import type { PickBody } from './client.js'
 
 /** What arms the Overlay. Alt is held; the Picker is a toggle. */
@@ -36,23 +43,55 @@ export function startOverlay(document: Document): OverlayHandle {
   const highlight = createHighlight(document, shadow)
   const hittability = createHittability(document, shadow)
 
-  const picker = part(document, 'button', 'picker')
-  picker.type = 'button'
-  picker.textContent = 'Pick'
-  shadow.append(picker)
-
   let mode: Mode = 'off'
   let armedBy: ArmedBy | null = null
   let hovered: Element | null = null
   let panel: Panel | null = null
+  /** The element the open Panel is on. Moving the Pick replaces it (spec §7). */
+  let picked: Element | null = null
+  /** The Pick the open Panel sent, once it has sent one. */
+  let openPickId: string | null = null
   /** The page's own cursor, put back exactly as it was found. */
   let pageCursor = ''
+
+  const stack = createStack({
+    document,
+    view,
+    shadow,
+    changed: () => syncPicker(),
+    dismissed(pickId) {
+      // A Pick that dismissed itself takes its own Panel with it: there is
+      // nothing left for it to be anchored to or to say (spec §8).
+      if (openPickId === pickId) off()
+    },
+  })
+
+  const picker = createPicker(document, shadow, {
+    toggle() {
+      if (mode === 'off') arm('picker')
+      else off()
+    },
+    back() {
+      panel?.bringIntoView()
+      syncPicker()
+    },
+  })
+
+  /**
+   * The Picker peeks only when there is nothing to come back to. Armed, a Panel
+   * open or a Pick outstanding all hold it out (spec §8), and an open Panel that
+   * has ridden off-screen puts the way back to it on the Picker (spec §7).
+   */
+  const syncPicker = () => {
+    picker.setArmed(mode === 'armed')
+    picker.hold(mode !== 'off' || stack.size() > 0)
+    picker.offerWayBack(panel !== null && panel.offScreen())
+  }
 
   const arm = (by: ArmedBy) => {
     if (mode !== 'off') return
     mode = 'armed'
     armedBy = by
-    picker.setAttribute('data-armed', '')
     // Armed state changes the cursor and nothing else it can avoid (spec §4). On
     // the document element, so it inherits, and so no page element's own rules
     // are touched. Hittability is the one other thing arming changes, and it
@@ -60,6 +99,7 @@ export function startOverlay(document: Document): OverlayHandle {
     pageCursor = document.documentElement.style.cursor
     document.documentElement.style.cursor = 'crosshair'
     hittability.arm()
+    syncPicker()
   }
 
   const off = () => {
@@ -68,15 +108,52 @@ export function startOverlay(document: Document): OverlayHandle {
     armedBy = null
     hovered = null
     highlight.hide()
-    picker.removeAttribute('data-armed')
     document.documentElement.style.cursor = pageCursor
     hittability.disarm()
+    syncPicker()
   }
 
   const closePanel = () => {
     panel?.close()
     panel = null
+    picked = null
+    openPickId = null
   }
+
+  /**
+   * The Pick this click makes, on the element it landed on. One Panel per Pick
+   * and at most one unsubmitted Pick, so whatever was open has already gone.
+   */
+  const pickOn = (element: Element) => {
+    hovered = element
+    picked = element
+    highlight.show(element, readOwner(element))
+    mode = 'picked'
+    // Picked is not armed: the page goes back to the hittability its author gave
+    // it while the Note is being written.
+    hittability.disarm()
+    panel = openPanel({
+      document,
+      view,
+      shadow,
+      element,
+      // The element a moved Pick ended on, never the one it started on.
+      pointer: () => pointerOf(view, picked ?? element, highlight.lastBox()),
+      submitted(pick) {
+        openPickId = pick.pickId
+        // The frozen Highlight becomes the Stack's resting one: one box on the
+        // element, not two (spec §5).
+        highlight.hide()
+        stack.add({ ...pick, element: picked ?? element })
+      },
+    })
+    syncPicker()
+  }
+
+  // The picked element can leave the page while its Panel is open (spec §5,
+  // user story 25). The Highlight fades where it stood; the Panel is what says
+  // so, and the Pick it belongs to is still sendable.
+  highlight.whenGone(() => panel?.elementGone())
 
   /** `Escape` unwinds exactly one level, never two (spec §4). */
   const unwind = () => {
@@ -87,6 +164,7 @@ export function startOverlay(document: Document): OverlayHandle {
       // Armed again, so the page is hittable again — and re-measured, because
       // what is on it may have changed while the Panel was open.
       hittability.arm()
+      syncPicker()
       return
     }
     if (mode === 'armed') off()
@@ -115,7 +193,10 @@ export function startOverlay(document: Document): OverlayHandle {
   }
 
   const onClick = (event: MouseEvent) => {
-    if (mode !== 'armed' || ours(event)) return
+    if (mode === 'off' || ours(event)) return
+    // With a Panel already open, only Alt-click means anything: a plain click is
+    // the developer using their app, and the Panel is not modal (`CONTEXT.md`).
+    if (mode === 'picked' && !event.altKey) return
     // The app never sees the click that made the Pick.
     event.preventDefault()
     event.stopPropagation()
@@ -123,24 +204,32 @@ export function startOverlay(document: Document): OverlayHandle {
     const element = elementAtPoint(document, event.clientX, event.clientY) ?? hovered
     if (!element) return
 
-    hovered = element
-    highlight.show(element, readOwner(element))
-    mode = 'picked'
-    // Picked is not armed: the page goes back to the hittability its author gave
-    // it while the Note is being written.
-    hittability.disarm()
-    panel = openPanel({
-      document,
-      view,
-      shadow,
-      element,
-      pointer: () => pointerOf(view, element),
-    })
+    // Spec §7's two meanings. An unsubmitted Panel *moves* — the Note the
+    // developer already wrote is theirs and travels with the Pick. A submitted
+    // one is a finished Pick, so this is a new one and the old Panel minimizes
+    // into the Stack, where its chip has been resting since it was sent.
+    if (mode === 'picked' && panel && !panel.sent()) {
+      picked = element
+      hovered = element
+      highlight.show(element, readOwner(element))
+      panel.moveTo(element)
+      syncPicker()
+      return
+    }
+    if (mode === 'picked') closePanel()
+
+    pickOn(element)
   }
 
-  /** While armed, a press on the page selects nothing and focuses nothing. */
+  /**
+   * A press that belongs to a Pick selects nothing and focuses nothing: while
+   * armed, and while a Panel is open and Alt is held, because that press is the
+   * start of a move. Letting it through would take focus out of the Note, and
+   * the Note is where the developer is still typing (spec §7, story 19).
+   */
   const onPress = (event: MouseEvent) => {
-    if (mode !== 'armed' || ours(event)) return
+    if (mode === 'off' || ours(event)) return
+    if (mode === 'picked' && !event.altKey) return
     event.preventDefault()
     event.stopPropagation()
   }
@@ -165,13 +254,13 @@ export function startOverlay(document: Document): OverlayHandle {
     if (mode === 'armed' && armedBy === 'alt') off()
   }
 
-  const onReflow = () => highlight.remeasure()
-
-  picker.addEventListener('click', (event: MouseEvent) => {
-    event.stopPropagation()
-    if (mode === 'off') arm('picker')
-    else off()
-  })
+  const onReflow = () => {
+    highlight.remeasure()
+    stack.remeasure()
+    // Whether the Panel has ridden off-screen is a question about where the page
+    // is, so it is answered where the page moves (spec §7, story 16).
+    syncPicker()
+  }
 
   view.addEventListener('pointermove', onPointerMove, true)
   view.addEventListener('click', onClick, true)
@@ -199,10 +288,21 @@ export function startOverlay(document: Document): OverlayHandle {
  * the geometry: a Pick that was moved carries the element it ended on — and a
  * field typed into while the Note was being written carries what it says now.
  */
-function pointerOf(view: Window, element: Element): Omit<PickBody, 'note' | 'target'> {
+function pointerOf(
+  view: Window,
+  element: Element,
+  lastSeen: ViewportBox | null,
+): Omit<PickBody, 'note' | 'target'> {
   // In the top document's coordinates, so a Pick made inside a frame carries
   // the geometry a developer — and a Screen Capture — would see (ticket 08).
-  const rect = viewportBox(element)
+  //
+  // An element that has left the page measures as nothing at all, so a Pick of
+  // one carries the box the Highlight last saw it in. Zeroes would be a silent
+  // lie to the agent about something the developer really was looking at
+  // (spec §21, ticket 09).
+  const rect = element.isConnected
+    ? viewportBox(element)
+    : (lastSeen ?? viewportBox(element))
   const owners = readOwnerChain(element)
   const described = describeElement(element)
 

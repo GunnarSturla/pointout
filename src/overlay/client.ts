@@ -5,7 +5,7 @@
 // Every refusal this reads is shown at the point it happens (spec §21); nothing
 // here swallows one.
 
-import { API_BASE, PICK_PATH, SESSIONS_PATH } from '../api.js'
+import { API_BASE, PICK_PATH, SESSIONS_PATH, STATUS_PATH } from '../api.js'
 import type { Descriptor, Excerpt } from './describe.js'
 import type { OwnerChainLink } from './fiber.js'
 
@@ -97,6 +97,44 @@ export async function readSessions(): Promise<
         hookFloor: body.registry?.hookFloor === true,
       },
     }
+  } catch (error) {
+    return { ok: false, reason: unreachable(error) }
+  }
+}
+
+/**
+ * What became of one Pick, as `/status` answers it. The state words are §17's
+ * Pick states and the queue's `queued-unaddressed`, which the Stack tells apart
+ * by its sub-line; an unknown word is carried through rather than guessed at.
+ *
+ * The Target is here for its **name** only. Its live status is session-level
+ * evidence, and §17's rule is that session-level evidence never moves a chip —
+ * so the Stack has no way to read it, by construction.
+ */
+export interface PickStatus {
+  pickId: string
+  state: string
+  /** The sentence the server wrote for a refusal. Null when it has none. */
+  reason: string | null
+  target: { name: string | null } | null
+}
+
+/**
+ * Every Pick this dev server accepted, polled on the Overlay's one tick while
+ * something is outstanding (spec §14, §20) — and never otherwise.
+ */
+export async function readStatus(): Promise<
+  { ok: true; picks: PickStatus[] } | { ok: false; reason: string }
+> {
+  try {
+    const response = await fetch(API_BASE + STATUS_PATH, {
+      headers: { accept: 'application/json' },
+    })
+    const body = (await response.json()) as { picks?: PickStatus[]; reason?: string }
+    if (!response.ok) {
+      return { ok: false, reason: body.reason ?? answered(response.status) }
+    }
+    return { ok: true, picks: body.picks ?? [] }
   } catch (error) {
     return { ok: false, reason: unreachable(error) }
   }

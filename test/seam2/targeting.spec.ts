@@ -261,6 +261,11 @@ test('a Target that vanished between naming and sending is named, never swapped'
 
   await open(page, token)
   await pick(page)
+  // A Target has to be named before it can vanish between naming and sending,
+  // and the first `/sessions` read is what names it. Sending before it lands
+  // tests the other branch of §14 — the one where nothing was named at all —
+  // and the two were about two milliseconds apart.
+  await expect(page.locator(TARGET)).toContainText(STARTED_NAME)
   const note = `this one has to be asked about ${token}`
   await page.keyboard.type(note)
   await page.keyboard.press('Enter')

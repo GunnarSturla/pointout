@@ -1,7 +1,11 @@
-// What the Overlay says about a Target (spec §7, §17), in one module because
-// one of these sentences belongs to three surfaces: the Target row here, the
-// `held` chip (ticket 13) and the paused report-back clock (ticket 14). One
-// phrase, three tickets — so it is written once and imported, not retyped.
+// What the Overlay says about a Target and about a Pick (spec §7, §17), in one
+// module because one of these sentences belongs to three surfaces: the Target
+// row, the `held` chip (ticket 27) and the paused report-back clock (ticket 14).
+// One phrase, three tickets — so it is written once and imported, not retyped.
+//
+// The chip words at the foot of this file are §17's table, as far as ticket 12
+// reaches it: `sent`, `working`, `done` and `failed`. `held` and `unknown` are
+// tickets 27 and 14, and they belong here beside these when they land.
 
 /** Zero Candidates. The Note input is replaced by this, and there is no Target. */
 export const NO_SESSION = 'No Claude session is running in this folder'
@@ -48,4 +52,44 @@ export function idleFor(statusUpdatedAt: string | null, now: number): string | n
   if (Number.isNaN(since)) return null
   const days = Math.floor((now - since) / 86_400_000)
   return days >= 1 ? `idle for ${days}d` : null
+}
+
+/** Spec §17's `sent`: the socket write succeeded, and nothing more is claimed. */
+export const SENT = 'Sent'
+
+/**
+ * The sub-line under **Sent** for a Pick nobody is addressed to — requeued
+ * unaddressed, or queued because the registry could not be read. The Pick is
+ * real and the route is the hook floor's, so the chip says when it will arrive
+ * rather than implying it already has (spec §17, §18).
+ */
+export const NEXT_PROMPT = 'arrives when you next prompt Claude in this repo'
+
+/** The next action under a `failed` chip: both halves of it, in one line. */
+export const SEND_AGAIN = 'send it again, or pick another session'
+
+/**
+ * A `failed` Pick's chip is the sentence the server wrote for it — §17 writes
+ * every one of them. This stands in only when a refusal arrived with no words
+ * at all, so that the chip still fails closed out loud (spec §21).
+ */
+export const NOT_DELIVERED = 'Not delivered.'
+
+/** Spec §17's `working`: the Target acked, which is the agent's own signal. */
+export function workingOn(name: string): string {
+  return `${name} is on it`
+}
+
+/** Spec §17's `done`: the agent's claim, attributed, never a verified fact. */
+export function doneReportedBy(name: string): string {
+  return `Done — reported by ${name}`
+}
+
+/**
+ * The Stack's summary line (spec §17, story 49). It counts the Picks that are
+ * still only *sent* and attributes nothing to any one of them: session status
+ * never reaches a chip, and silence is never promoted to *delivered*.
+ */
+export function noneAcknowledgedYet(sent: number): string {
+  return `${sent} sent, none acknowledged yet`
 }

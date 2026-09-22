@@ -6,11 +6,20 @@
 // names are tree-scoped and cannot cross a shadow boundary by spec (§3).
 //
 // Ticket 04 built the first journey through it; ticket 10 the Target row, the
-// rows it expands into, the two zero states and the re-resolve at Send; ticket
-// 07 the Note counter, the cap and the quiet line a trimmed Pick shows. The
-// Stack chip a submitted Pick minimizes into is ticket 12.
+// rows it expands into, the two zero states and the re-resolve at Send. Ticket
+// 12 the state rules around it — what a submitted Panel is, what moving a Pick
+// does to it, and how it rides off-screen and is found again. The character
+// counter and the cap are ticket 07.
 
-import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom'
+import {
+  autoUpdate,
+  computePosition,
+  flip,
+  limitShift,
+  offset,
+  shift,
+} from '@floating-ui/dom'
+import { viewportBox } from './deep-element.js'
 import {
   preselect,
   rememberTarget,
@@ -46,6 +55,13 @@ const CONFIRM = 'Confirm'
 const STARTED_THIS_SERVER = 'started this dev server'
 
 /**
+ * Spec §5: the picked element unmounted while its Panel was open. Both halves
+ * are said, because the second is the surprising one — the Pick is about a state
+ * that has ended, and that is precisely when it is worth sending (user story 25).
+ */
+const ELEMENT_GONE = 'This element is gone from the page. The pick still sends.'
+
+/**
  * Spec §11's Note cap, the client half of it (ticket 07). Written out rather
  * than imported: the server enforces the same number in `src/server/pick.ts`,
  * and neither half may be talked out of it by the other. The server refuses
@@ -67,14 +83,36 @@ export interface PanelDeps {
   element: Element
   /** The Pointer half of the body, measured at send time. */
   pointer(): Omit<PickBody, 'note' | 'target'>
+  /** Told once, when this Panel's Pick has been accepted by the dev server. */
+  submitted(pick: { pickId: string; targetName: string | null }): void
 }
 
 export interface Panel {
   close(): void
+  /** True once this Pick has been sent. It is what Alt-click reads (spec §7). */
+  sent(): boolean
+  /**
+   * The element this Panel is anchored to has left the page (spec §5, user
+   * story 25). The Panel says so and stops following it; the Pick stays
+   * sendable, because a request about a transient state is not lost because the
+   * state ended.
+   */
+  elementGone(): void
+  /**
+   * Move the Pick to another element (spec §7): the Panel re-anchors, and the
+   * Note the developer already wrote comes with it.
+   */
+  moveTo(element: Element): void
+  /** The anchor has scrolled out of the viewport, and the Panel rode with it. */
+  offScreen(): boolean
+  /** Scroll the anchor back into view, which brings the Panel with it. */
+  bringIntoView(): void
 }
 
 export function openPanel(deps: PanelDeps): Panel {
-  const { document, view, shadow, element } = deps
+  const { document, view, shadow } = deps
+  /** The element this Panel is anchored to. A move (spec §7) replaces it. */
+  let element = deps.element
 
   const panel = part(document, 'div', 'panel')
   const note = part(document, 'textarea', 'note')
@@ -381,6 +419,9 @@ export function openPanel(deps: PanelDeps): Panel {
       trimmed.textContent = outcome.trimmed
       panel.append(trimmed)
     }
+    // The Pick now rests in the Stack, where it says what becomes of it. This
+    // Panel stays open until the developer makes another Pick (spec §7).
+    deps.submitted({ pickId: outcome.pickId, targetName: chosen?.name ?? null })
   }
 
   note.addEventListener('input', render)
@@ -399,6 +440,15 @@ export function openPanel(deps: PanelDeps): Panel {
     render()
   })
 
+  /**
+   * Spec §7 asks for two things that pull opposite ways: the Panel never opens
+   * partly off-screen, and it rides off-screen with its element when the
+   * developer scrolls. So the opening is shifted into the viewport unbounded,
+   * and every placement after it is limited to the anchor — which is what makes
+   * the Panel travel with the element instead of sticking to the edge.
+   */
+  let riding = false
+
   const reanchor = async () => {
     const { x, y } = await computePosition(element, panel, {
       strategy: 'fixed',
@@ -406,14 +456,18 @@ export function openPanel(deps: PanelDeps): Panel {
       middleware: [
         offset(ELEMENT_GAP),
         flip({ padding: VIEWPORT_PADDING }),
-        shift({ padding: VIEWPORT_PADDING }),
+        shift({
+          padding: VIEWPORT_PADDING,
+          ...(riding ? { limiter: limitShift() } : {}),
+        }),
       ],
     })
     panel.style.left = `${x}px`
     panel.style.top = `${y}px`
+    riding = true
   }
 
-  const stopFollowing = autoUpdate(element, panel, () => void reanchor())
+  let stopFollowing = autoUpdate(element, panel, () => void reanchor())
 
   /**
    * Read the Candidates, and keep the Target honest: one that is no longer a
@@ -458,6 +512,46 @@ export function openPanel(deps: PanelDeps): Panel {
       stopTicking()
       stopFollowing()
       panel.remove()
+    },
+
+    sent: () => sent,
+
+    elementGone() {
+      if (panel.querySelector('[data-part="gone"]')) return
+      // There is nothing left to follow: Floating UI measures a detached element
+      // at the page's top-left corner, and a Panel that jumped there would be
+      // exactly the unexpected movement spec §5 forbids. It stays where the
+      // developer left it, saying what happened.
+      stopFollowing()
+      const line = part(document, 'div', 'gone')
+      line.textContent = ELEMENT_GONE
+      footer.before(line)
+    },
+
+    moveTo(next) {
+      element = next
+      stopFollowing()
+      // Placed as if it had just opened: a moved Pick is still a Pick that has
+      // only now appeared here, and §7 says it may not land partly off-screen.
+      riding = false
+      stopFollowing = autoUpdate(element, panel, () => void reanchor())
+    },
+
+    offScreen() {
+      // An element that has left the page has not ridden anywhere, and there is
+      // nothing to bring back into view (ticket 09).
+      if (!element.isConnected) return false
+      const rect = viewportBox(element)
+      return (
+        rect.top + rect.height <= 0 ||
+        rect.top >= view.innerHeight ||
+        rect.left + rect.width <= 0 ||
+        rect.left >= view.innerWidth
+      )
+    },
+
+    bringIntoView() {
+      element.scrollIntoView({ block: 'center', inline: 'nearest' })
     },
   }
 }
