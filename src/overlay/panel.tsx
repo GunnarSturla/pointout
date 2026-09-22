@@ -12,6 +12,8 @@ import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react'
 import { NOTE_MAX_CHARACTERS } from '../wire.js'
 import type { NamedTarget, PickBody } from '../wire.js'
+import { CameraLine, CameraToggle } from './camera.js'
+import type { Camera, CameraState } from './capture.js'
 import {
   preselect,
   readSessions,
@@ -63,8 +65,17 @@ export interface PanelProps {
   gone: boolean
   /** The Pointer half of the body, measured at send time. */
   pointer(): PointerInputs
+  camera: PanelCamera
   /** Told once, when this Panel's Pick has been accepted by the dev server. */
   onSubmitted(pick: { pickId: string; targetName: string | null }): void
+}
+
+/** The camera, as far as the Panel draws and uses it (spec §7, §10). */
+export interface PanelCamera {
+  state: CameraState
+  onToggle(): void
+  /** Send the Pick carrying the Screen Capture it holds, when it holds one. */
+  carry: Camera['carry']
 }
 
 /** What the Panel says under the footer once a Send has been answered. */
@@ -81,6 +92,7 @@ export const Panel = memo(function Panel({
   element,
   gone,
   pointer,
+  camera,
   onSubmitted,
 }: PanelProps) {
   const [note, setNote] = useState('')
@@ -93,6 +105,8 @@ export const Panel = memo(function Panel({
   const [sent, setSent] = useState(false)
   const [status, setStatus] = useState<Status | null>(null)
   const [trimmed, setTrimmed] = useState<string | null>(null)
+  const [explaining, setExplaining] = useState(false)
+  const explain = useCallback(() => setExplaining((was) => !was), [])
 
   const { choosable, noSession } = sessionsState(sessions)
   const panel = usePlacement(element, gone, view, reflow)
@@ -210,14 +224,22 @@ export const Panel = memo(function Panel({
     }
 
     setSending(true)
-    const body: PickBody = {
-      ...pointer(),
-      // An empty Note is no Note at all: a Pick without one is meaningful
-      // rather than degenerate (`CONTEXT.md`), and the payload says so.
-      note: text.length > 0 ? text : null,
-      target: target ? { sessionId: target.sessionId, pid: target.pid } : null,
-    }
-    const outcome = await sendPick(body)
+    // Taken at pick time, and only decided about now: kept for the agent when
+    // the toggle is on, deleted by the server when it is off (spec §10).
+    const outcome = await camera.carry(
+      (capture) => {
+        const body: PickBody = {
+          ...pointer(),
+          ...(capture ? { capture } : {}),
+          // An empty Note is no Note at all: a Pick without one is meaningful
+          // rather than degenerate (`CONTEXT.md`), and the payload says so.
+          note: text.length > 0 ? text : null,
+          target: target ? { sessionId: target.sessionId, pid: target.pid } : null,
+        }
+        return sendPick(body)
+      },
+      (answer) => answer.ok,
+    )
     setSending(false)
 
     if (!outcome.ok) {
@@ -308,6 +330,11 @@ export const Panel = memo(function Panel({
       <TargetChoices {...targetRow} />
       {gone && <div {...partProps('gone')}>{ELEMENT_GONE}</div>}
       <div {...partProps('footer')}>
+        <CameraToggle
+          camera={camera.state}
+          onToggle={camera.onToggle}
+          onExplain={explain}
+        />
         <TargetRow {...targetRow} />
         {offer && (
           // Cancelling sends nothing: the Pick stays where it is, unaddressed
@@ -325,6 +352,7 @@ export const Panel = memo(function Panel({
           {label}
         </button>
       </div>
+      <CameraLine camera={camera.state} explaining={explaining} />
       {status && (
         <div {...partProps('status')} data-refused={status.refused ? '' : undefined}>
           {status.text}

@@ -163,6 +163,19 @@ async function pick(page: Page, selector: string): Promise<void> {
   const at = await centre(page, selector)
   await page.mouse.click(at.x, at.y)
   await expect(page.locator(PANEL)).toBeVisible()
+  // Every Pick closes the Screen Capture shutter and eases the Highlight back in
+  // (ticket 18). That is the shutter, not the Highlight tracking or travelling,
+  // so what this file watches starts once it is open again and still.
+  await expect
+    .poll(() =>
+      page.evaluate((tag) => {
+        const host = document.querySelector(tag)
+        const box = host?.shadowRoot?.querySelector('[data-part="highlight"]')
+        if (host?.hasAttribute('data-shutter')) return 'closed'
+        return box ? box.getAnimations().length : 0
+      }, HOST),
+    )
+    .toBe(0)
 }
 
 /** Every `user` frame's rendered content, oldest first. */

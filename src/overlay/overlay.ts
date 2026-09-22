@@ -11,15 +11,16 @@
 // because both change on every pointer move and neither has any state of its
 // own worth a component.
 
-import type { PickBody } from '../wire.js'
+import type { CaptureCoordinates, PickBody } from '../wire.js'
 import { createHittability } from './armed.js'
+import { createCamera } from './capture.js'
 import { viewportBox } from './deep-element.js'
 import type { ViewportBox } from './deep-element.js'
 import { describeElement } from './describe.js'
 import { readOwner, readOwnerChain } from './fiber.js'
 import { createHighlight } from './highlight.js'
 import { elementAtPoint } from './hit-test.js'
-import type { PointerInputs } from './panel.js'
+import type { PanelCamera, PointerInputs } from './panel.js'
 import { inViewport } from './placement.js'
 import { createReflow } from './reflow.js'
 import { mountOverlayRoot } from './root.js'
@@ -29,6 +30,17 @@ import { mountSurfaces } from './surfaces.js'
 /** What arms the Overlay. Alt is held; the Picker is a toggle. */
 type ArmedBy = 'alt' | 'picker'
 type Mode = 'off' | 'armed' | 'picked'
+
+/**
+ * How long the shutter stays closed around a Screen Capture (spec §10). A fixed
+ * span, the same whether a capture is taken, skipped or unavailable, so the
+ * Overlay reads identically in all three (story 68). It has to outlast the
+ * capture itself, which the dev server starts after this page has asked: the
+ * real `screencapture` measured 75–110 ms for a whole run of a 200 px region on
+ * the machine this was built on, process start included, and the request adds
+ * its own few. 250 ms covers that more than twice over and is still a blink.
+ */
+const SHUTTER_MS = 250
 
 export interface OverlayHandle {
   host: HTMLElement
@@ -64,6 +76,25 @@ export function startOverlay(document: Document): OverlayHandle {
   let offeredWayBack = false
   /** The page's own cursor, put back exactly as it was found. */
   let pageCursor = ''
+  /** When the shutter opens again, while it is closed. */
+  let shutterOpens = 0
+
+  // The camera toggle and the one capture an unsubmitted Pick holds. What the
+  // Panel is handed is one object between changes, so the Panel is drawn again
+  // when the toggle changes and not on every scroll.
+  let panelCamera: PanelCamera | null = null
+  const camera = createCamera(view, () => {
+    panelCamera = null
+    render()
+  })
+  const cameraForPanel = (): PanelCamera => {
+    panelCamera ??= {
+      state: camera.state(),
+      onToggle: () => camera.toggle(),
+      carry: (send, accepted) => camera.carry(send, accepted),
+    }
+    return panelCamera
+  }
 
   // Stable across renders: the surfaces are memoized on their props, and a
   // callback that changed identity on every render would render them again on
@@ -76,12 +107,18 @@ export function startOverlay(document: Document): OverlayHandle {
     picked?.scrollIntoView({ block: 'center', inline: 'nearest' })
     render()
   }
-  const onSubmitted = (pick: { pickId: string; targetName: string | null }) => {
-    openPickId = pick.pickId
+  const onSubmitted = ({
+    pickId,
+    targetName,
+  }: {
+    pickId: string
+    targetName: string | null
+  }) => {
+    openPickId = pickId
     // The frozen Highlight becomes the Stack's resting one: one box on the
     // element, not two (spec §5).
     highlight.hide()
-    if (picked) submitted = [...submitted, { ...pick, element: picked }]
+    if (picked) submitted = [...submitted, { pickId, targetName, element: picked }]
     render()
   }
   const onDismiss = (pickId: string) => {
@@ -123,7 +160,15 @@ export function startOverlay(document: Document): OverlayHandle {
       panel: picked
         ? {
             key: String(pickCount),
-            props: { view, reflow, element: picked, gone, pointer, onSubmitted },
+            props: {
+              view,
+              reflow,
+              element: picked,
+              gone,
+              pointer,
+              camera: cameraForPanel(),
+              onSubmitted,
+            },
           }
         : null,
       stack: { view, reflow, picks: submitted, onDismiss },
@@ -156,6 +201,9 @@ export function startOverlay(document: Document): OverlayHandle {
   }
 
   const closePanel = () => {
+    // An unsubmitted Pick that is put away takes its capture with it: the
+    // developer's screen is not left on disk for a Pick that never went.
+    if (picked && openPickId === null) camera.discard()
     picked = null
     gone = false
     openPickId = null
@@ -170,12 +218,30 @@ export function startOverlay(document: Document): OverlayHandle {
     picked = element
     gone = false
     pickCount += 1
+    captureAt(element)
     highlight.show(element, readOwner(element))
     mode = 'picked'
     // Picked is not armed: the page goes back to the hittability its author gave
     // it while the Note is being written.
     hittability.disarm()
     render()
+  }
+
+  /**
+   * The moment a Pick is made or moved (spec §10, story 67). The shutter closes
+   * first — the Highlight and its chip, the Stack and the Picker leave the page
+   * for the frame — and the capture is asked for in the same task, so the
+   * request cannot reach the dev server before the page has stopped drawing
+   * them. Toggle or no toggle, capture or none: the same shutter, every time.
+   *
+   * The Panel is not behind the shutter. Its entrance is never gated on a
+   * capture, and a large element's capture may catch it at its edge.
+   */
+  const captureAt = (element: Element) => {
+    host.setAttribute('data-shutter', '')
+    view.clearTimeout(shutterOpens)
+    shutterOpens = view.setTimeout(() => host.removeAttribute('data-shutter'), SHUTTER_MS)
+    camera.take(coordinatesOf(view, element))
   }
 
   // The picked element can leave the page while its Panel is open (spec §5,
@@ -247,6 +313,7 @@ export function startOverlay(document: Document): OverlayHandle {
       picked = element
       hovered = element
       gone = false
+      captureAt(element)
       highlight.show(element, readOwner(element))
       render()
       return
@@ -307,6 +374,9 @@ export function startOverlay(document: Document): OverlayHandle {
   view.addEventListener('blur', onBlur)
   view.addEventListener('scroll', onReflow, true)
   view.addEventListener('resize', onReflow)
+  // A reload or a navigation with an unsubmitted Pick open is a discard too
+  // (story 72), and the page will not be here to wait for the answer.
+  view.addEventListener('pagehide', () => camera.leave())
 
   render()
 
@@ -314,6 +384,24 @@ export function startOverlay(document: Document): OverlayHandle {
   // Pick made on it. A `close()` nothing calls would be an escape hatch pretending
   // to be a lifecycle.
   return { host, shadow }
+}
+
+/**
+ * What the dev server needs to find the element on the physical display (spec
+ * §10). The page cannot see the display, so it says where the element is in
+ * the viewport, where the window is on the screen, and how much larger the
+ * window is than its viewport; the server does the rest.
+ */
+function coordinatesOf(view: Window, element: Element): CaptureCoordinates {
+  const box = viewportBox(element)
+  return {
+    rect: { x: box.left, y: box.top, width: box.width, height: box.height },
+    screenX: view.screenX,
+    screenY: view.screenY,
+    chromeWidth: view.outerWidth - view.innerWidth,
+    chromeHeight: view.outerHeight - view.innerHeight,
+    screen: { width: view.screen.width, height: view.screen.height },
+  }
 }
 
 /**

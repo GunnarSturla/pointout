@@ -283,6 +283,51 @@ describe('a Pick that carries a Screen Capture', () => {
     expect(body).not.toMatch(/may be offset/)
   })
 
+  // The Overlay names this id when its toggle was on and it holds no capture to
+  // name (ticket 18). Written out, like every string a test shares with `src/`.
+  const NO_CAPTURE = 'none'
+
+  it('says a capture was intended when the toggle was on and none was started', async () => {
+    const { app, server, env } = await startCaptureServer()
+    const session = await sessions.open(env, { cwd: app.checkout, pid: 500_107 })
+
+    const sent = await postPick(
+      server,
+      pickBody(
+        { id: NO_CAPTURE, keep: true },
+        { sessionId: session.sessionId, pid: session.pid },
+      ),
+    )
+    expect(sent.status).toBe(200)
+    await session.awaitLines(2)
+
+    const line = renderedBody(session)
+      .split('\n')
+      .filter((text) => text.includes('screen capture'))
+    expect(line).toHaveLength(1)
+    expect(line[0]).toContain('a capture was intended, and failed')
+    expect(line[0]).toContain('none was started')
+  })
+
+  it('says why when the toggle was on and this server cannot capture', async () => {
+    const { app, server, env } = await startCaptureServer({
+      VITE_AGENT_INSPECT_PLATFORM: 'linux',
+    })
+    const session = await sessions.open(env, { cwd: app.checkout, pid: 500_108 })
+
+    await postPick(
+      server,
+      pickBody(
+        { id: NO_CAPTURE, keep: true },
+        { sessionId: session.sessionId, pid: session.pid },
+      ),
+    )
+    await session.awaitLines(2)
+
+    const body = renderedBody(session)
+    expect(body).toMatch(/screen capture\s+a capture was intended, and failed: .*macOS/)
+  })
+
   it('carries no line, and deletes the file, when the toggle is off', async () => {
     const { app, server, env } = await startCaptureServer()
     const session = await sessions.open(env, { cwd: app.checkout, pid: 500_102 })
@@ -391,6 +436,23 @@ describe('the startup probe', () => {
     const { status, json } = await postCapture(server)
     expect(status).toBe(409)
     expect(json.reason).toMatch(/macOS/)
+  })
+
+  it('refuses off macOS with exactly the answer the Overlay is written against', async () => {
+    // `test/seam2/capture.spec.ts` answers the Overlay's capture request with
+    // this body, because seam 2's one dev server can capture. This is where that
+    // body is held to what a real one sends (ticket 18).
+    const { server } = await startCaptureServer({
+      VITE_AGENT_INSPECT_PLATFORM: 'linux',
+    })
+
+    const { status, json } = await postCapture(server)
+    expect(status).toBe(409)
+    expect(json).toEqual({
+      error: 'capture-disabled',
+      reason:
+        "this dev server is not running on macOS (platform: linux), and v0 crops the display with macOS's own screencapture tool",
+    })
   })
 
   it('takes no capture at all once it is disabled', async () => {

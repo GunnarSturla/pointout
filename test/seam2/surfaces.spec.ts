@@ -425,10 +425,18 @@ test.describe('the reveal', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     await open(page, probe('motion'))
 
-    const moving = await page.locator(PEEK).evaluate((peeked: HTMLElement) => ({
-      duration: getComputedStyle(peeked).transitionDuration,
-      easing: getComputedStyle(peeked).transitionTimingFunction,
-    }))
+    // The reveal is the `translate` entry. The Picker also eases its opacity,
+    // which is the Screen Capture shutter reopening (ticket 18), not the reveal.
+    const moving = await page.locator(PEEK).evaluate((peeked: HTMLElement) => {
+      const style = getComputedStyle(peeked)
+      const at = style.transitionProperty.split(', ').indexOf('translate')
+      // Split on the commas between entries, not the ones inside a curve.
+      const easings = style.transitionTimingFunction.split(/,\s*(?![^(]*\))/)
+      return {
+        duration: style.transitionDuration.split(', ')[at],
+        easing: easings[at] ?? '',
+      }
+    })
     expect(moving.duration).toBe('0.22s')
     expect(moving.easing.replaceAll(' ', '')).toBe('cubic-bezier(0.23,1,0.32,1)')
   })

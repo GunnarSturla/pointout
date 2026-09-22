@@ -27,6 +27,7 @@ that did.
 | the Highlight travelling between two hovered elements | 170 ms, `translate` + `width` + `height` |
 | the Highlight of an element that has left the page | 120 ms, `opacity` to 0, where it stood |
 | the Picker's reveal out of its peek | 220 ms, `translate` |
+| the Screen Capture shutter reopening — Highlights, Stack, Picker | 120 ms, `opacity` from 0 |
 
 The durations and curves are the prototype's own, not new numbers: 170 ms on
 `cubic-bezier(0.77, 0, 0.175, 1)` for the morph and 220 ms on
@@ -49,6 +50,31 @@ Two things never move, and the rule for both is the same one:
 In the Highlight both are the same mechanism: the box carries `data-placing` for that
 one placement, the attribute suppresses the morph, and the placement is committed
 before it comes off.
+
+## The shutter
+
+Every Pick, and every move of one, closes a shutter over the Overlay for the frame a
+Screen Capture is taken in (spec §10, story 68). The host carries `data-shutter` for a
+fixed 250 ms; while it does, the Highlight and its chip, the resting Highlights, the
+Stack and the Picker are `visibility: hidden` and `opacity: 0`. The Panel is not behind
+it: its entrance is never gated on a capture, and a large element's capture may catch
+its edge.
+
+- **Closing is instant in every mode.** A close that eased could be caught half-done by
+  the capture, so the opt-in block turns easing off while the shutter is closed.
+- **Opening eases, and only under no-preference** — 120 ms of `opacity`, the same span
+  the Highlight fades by when its element leaves. Under reduce everything is simply
+  back, at once, and the Overlay was still absent while the capture was asked for.
+- **It reads the same whether a capture is taken, skipped, or unavailable.** The span is
+  fixed, not tied to the capture's answer, because the dev server answers the id at once
+  and runs the tool behind it. 250 ms is the real `screencapture` run (75–110 ms for a
+  200 px region, process start included, measured on the build machine) more than
+  twice over.
+
+It is one more thing for the `review-animations` gate to see: a blink on every Pick,
+which is a frequent action. It is not pre-registered as a deviation, because the hide
+is the feature and only the 120 ms opening is motion; the gate may shorten or remove
+that opening without touching the hide.
 
 ## Why the morph animates `width` and `height`
 
