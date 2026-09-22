@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { delimiter, join } from 'node:path'
 import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import { repoRoot } from '../harness/paths.js'
@@ -59,11 +60,29 @@ describe('the test commands', () => {
     expect(packageJson.scripts.pretypecheck).toContain('build')
   })
 
-  it('reports seam 3 as not implemented', async () => {
+  it('skips seam 3 cleanly, saying why, when the claude CLI is not on PATH', async () => {
+    // Ticket 20. Run with every PATH entry that holds a `claude` taken out, so
+    // this never starts a real session: seam 3 itself does that, on its own
+    // command, and seam 1 only checks that it knows when it cannot. `node` and
+    // `npm` are linked back in from any entry that shared a directory with it.
+    const bin = mkdtempSync(join(tmpdir(), 'vite-agent-inspect-no-claude-'))
+    const entries = (process.env.PATH ?? '').split(delimiter).filter(Boolean)
+    const holdsClaude = (entry: string) => existsSync(join(entry, 'claude'))
+    for (const shared of entries.filter(holdsClaude)) {
+      for (const tool of ['node', 'npm', 'npx']) {
+        const source = join(shared, tool)
+        if (existsSync(source) && !existsSync(join(bin, tool))) {
+          symlinkSync(source, join(bin, tool))
+        }
+      }
+    }
+    const path = [bin, ...entries.filter((entry) => !holdsClaude(entry))].join(delimiter)
     const { stdout, stderr } = await run('npm', ['run', '--silent', 'test:seam3'], {
       cwd: repoRoot,
+      env: { ...process.env, PATH: path },
     })
-    expect(stdout + stderr).toMatch(/not implemented/i)
+    rmSync(bin, { recursive: true, force: true })
+    expect(stdout + stderr).toContain('SKIPPED: the `claude` CLI is not on PATH')
   })
 })
 
