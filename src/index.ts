@@ -1,5 +1,7 @@
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Plugin } from 'vite'
+import { searchForWorkspaceRoot } from 'vite'
+import type { Plugin, UserConfig } from 'vite'
 import { createCaptureService } from './server/capture/index.js'
 import type { CaptureService } from './server/capture/index.js'
 import { createClaudeRoute } from './server/claude/route.js'
@@ -58,10 +60,22 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
     name: 'vite-agent-inspect',
     apply: 'serve',
 
-    config() {
+    config(userConfig: UserConfig) {
       // The Overlay's real source lives inside this package. When the package
       // is linked rather than installed, it can sit outside Vite's root.
-      return { server: { fs: { allow: [packageRoot] } } }
+      //
+      // Vite resolves this field as `raw?.fs?.allow ?? [workspaceRoot]`, so
+      // contributing ours *displaces* the workspace root rather than joining it
+      // — and a consumer whose app is not inside this package then gets 403
+      // Restricted for their own source (ticket 25). Put the default back, but
+      // only when the consumer set none of their own: someone who narrowed
+      // `fs.allow` deliberately must not have it widened behind their back.
+      const allow = [packageRoot]
+      if (!userConfig.server?.fs?.allow) {
+        const root = userConfig.root ? resolve(userConfig.root) : process.cwd()
+        allow.unshift(searchForWorkspaceRoot(root))
+      }
+      return { server: { fs: { allow } } }
     },
 
     configResolved(config) {
