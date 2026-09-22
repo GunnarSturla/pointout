@@ -35,6 +35,14 @@ relative import inside `src/` writes `.js`. oxfmt formats on save and oxlint gat
 finished task, both as hooks; the formatter never touches prose. See
 `docs/agents/packaging.md` — read it before writing a source file.
 
+### Motion
+
+No motion by default: all of it lives in one `prefers-reduced-motion: no-preference`
+block in `src/overlay/styles.ts`, and a seam-1 test reads the built Overlay to keep it
+there. The armed-hover Highlight morph is a pre-registered deviation from the
+`review-animations` gate. See `docs/motion.md` — read it before adding anything that
+moves.
+
 ### Borrowed code
 
 Targeted, non-UI and credited: a per-file provenance header plus an entry in

@@ -179,6 +179,38 @@ describe('the packaging conventions cover the two gates', () => {
   })
 })
 
+describe('the motion record', () => {
+  const doc = read('docs/motion.md')
+  /** The same prose with its line breaks taken out: a sentence is a sentence. */
+  const flowed = doc.replaceAll(/\s+/g, ' ')
+
+  it('states the opt-in rule and the one place motion may live', () => {
+    expect(doc).toContain('@media (prefers-reduced-motion: no-preference)')
+    expect(doc).toContain('src/overlay/styles.ts')
+    expect(doc).toMatch(/no motion by default/i)
+  })
+
+  it('records the morph deviation as pre-registered against the gate', () => {
+    // Ticket 09 writes this down before the gate runs, so that ticket 22's run
+    // cannot silently reverse a decision made on a built artifact — and so that
+    // the decision cannot quietly skip the gate either (spec §9).
+    expect(flowed).toContain('review-animations')
+    expect(flowed).toMatch(/pre-registered/)
+    expect(flowed).toMatch(/deviation/)
+    expect(flowed).toMatch(/frequency/)
+    expect(flowed).toMatch(/may not silently reverse/)
+    expect(flowed).toMatch(/may not skip the gate/)
+  })
+
+  it('says the gate has not run, rather than implying an outcome', () => {
+    expect(flowed).toMatch(/the gate has \*\*not\*\* run/i)
+  })
+
+  it('is reachable from CLAUDE.md, which every ticket reads', () => {
+    expect(read('CLAUDE.md')).toContain('docs/motion.md')
+  })
+})
+
 describe('ADR-0002', () => {
   const adr = read('docs/adr/0002-oxlint-and-oxfmt.md')
 

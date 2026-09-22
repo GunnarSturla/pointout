@@ -6,16 +6,20 @@ import { FullViewportDecoy } from './fixtures/FullViewportDecoy.tsx'
 import { PointerEventsNone } from './fixtures/PointerEventsNone.tsx'
 import { ShadowRootCard } from './fixtures/ShadowRootCard.tsx'
 import { SameOriginIframe } from './fixtures/SameOriginIframe.tsx'
+import { ScrollContainer } from './fixtures/ScrollContainer.tsx'
+import { ViewportEdges } from './fixtures/ViewportEdges.tsx'
+import { Unmounting } from './fixtures/Unmounting.tsx'
+import { HotUpdatable } from './fixtures/HotUpdatable.tsx'
 import { ElementExcerpts } from './fixtures/ElementExcerpts.tsx'
 import { DensePage } from './fixtures/DensePage.tsx'
 
 // The test bed. Every section is a hard case the Pointer has to survive; each
 // one carries a `data-fixture` attribute that tests select on.
 //
-// Ticket 01 shipped four and ticket 05 a fifth; ticket 08 adds the four its hit
-// test rules need. What is left of spec §1's list:
-//   - a scroll container               (ticket 09)
-//   - elements at every viewport edge  (ticket 09, ticket 12)
+// Ticket 01 shipped four, ticket 05 a fifth and ticket 08 the four its hit test
+// rules needed. Ticket 09 closes spec §1's list with the scroll container and
+// the elements at every viewport edge, and adds the two its own lifecycle needs:
+// an element that unmounts, and a component with a hot-updatable stylesheet.
 // Ticket 07 adds the one every kind of Excerpt can be lifted from.
 export function App() {
   return (
@@ -25,8 +29,8 @@ export function App() {
         <header className="page-header">
           <h1>vite-agent-inspect — test bed</h1>
           <p>
-            The development target and the fixture set. Nothing here moves: motion arrives
-            in ticket 09, behind a media query.
+            The development target and the fixture set. Nothing here moves: the only
+            motion in the project is the Overlay's, and it is behind a media query.
           </p>
         </header>
         <NestedOwners />
@@ -36,6 +40,10 @@ export function App() {
         <PointerEventsNone />
         <ShadowRootCard />
         <SameOriginIframe />
+        <ScrollContainer />
+        <ViewportEdges />
+        <Unmounting />
+        <HotUpdatable />
         <ElementExcerpts />
         <DensePage />
       </main>

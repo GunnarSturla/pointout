@@ -156,3 +156,51 @@ body {
   gap: 0.5rem;
   font-size: 0.75rem;
 }
+
+/* Scrolls inside the page rather than with it: a `scroll` here never bubbles to
+   the window, and the Highlight has to follow it anyway (ticket 09). */
+.scroll-container {
+  height: 9rem;
+  overflow-y: auto;
+  margin-block: 0.75rem;
+  border: 1px solid color-mix(in srgb, CanvasText 15%, Canvas);
+  border-radius: 0.5rem;
+}
+
+.scroll-row {
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* One element against each viewport edge, shown only when asked for: four fixed
+   elements standing on the edges of every other journey would be four decoys. */
+.edge {
+  position: fixed;
+  z-index: 90;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas);
+  background: Canvas;
+  color: CanvasText;
+  font-size: 0.75rem;
+}
+
+.edge-top {
+  inset-block-start: 0;
+  inset-inline-start: 38%;
+}
+
+.edge-right {
+  inset-block-start: 42%;
+  inset-inline-end: 0;
+}
+
+.edge-bottom {
+  inset-block-end: 0;
+  inset-inline-start: 22%;
+}
+
+.edge-left {
+  inset-block-start: 58%;
+  inset-inline-start: 0;
+}

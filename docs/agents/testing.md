@@ -130,9 +130,16 @@ file under `examples/react-app/src/fixtures/`, each carrying `data-fixture` attr
 that tests select on. Add the fixture your ticket needs;
 `examples/react-app/src/App.tsx` lists the ones still to come and which ticket owns each.
 
-Nothing in the example app animates. The spec's default is no motion (§9); ticket 09 opts
-in under `prefers-reduced-motion`, and a test bed that shimmers on its own would make that
-assertion meaningless.
+Nothing in the example app animates. The spec's default is no motion (§9); the Overlay
+opts in under `prefers-reduced-motion: no-preference` and nowhere else (`docs/motion.md`),
+and a test bed that shimmers on its own would make that assertion meaningless.
+
+One fixture is written to by a test:
+`examples/react-app/src/fixtures/hot-update.css` holds a single
+declaration that `test/seam2/highlight.spec.ts` rewrites to make a real hot update
+happen, and writes back exactly as it found it. It runs in one engine, because a hot
+update is the dev server moving the page rather than anything an engine does, and three
+engines at once would be three writers of one file.
 
 ## Seam 1 also holds the repo-shape checks
 
