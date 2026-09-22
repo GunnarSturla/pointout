@@ -6,6 +6,7 @@
 // here swallows one.
 
 import { API_BASE, PICK_PATH, SESSIONS_PATH } from '../api.js'
+import type { Descriptor, Excerpt } from './describe.js'
 import type { OwnerChainLink } from './fiber.js'
 
 /** The one Candidate a Pick is addressed to, as the body names it. */
@@ -31,12 +32,16 @@ export interface Candidate extends NamedTarget {
 export interface PickBody {
   url: string
   viewport: { width: number; height: number }
-  descriptor: { tag: string; id?: string; testId?: string }
+  descriptor: Descriptor
   geometry: { width: number; height: number; x: number; y: number }
   /** The Owner chain, innermost first, whole and uncapped (spec §6). */
   ownerChain: OwnerChainLink[]
   /** How many DOM levels were walked up to find a fiber at all (spec §4). */
   walkUp: number
+  /** Content lifted from the page as evidence (`CONTEXT.md`, spec §13). */
+  excerpts: Excerpt[]
+  /** Which redaction rules fired; the server writes the sentence (spec §13). */
+  redactions: string[]
   note: string | null
   target: TargetRef | null
 }
@@ -54,7 +59,12 @@ export interface Sessions {
 
 /** Accepted, with whatever the server wants said about it; or refused, with why. */
 export type Sent =
-  | { ok: true; pickId: string; state: string; reason?: string }
+  /**
+   * `trimmed` is the server's own sentence about Excerpts that did not fit
+   * inside the 32 KiB payload cap. Information, not a refusal: the Pick was
+   * accepted and the Note travelled whole (spec §7, §13).
+   */
+  | { ok: true; pickId: string; state: string; reason?: string; trimmed?: string }
   /**
    * Refused. `replacement` is the 409's own: the named Target has left and this
    * is what the chain yields instead — offered, never taken (spec §14, §21).
@@ -104,6 +114,7 @@ export async function sendPick(body: PickBody): Promise<Sent> {
       pickId?: string
       state?: string
       reason?: string
+      trimmed?: string
       replacement?: NamedTarget
     }
     if (!response.ok) {
@@ -119,6 +130,7 @@ export async function sendPick(body: PickBody): Promise<Sent> {
       pickId: answer.pickId ?? '',
       state: answer.state ?? '',
       ...(answer.reason ? { reason: answer.reason } : {}),
+      ...(answer.trimmed ? { trimmed: answer.trimmed } : {}),
     }
   } catch (error) {
     return { ok: false, reason: unreachable(error) }

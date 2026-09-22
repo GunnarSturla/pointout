@@ -10,9 +10,13 @@ import type { OwnerLink, OwnerLinkInput } from './owner-chain.js'
 // and nothing here delivers.
 
 /**
- * Spec §11. The client half — the counter and the disabled Send — is ticket 07;
+ * Spec §11. The client half — the counter and the disabled Send — is in
+ * `src/overlay/panel.ts`, which writes this number out rather than importing it;
  * this is the half that cannot be talked out of, and it rejects rather than
  * truncating, because a silently shortened Note is a silently changed request.
+ *
+ * **Counted in code points, and so is the client half** (`[...value].length`).
+ * Two halves counting UTF-16 units against characters disagree at the boundary.
  */
 export const NOTE_MAX_CHARACTERS = 4000
 
@@ -43,9 +47,10 @@ export interface Geometry {
 }
 
 /**
- * What the Overlay can say about the picked element itself. Ticket 07 owns the
- * allowlist, the caps and the redaction; everything here is optional but `tag`,
- * so that a descriptor which grows never breaks an older Overlay.
+ * What the Overlay can say about the picked element itself. Everything here is
+ * optional but `tag`, so that a descriptor which grows never breaks an older
+ * Overlay — and nothing here is a selector path, a computed style or a source
+ * snippet, which §13 says it must never be.
  */
 export interface ElementDescriptor {
   tag: string
@@ -55,6 +60,37 @@ export interface ElementDescriptor {
   aria?: Record<string, string>
   classes?: string[]
 }
+
+/** Spec §13: an introduction, never a selector. */
+const DESCRIPTOR_CLASS_MAX = 2
+
+/**
+ * The kinds of Excerpt this server will render. The set is closed because the
+ * kind is written into the Fence, and a kind the page chose would be a Fence
+ * whose shape the page chose (`CONTEXT.md`, spec §13).
+ */
+const EXCERPT_KINDS: readonly string[] = [
+  'rendered-text',
+  'input-value',
+  'textarea',
+  'select',
+  'contenteditable',
+  'attributes',
+]
+
+/** Content lifted from the page and carried as evidence (`CONTEXT.md`). */
+export interface Excerpt {
+  kind: string
+  text: string
+  /**
+   * How many characters were on the page, when more were captured than are
+   * carried. Absent when nothing was trimmed: a trim is annotated, never silent.
+   */
+  captured?: number
+}
+
+/** The redaction rules the page may report having applied (spec §13, §21). */
+const REDACTION_REASONS: readonly string[] = ['password', 'hidden']
 
 /** The machine-generated half of a Pick (`CONTEXT.md`). */
 export interface Pointer {
@@ -70,6 +106,16 @@ export interface Pointer {
   ownerChain: OwnerLink[]
   /** How many DOM levels the Overlay walked up to find a fiber (spec §4, §12). */
   walkUp: number
+  /**
+   * The Excerpts, in the order the Overlay lifted them. The 32 KiB cap may take
+   * some of them away before the write, and says so when it does (spec §13).
+   */
+  excerpts: Excerpt[]
+  /**
+   * Which redaction rules fired in the page. The sentence is written here rather
+   * than sent, so a Pointer can never be made to carry prose the page chose.
+   */
+  redactions: string[]
 }
 
 /**
@@ -106,6 +152,11 @@ export interface Pick {
    * been resolved, and null when the Pick carries none.
    */
   captureLine: string | null
+  /**
+   * What the 32 KiB cap took out of this Pick's Excerpts, in the words both the
+   * payload and the Panel use. Null when the Pick fitted as it was (spec §13).
+   */
+  trimNote: string | null
 }
 
 /** Either a value, or the refusal that says why there is none. */
@@ -179,6 +230,7 @@ function mintPick(parts: {
     createdAt: now(),
     ...parts,
     captureLine: null,
+    trimNote: null,
   }
 }
 
@@ -291,6 +343,10 @@ function parsePointer(body: Record<string, unknown>): Parsed<Pointer> {
   if (!parsedGeometry.ok) return parsedGeometry
   const parsedDescriptor = parseDescriptor(descriptor)
   if (!parsedDescriptor.ok) return parsedDescriptor
+  const excerpts = parseExcerpts(body.excerpts)
+  if (!excerpts.ok) return excerpts
+  const redactions = parseRedactions(body.redactions)
+  if (!redactions.ok) return redactions
 
   return {
     ok: true,
@@ -303,6 +359,8 @@ function parsePointer(body: Record<string, unknown>): Parsed<Pointer> {
       // module graph, and reading that graph is asynchronous.
       ownerChain: [],
       walkUp: 0,
+      excerpts: excerpts.value,
+      redactions: redactions.value,
     },
   }
 }
@@ -383,9 +441,108 @@ function parseDescriptor(value: unknown): Parsed<ElementDescriptor> {
         'refused a Pick whose descriptor has class names that are not text.',
       )
     }
+    // Refused rather than sliced, for the same reason the Note is: a descriptor
+    // quietly cut down to two classes is one that describes less than the
+    // Overlay sent and says nothing about it (spec §13, §21).
+    if (value.classes.length > DESCRIPTOR_CLASS_MAX) {
+      return refuse(
+        400,
+        'pointer-incomplete',
+        `refused a Pick whose descriptor carries ${value.classes.length} classes. ` +
+          `A descriptor names at most two classes, because it is an introduction ` +
+          'and never a selector path.',
+      )
+    }
     if (value.classes.length > 0) descriptor.classes = value.classes as string[]
   }
   return { ok: true, value: descriptor }
+}
+
+/**
+ * The Excerpts, as the page lifted them (spec §13). The kind is checked against
+ * a closed set because it is written into the Fence; the text is checked for
+ * being text, and nothing else — the caps belong where the lifting happened, and
+ * the 32 KiB payload cap is what bounds what is written.
+ */
+function parseExcerpts(value: unknown): Parsed<Excerpt[]> {
+  if (value === undefined || value === null) return { ok: true, value: [] }
+  if (!Array.isArray(value)) {
+    return refuse(
+      400,
+      'excerpt-unreadable',
+      'refused a Pick whose excerpts are not a list.',
+    )
+  }
+
+  const excerpts: Excerpt[] = []
+  for (const given of value) {
+    if (!isRecord(given) || typeof given.kind !== 'string') {
+      return refuse(
+        400,
+        'excerpt-unreadable',
+        'refused a Pick carrying an excerpt that names no kind.',
+      )
+    }
+    if (!EXCERPT_KINDS.includes(given.kind)) {
+      return refuse(
+        400,
+        'excerpt-unreadable',
+        `refused a Pick carrying an excerpt of kind "${given.kind}", which this ` +
+          `dev server does not lift. The kinds it renders are ` +
+          `${EXCERPT_KINDS.join(', ')}.`,
+      )
+    }
+    if (!isText(given.text)) {
+      return refuse(
+        400,
+        'excerpt-unreadable',
+        `refused a Pick whose ${given.kind} excerpt is not text.`,
+      )
+    }
+    const captured = given.captured
+    if (captured !== undefined && !isFinite(captured)) {
+      return refuse(
+        400,
+        'excerpt-unreadable',
+        `refused a Pick whose ${given.kind} excerpt does not say how much was ` +
+          'captured in a number.',
+      )
+    }
+    excerpts.push({
+      kind: given.kind,
+      text: given.text,
+      ...(captured === undefined ? {} : { captured: captured as number }),
+    })
+  }
+  return { ok: true, value: excerpts }
+}
+
+/**
+ * Which redaction rules the page reports having applied. A reason this server
+ * has no sentence for is refused rather than dropped: a redaction nobody is told
+ * about is exactly the silence §21 forbids.
+ */
+function parseRedactions(value: unknown): Parsed<string[]> {
+  if (value === undefined || value === null) return { ok: true, value: [] }
+  if (!Array.isArray(value)) {
+    return refuse(
+      400,
+      'redaction-unreadable',
+      'refused a Pick whose redactions are not a list.',
+    )
+  }
+  for (const reason of value) {
+    if (!isText(reason) || !REDACTION_REASONS.includes(reason)) {
+      return refuse(
+        400,
+        'redaction-unreadable',
+        `refused a Pick naming "${String(reason)}" as a redaction. This dev ` +
+          `server states ${REDACTION_REASONS.join(' and ')}, and will not repeat ` +
+          'a reason it has no words for.',
+      )
+    }
+  }
+  return { ok: true, value: value as string[] }
 }
 
 function parseTarget(value: unknown): Parsed<Target | null> {

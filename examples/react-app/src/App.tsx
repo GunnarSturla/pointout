@@ -6,6 +6,7 @@ import { FullViewportDecoy } from './fixtures/FullViewportDecoy.tsx'
 import { PointerEventsNone } from './fixtures/PointerEventsNone.tsx'
 import { ShadowRootCard } from './fixtures/ShadowRootCard.tsx'
 import { SameOriginIframe } from './fixtures/SameOriginIframe.tsx'
+import { ElementExcerpts } from './fixtures/ElementExcerpts.tsx'
 import { DensePage } from './fixtures/DensePage.tsx'
 
 // The test bed. Every section is a hard case the Pointer has to survive; each
@@ -15,6 +16,7 @@ import { DensePage } from './fixtures/DensePage.tsx'
 // test rules need. What is left of spec §1's list:
 //   - a scroll container               (ticket 09)
 //   - elements at every viewport edge  (ticket 09, ticket 12)
+// Ticket 07 adds the one every kind of Excerpt can be lifted from.
 export function App() {
   return (
     <>
@@ -34,6 +36,7 @@ export function App() {
         <PointerEventsNone />
         <ShadowRootCard />
         <SameOriginIframe />
+        <ElementExcerpts />
         <DensePage />
       </main>
     </>

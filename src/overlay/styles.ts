@@ -237,4 +237,24 @@ export const OVERLAY_STYLESHEET = `
   font-size: 12px;
   opacity: 0.85;
 }
+
+/* The Note counter: quiet until the cap, and at the cap it is the reason the
+   Send button is off, so it stops being quiet (spec §7). */
+.counter {
+  align-self: flex-end;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.counter[data-over] {
+  opacity: 1;
+  font-weight: 600;
+}
+
+/* Excerpts the 32 KiB cap took out: one quiet informational line, deliberately
+   not the refusal colour above — the Pick was accepted (spec §7, §13). */
+.trimmed {
+  font-size: 12px;
+  opacity: 0.85;
+}
 `

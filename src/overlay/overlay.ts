@@ -10,6 +10,7 @@
 
 import { createHittability } from './armed.js'
 import { viewportBox } from './deep-element.js'
+import { describeElement } from './describe.js'
 import { readOwner, readOwnerChain } from './fiber.js'
 import { createHighlight } from './highlight.js'
 import { elementAtPoint } from './hit-test.js'
@@ -190,28 +191,27 @@ export function startOverlay(document: Document): OverlayHandle {
 
 /**
  * The Pointer inputs, measured when the Pick is sent rather than when it was
- * made. The descriptor is the floor — tag, `id`, `data-testid` — because the
- * allowlist, the caps and the redaction are ticket 07's.
+ * made. The descriptor, the Excerpts and the redactions come from
+ * `describeElement` (ticket 07), which is where the allowlist, the caps and the
+ * password and hidden redaction live.
  *
  * The Owner chain is read here rather than at pick time for the same reason as
- * the geometry: a Pick that was moved carries the element it ended on.
+ * the geometry: a Pick that was moved carries the element it ended on — and a
+ * field typed into while the Note was being written carries what it says now.
  */
 function pointerOf(view: Window, element: Element): Omit<PickBody, 'note' | 'target'> {
   // In the top document's coordinates, so a Pick made inside a frame carries
   // the geometry a developer — and a Screen Capture — would see (ticket 08).
   const rect = viewportBox(element)
-  const id = element.id || undefined
-  const testId = element.getAttribute('data-testid') || undefined
   const owners = readOwnerChain(element)
+  const described = describeElement(element)
 
   return {
     url: view.location.href,
     viewport: { width: view.innerWidth, height: view.innerHeight },
-    descriptor: {
-      tag: element.tagName.toLowerCase(),
-      ...(id ? { id } : {}),
-      ...(testId ? { testId } : {}),
-    },
+    descriptor: described.descriptor,
+    excerpts: described.excerpts,
+    redactions: described.redactions,
     geometry: {
       width: Math.round(rect.width),
       height: Math.round(rect.height),

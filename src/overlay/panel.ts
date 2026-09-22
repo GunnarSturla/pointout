@@ -6,9 +6,9 @@
 // names are tree-scoped and cannot cross a shadow boundary by spec (§3).
 //
 // Ticket 04 built the first journey through it; ticket 10 the Target row, the
-// rows it expands into, the two zero states and the re-resolve at Send. The
-// character counter and the cap are ticket 07, the Stack chip a submitted Pick
-// minimizes into is ticket 12.
+// rows it expands into, the two zero states and the re-resolve at Send; ticket
+// 07 the Note counter, the cap and the quiet line a trimmed Pick shows. The
+// Stack chip a submitted Pick minimizes into is ticket 12.
 
 import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom'
 import {
@@ -45,6 +45,18 @@ const CONFIRM = 'Confirm'
 /** The badge on the `CLAUDE_PID` match (spec §7). */
 const STARTED_THIS_SERVER = 'started this dev server'
 
+/**
+ * Spec §11's Note cap, the client half of it (ticket 07). Written out rather
+ * than imported: the server enforces the same number in `src/server/pick.ts`,
+ * and neither half may be talked out of it by the other. The server refuses
+ * *above* 4,000; Send is off *at* it, which is §7's rule and one character
+ * stricter, so a Note the Overlay let through is never one the server rejects.
+ */
+const NOTE_MAX_CHARACTERS = 4000
+
+/** Spec §7: "a counter appears past about 3,500 characters". */
+const COUNTER_FROM = 3500
+
 /** Everything the Panel needs from the Overlay around it. */
 export interface PanelDeps {
   document: Document
@@ -68,6 +80,9 @@ export function openPanel(deps: PanelDeps): Panel {
   const note = part(document, 'textarea', 'note')
   note.rows = 3
   note.placeholder = 'What about this element?'
+
+  /** Ticket 07: absent below `COUNTER_FROM`, and Send's reason at the cap. */
+  const counter = part(document, 'div', 'counter')
 
   const footer = part(document, 'div', 'footer')
   const target = part(document, 'button', 'target')
@@ -253,6 +268,24 @@ export function openPanel(deps: PanelDeps): Panel {
     if (focusIsIdle()) note.focus()
   }
 
+  /**
+   * The counter (spec §7): absent until the Note is long enough to be worth
+   * watching, and at the cap it is the reason Send is off — so it says the
+   * count, which is what the developer has to act on.
+   */
+  const renderCounter = (length: number, overCap: boolean) => {
+    if (length < COUNTER_FROM) {
+      counter.remove()
+      return
+    }
+    counter.textContent = overCap
+      ? `${length} / ${NOTE_MAX_CHARACTERS} — too long to send`
+      : `${length} / ${NOTE_MAX_CHARACTERS}`
+    if (overCap) counter.setAttribute('data-over', '')
+    else counter.removeAttribute('data-over')
+    if (!counter.isConnected && note.isConnected) note.after(counter)
+  }
+
   const render = () => {
     renderInput()
     renderTargetRow()
@@ -263,9 +296,19 @@ export function openPanel(deps: PanelDeps): Panel {
     if (choosable() && !replacement) target.setAttribute('data-expandable', '')
     else target.removeAttribute('data-expandable')
 
+    // Ticket 07's half of §11's Note cap. Counted in **code points**, because
+    // the server counts them that way (ticket 03) and two halves that counted
+    // differently would disagree at the boundary.
+    const noteLength = [...note.value].length
+    const overCap = noteLength >= NOTE_MAX_CHARACTERS
+    renderCounter(noteLength, overCap)
+
     primary.textContent = replacement ? CONFIRM : note.value.length > 0 ? SEND : STAND_BY
     primary.disabled =
-      sending || sent || (!replacement && (noSession() || (choosable() && !chosen)))
+      sending ||
+      sent ||
+      overCap ||
+      (!replacement && (noSession() || (choosable() && !chosen)))
 
     const cancel = panel.querySelector('[data-part="cancel"]')
     if (replacement && !cancel) {
@@ -330,6 +373,14 @@ export function openPanel(deps: PanelDeps): Panel {
     // A 200 that went nowhere is not silent either: the server says why, and so
     // does the Panel, beside the plain confirmation.
     say('Sent', false, outcome.reason)
+    // What the 32 KiB cap took out of the Excerpts, as one quiet line —
+    // information, not a warning: the Pick was accepted and the Note travelled
+    // whole (spec §7, ticket 07).
+    if (outcome.trimmed) {
+      const trimmed = part(document, 'div', 'trimmed')
+      trimmed.textContent = outcome.trimmed
+      panel.append(trimmed)
+    }
   }
 
   note.addEventListener('input', render)

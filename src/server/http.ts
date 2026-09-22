@@ -23,13 +23,13 @@ import type { Refusal } from './guard.js'
 import { DONE, FAILED, SENT, TTL_FAILURE, WORKING, createLedger } from './ledger.js'
 import type { Ledger } from './ledger.js'
 import { resolveOwnerChain } from './owner-chain.js'
+import { fitPayload } from './payload.js'
 import { parsePickBody, readRequestBody } from './pick.js'
 import { QUEUED_UNADDRESSED, createPickQueue } from './queue.js'
 import type { PickQueue } from './queue.js'
 import { createIdleLog, recordReplies } from './receipt.js'
 import type { IdleLog } from './receipt.js'
 import { readCandidates } from './registry.js'
-import { renderPicks } from './render.js'
 import { pickStatuses } from './status.js'
 import { resolveTarget } from './targeting.js'
 import type { ServerFacts } from './index.js'
@@ -423,13 +423,19 @@ async function ingestPick(
   // capture that failed never stops the Pick: it says so and travels (spec §10).
   pick.captureLine = await context.captures.resolve(pick.captureRequest)
 
+  // The 32 KiB cap, before the write and before the queue: a Pick too big to
+  // send is one the developer is asked to shorten, not one that waits around to
+  // fail later. Excerpts are all it may trim, and it says what it took (§13).
+  const rendered = fitPayload(pick, { origin: context.origin() })
+  if (!rendered.ok) return sendRefusal(logger, response, rendered.refusal)
+
   const entry = queue.add(pick)
   let unwritten: string | undefined
 
   if (pick.target) {
     const outcome = await route.deliver({
       pickId: pick.id,
-      body: renderPicks([pick], { origin: context.origin() }),
+      body: rendered.value,
       target: pick.target,
     })
     if (outcome.written) queue.markSent(pick.id)
@@ -458,6 +464,9 @@ async function ingestPick(
     pickId: pick.id,
     state: entry.state,
     ...(unwritten ? { reason: unwritten } : {}),
+    // Information, not a refusal: the Pick was accepted and the Note travelled
+    // whole. The Panel renders it as one quiet line (spec §7).
+    ...(pick.trimNote ? { trimmed: pick.trimNote } : {}),
   })
 }
 
