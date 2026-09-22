@@ -18,3 +18,6 @@ coverage/
 
 # personal, machine-specific Claude Code settings
 .claude/settings.local.json
+
+# agent worktrees (Claude Code isolation: "worktree")
+.claude/worktrees/
