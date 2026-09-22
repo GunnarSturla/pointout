@@ -100,21 +100,75 @@ function frame(
 // --- end of borrowed code ---
 
 /**
+ * What one raw stack turned out to hold where its app frame should be. Every
+ * shape but the first is one of spec §12's structural degraded modes, and each
+ * is told apart from the others *here*, because only this module knows the shape
+ * of a stack. A link that reads as anything but `frame` keeps its name and says
+ * which of these it was (spec §21).
+ */
+export type AppFrameReading =
+  /** The app frame: the line directly above the sentinel, with a location. */
+  | { kind: 'frame'; frame: StackFrame }
+  /**
+   * React's shared placeholder owner stack, handed out above roughly 10,000
+   * elements a second. Measured in Chromium and Firefox: it is the only owner
+   * stack whose top frame is React's own `UnknownOwner`.
+   */
+  | { kind: 'placeholder' }
+  /** The sentinel is there and nothing is above it: an engine deleted the frame. */
+  | { kind: 'elided' }
+  /** No sentinel at all: this stack never came out to app code. */
+  | { kind: 'no-boundary' }
+  /** A line is there above the sentinel and it carries no location. */
+  | { kind: 'unreadable' }
+
+/**
+ * React's name for the function it captures a placeholder owner stack inside,
+ * in `react/jsx-dev-runtime`. Measured against React 19.3.0: the placeholder is
+ * `react_stack_bottom_frame(UnknownOwner)` called once at module load, so its
+ * top frame is `UnknownOwner` and the sentinel sits directly under it — exactly
+ * the shape a tail-deleted frame has. The name is the only thing that tells the
+ * two apart, which is the whole of spec §12's ten-minute check.
+ *
+ * The url is not also checked: React's runtime is served under a different path
+ * prebundled, unbundled and linked, and the frame this matches is one React
+ * captured inside its own runtime in every case.
+ */
+const UNKNOWN_OWNER = /(?:^|[.<>/])UnknownOwner$/
+
+/**
  * The app frame of one Owner-chain link: the frame directly above React's
  * bottom-frame sentinel, once React's own top frame has been discarded
  * (spec §12). Ticket 04 measured that it is the line above the sentinel in all
  * three grammars, whichever engine wrote it.
  *
- * Null when there is no app frame to take — no sentinel, nothing between the
- * sentinel and the top frame, or a frame with no location. A link whose app
- * frame is null is annotated, never dropped (spec §21).
+ * Everything else it can answer is a mode, never a null: a link is annotated
+ * rather than dropped, and the annotation says which thing went wrong.
  */
-export function appFrame(raw: string): StackFrame | null {
+export function readAppFrame(raw: string): AppFrameReading {
+  const top = topFrame(raw)
+  if (top && UNKNOWN_OWNER.test(top.name)) return { kind: 'placeholder' }
+  if (!hasSentinel(raw)) return { kind: 'no-boundary' }
+
   const lines = trimOwnerStack(raw).split('\n')
   for (let index = lines.length - 1; index >= 0; index -= 1) {
     const line = lines[index]
     if (line === undefined || line.trim() === '') continue
-    return parseFrame(line)
+    const parsed = parseFrame(line)
+    return parsed ? { kind: 'frame', frame: parsed } : { kind: 'unreadable' }
   }
-  return null
+  // The sentinel is there and the top frame was the only thing above it.
+  return { kind: 'elided' }
+}
+
+/** React's own frame, which every owner stack opens with and none of it is the app's. */
+function topFrame(raw: string): StackFrame | null {
+  const stack = raw.startsWith(V8_STACK_HEAD) ? raw.slice(V8_STACK_HEAD.length) : raw
+  const at = stack.indexOf('\n')
+  return parseFrame(at === -1 ? stack : stack.slice(0, at))
+}
+
+/** Whether React's boundary is in this stack at all, in either spelling. */
+function hasSentinel(raw: string): boolean {
+  return raw.includes(BOTTOM_FRAME) || raw.includes(BOTTOM_FRAME_DASHED)
 }

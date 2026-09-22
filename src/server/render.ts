@@ -47,13 +47,21 @@ function pointerRows({ pointer, captureLine }: Pick): Array<[string, string]> {
   // value a developer wants changed is as often set by an ancestor as by the
   // element's own line (`CONTEXT.md`, spec §13).
   const { ownerChain, walkUp } = pointer
-  if (ownerChain.length === 0) rows.push(['owner chain', 'none'])
+  if (ownerChain.length === 0) {
+    // An empty chain is the one case where the walk-up distance is the whole of
+    // what the Pointer knows about ownership, so it is said here rather than in
+    // a row of its own below (spec §12).
+    rows.push([
+      'owner chain',
+      `none — React named no owner for this element; the page walked up ${count(walkUp, 'DOM level')} from the picked element looking for a React fiber`,
+    ])
+  }
   ownerChain.forEach((link, index) => {
     rows.push([index === 0 ? 'owner chain' : '', ownerLine(link)])
   })
   // Never a silent walk-up (spec §21): a Pointer that walked up says how far,
   // so the agent is never told a location belongs to an element it does not.
-  if (walkUp > 0) {
+  if (walkUp > 0 && ownerChain.length > 0) {
     rows.push([
       'walked up',
       `${count(walkUp, 'DOM level')} from the picked element before a React fiber was found`,
@@ -73,14 +81,20 @@ function pointerRows({ pointer, captureLine }: Pick): Array<[string, string]> {
  * position says about itself. A link that could not be placed keeps its name and
  * states its reason — a Pick degrades by annotation, never by refusal
  * (`CONTEXT.md`, spec §12).
+ *
+ * The Confidence is stated per link and only per link. There is no such row for
+ * the Pick: a Pick has no Confidence, and one stated over a mixed chain would be
+ * a claim about links it is not true of.
  */
-function ownerLine({ name, location, confidence }: OwnerLink): string {
+function ownerLine({ name, location, confidence, dependency }: OwnerLink): string {
   const who = name ?? '(anonymous)'
-  if (confidence.kind === 'exact') return `${who} — ${location} (exact)`
-  if (confidence.kind === 'approximate') {
-    return `${who} — ${location} (approximate: ${confidence.reason})`
-  }
-  return `${who} — no location (absent: ${confidence.reason})`
+  // `dependency` leads, because it is the one word that says *do not edit here*
+  // whatever the rest of the parenthesis turns out to say (spec §13).
+  const flag = dependency ? 'dependency, ' : ''
+  if (confidence.kind === 'exact') return `${who} — ${location} (${flag}exact)`
+  const { kind, mode, reason } = confidence
+  const where = kind === 'absent' ? 'no location' : location
+  return `${who} — ${where} (${flag}${kind}: ${mode} — ${reason})`
 }
 
 /** The Fence (`CONTEXT.md`): the nonce is what the text inside cannot forge. */
