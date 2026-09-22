@@ -77,7 +77,11 @@ on the lines someone touched is not green.
   enforce would need a gate that distinguishes "red because of this task" from "red
   because something else is unfinished", which the working tree alone cannot tell it.
   Observed in practice: with two agents in one tree, the gate fired at the session for
-  another agent's in-flight files.
+  another agent's in-flight files — three times, every one of them somebody else's
+  work. **The gate now lints tracked files only.** A brand-new file nobody has staged
+  is by definition unfinished, and a gate that reports on it is reporting on whatever
+  is half-written next door rather than on the task that is ending. Finished work is
+  staged work, so the gate still sees everything it is for.
 - **Nineteen findings on existing code were fixed rather than suppressed**, including a
   shadowed binding in the plugin factory and a re-thrown error that dropped its `cause`.
   Three rules are configured and one is allowed an exception; each carries its reason.

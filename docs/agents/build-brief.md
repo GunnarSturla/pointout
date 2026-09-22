@@ -1,0 +1,85 @@
+# The build brief
+
+**Read this first, then your ticket.** It replaces reading five closed tickets'
+`## Comments` to find out what the build already decided. It is maintained as tickets
+land; if it disagrees with a ticket's own Comments, the ticket is right and this file
+is stale — say so.
+
+## What exists
+
+The server side: root discovery and cwd normalization, the Guard (loopback always,
+Origin on ingress), the session registry read and Candidate filter, the startup posture
+block, Pick ingest, the claim-once queue and its ledger, `GET /__agent/status`, the
+reply socket, the drain endpoint and CLI, and Screen Capture.
+
+The Overlay: one open shadow root, the Picker, Highlight and Panel, the hit test with
+its shield, the Owner chain with per-frame Confidence, and Target selection.
+
+## Rules that are not negotiable
+
+- **No test imports a server module — and in TypeScript, not its types either.** Tests
+  observe NDJSON frames at a fake session's socket, HTTP responses, the recorded Vite
+  logger, what a real browser shows, the text a CLI prints, and files on disk. A string
+  a test needs is written out, not imported. The duplication is the contract.
+- **Fail closed, say so out loud** (spec §21). No silent drop, retarget, truncation,
+  walk-up, empty capture or *delivered*.
+- **Everything is TypeScript**; a relative import inside `src/` writes the `.js`
+  extension the emit will have; type-only imports use `import type`.
+- **Nothing is imported from any `spike-*` directory** — a test enforces it. The spikes
+  are labelled dead ends, readable as evidence of what was measured.
+- **`CONTEXT.md` is binding on identifiers as well as prose**, including its `_Avoid_`
+  lists. Pick, Pointer, Note, Fence, Guard, Candidate, Target, Receipt, Ack, Overlay,
+  Picker, Highlight, Panel, Stack, Confidence, Screen Capture.
+- **Borrowed code is credited**: a provenance header, an end-of-borrow marker, and a
+  `LICENSE-THIRDPARTY` entry. A test checks the header and the entry agree.
+
+## Measured facts you would otherwise rediscover
+
+- **WebKit deletes tail-call frames.** JavaScriptCore drops the call-site frame of any
+  component whose body is a bare `return <tag>`. Only an element nested inside its
+  component's root element resolves exactly there. That is spec §12's
+  `call-site-frame-elided-by-engine`, and it is annotated, never silent.
+- **The app frame is the *first* after React's top frame, not the last** (ADR-0003):
+  the JSX the developer pointed at, not the callback that enclosed it.
+- **`Origin` cannot be stripped from a browser request** in any engine — Chromium,
+  Firefox and WebKit all restore their own on `route.continue({ headers })`. Any test
+  that wants a real 4xx should refuse on something else, such as the method.
+- **`npx vitest` skips the `pretest` build hook**, and seam 1 exercises the emitted
+  `dist/`. Run `npm run test:seam1`, or your test is grading the last build.
+- **Closing a Vite dev server while its optimizer runs never returns.**
+  `test/harness/dev-server.ts` awaits `waitForRequestsIdle()` before `close()`.
+- **Every example-app fixture sits below the fold.** A seam-2 test must
+  `scrollIntoViewIfNeeded` before measuring; `elementsFromPoint` outside the viewport
+  answers nothing.
+- **`ours(event)` may not be `composedPath().includes(host)`** — with the shield up
+  that is true of every page click and no Pick can be made.
+
+## The gates, and how to run them fast
+
+| | |
+| --- | --- |
+| `npm run lint` / `format:check` / `typecheck` | **under 2s each** — run them constantly |
+| `npm run test:seam1` | ~47s |
+| `npm run test:seam2:fast` | ~18s, Chromium only — **iterate on this** |
+| `npm run test:seam2` | ~46s, all three engines — **run before you commit** |
+
+Warnings are denied. Fix a finding; never suppress it. A rule may be configured in
+`.oxlintrc.json` only with a comment line directly above saying why, and a test fails
+any rule that has no reason beside it.
+
+## Working beside other agents
+
+Several agents share one working tree. **`git add` only your own paths — never
+`git add -A` or `git add .`.** If a shared file holds someone else's changes too, stage
+your hunks rather than the file. If a commit lands under you, rebase your thinking onto
+it before committing. Your ticket names which files are yours.
+
+## Known open items
+
+- The TTL sentence *"nobody prompted Claude in this repo within 30 minutes"* is a
+  stretch for a Pick written to a socket and **false** for a drained one. Ticket 14 owns
+  the fix.
+- **Ticket 19 cannot test fail-closed by stripping `Origin`** — see above. It needs
+  another mechanism.
+- Spec §12's "frame directly above the sentinel" sentence is superseded by ADR-0003;
+  ticket 22 corrects the sentence.

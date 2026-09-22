@@ -6,6 +6,11 @@ working in, with the element's source location attached.
 
 See `README.md` for the idea and `CONTEXT.md` for the domain language.
 
+## Start here
+
+`docs/agents/build-brief.md` — what exists, the rules that are not negotiable, the
+facts already measured, and how to run the gates fast. Read it before your ticket.
+
 ## Agent skills
 
 ### Issue tracker

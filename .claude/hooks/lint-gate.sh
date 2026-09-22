@@ -13,7 +13,26 @@ fi
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 [ -x node_modules/.bin/oxlint ] || exit 0
 
-if output=$(node_modules/.bin/oxlint --deny-warnings 2>&1); then
+# Tracked files only. The gate is repository-wide on purpose, but with several
+# agents sharing one working tree it kept firing at this session for another
+# agent's brand-new, untracked files — three times, every one of them somebody
+# else's in-flight work. Restricting it to what git already tracks keeps it
+# honest about finished work without making it a bulletin board for whatever is
+# half-written next door. ADR-0002 records the reasoning.
+# Quoted literally, never through a variable: an unquoted pattern is expanded by
+# the shell against the working directory before git ever sees it.
+lintable() {
+  git ls-files "$1" -- '*.ts' '*.tsx' '*.cts' '*.mts' '*.js' '*.jsx' '*.cjs' '*.mjs'
+}
+
+# Nothing tracked to lint: not this hook's problem.
+if [ "$(lintable --cached | wc -l)" -eq 0 ]; then
+  exit 0
+fi
+
+# Piped, never stored in a variable: command substitution strips the NUL
+# separators that `-z` exists for, and xargs then sees one enormous filename.
+if output=$(lintable -z | xargs -0 node_modules/.bin/oxlint --deny-warnings 2>&1); then
   exit 0
 fi
 

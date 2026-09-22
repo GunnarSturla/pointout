@@ -39,6 +39,8 @@
     "test:seam1": "vitest run",
     "pretest:seam2": "npm run build",
     "test:seam2": "playwright test",
+    "pretest:seam2:fast": "npm run build",
+    "test:seam2:fast": "playwright test --project=chromium",
     "pretest:seam3": "npm run build",
     "test:seam3": "vitest run --config vitest.seam3.config.ts"
   },
