@@ -112,10 +112,14 @@ Both automated, because a convention in a document is not a gate:
   (`.claude/hooks/format-file.sh`), and `.vscode/settings.json` does the same for a
   human. The hook filters by extension itself rather than trusting the formatter's
   ignore list, because oxfmt would otherwise reformat a Markdown file an agent wrote.
-- **Before done** — a `Stop` hook runs the lint gate and refuses to end a task while it
-  is red (`.claude/hooks/lint-gate.sh`), naming what failed. It is repository-wide, so
-  lint left red by earlier work blocks the next task; that is the intended severity. It
-  reads `stop_hook_active`, because a blocking Stop hook otherwise re-enters itself.
+- **Before done** — a `Stop` hook runs the lint gate (`.claude/hooks/lint-gate.sh`) and
+  blocks with the findings named. It **blocks once, not forever**: the loop guard it
+  needs to avoid deadlocking a session (`stop_hook_active`) is also what lets the next
+  stop through. Read it as a loud nag that cannot be missed, not a wall that cannot be
+  passed. It is repository-wide, so lint left red by *other* work — an earlier task, or
+  a second agent's uncommitted files — fires at whoever stops next rather than at
+  whoever caused it. Under concurrent agents that is noisier than it sounds: check
+  whose files are red before touching them.
 
 Both hooks live in `.claude/settings.json`, which is checked in. A machine-specific
 override belongs in `.claude/settings.local.json`, which is not.

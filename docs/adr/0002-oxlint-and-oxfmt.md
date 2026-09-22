@@ -68,10 +68,16 @@ on the lines someone touched is not green.
 - **`package.json` is excluded too.** npm rewrites it on every install, so a formatter
   and a package manager would take turns reformatting the same file and `format:check`
   would be red after any `npm install`.
-- **The Stop gate is repository-wide**, so lint left red by earlier work blocks the next
-  task rather than the one that caused it. That is the intended severity: it is a gate,
-  and the loud version is the useful one. The hook reads `stop_hook_active` so a blocking
-  gate cannot re-enter itself.
+- **The Stop gate is repository-wide**, so lint left red by earlier work fires at the
+  next task rather than at the one that caused it. That is the intended severity: it is
+  a gate, and the loud version is the useful one.
+- **It blocks once, not forever**, and the wording elsewhere should not claim otherwise.
+  The hook reads `stop_hook_active` so a blocking gate cannot re-enter itself — and that
+  same guard means the following stop passes. It reports; it does not enforce. Making it
+  enforce would need a gate that distinguishes "red because of this task" from "red
+  because something else is unfinished", which the working tree alone cannot tell it.
+  Observed in practice: with two agents in one tree, the gate fired at the session for
+  another agent's in-flight files.
 - **Nineteen findings on existing code were fixed rather than suppressed**, including a
   shadowed binding in the plugin factory and a re-thrown error that dropped its `cause`.
   Three rules are configured and one is allowed an exception; each carries its reason.
