@@ -137,12 +137,22 @@ export type AppFrameReading =
 const UNKNOWN_OWNER = /(?:^|[.<>/])UnknownOwner$/
 
 /**
- * The app frame of one Owner-chain link: the frame directly above React's
- * bottom-frame sentinel, once React's own top frame has been discarded
- * (spec §12). Ticket 04 measured that it is the line above the sentinel in all
- * three grammars, whichever engine wrote it.
+ * The app frame of one Owner-chain link: the **first** frame after React's own
+ * top frame has been discarded, within the region ending at React's
+ * bottom-frame sentinel.
  *
- * Everything else it can answer is a mode, never a null: a link is annotated
+ * This is React DevTools' rule, and a deliberate deviation from spec §12, which
+ * says the frame *directly above the sentinel* instead. The two agree for an
+ * ordinary call site — there is only one frame between — and disagree whenever a
+ * callback sits in the middle, such as a `.map()`. There, the spec's rule names
+ * the line the loop starts on and this one names the JSX itself.
+ *
+ * The JSX is what this project wants. A Pick carries a developer saying "this
+ * element needs more padding" or "change this text", and the line they mean is
+ * the tag, not the expression that enclosed it. A devtools user reading a render
+ * tree may well want the other one; v0 is not that. ADR-0003 records the call.
+ *
+ * Everything else this can answer is a mode, never a null: a link is annotated
  * rather than dropped, and the annotation says which thing went wrong.
  */
 export function readAppFrame(raw: string): AppFrameReading {
@@ -150,10 +160,8 @@ export function readAppFrame(raw: string): AppFrameReading {
   if (top && UNKNOWN_OWNER.test(top.name)) return { kind: 'placeholder' }
   if (!hasSentinel(raw)) return { kind: 'no-boundary' }
 
-  const lines = trimOwnerStack(raw).split('\n')
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index]
-    if (line === undefined || line.trim() === '') continue
+  for (const line of trimOwnerStack(raw).split('\n')) {
+    if (line.trim() === '') continue
     const parsed = parseFrame(line)
     return parsed ? { kind: 'frame', frame: parsed } : { kind: 'unreadable' }
   }

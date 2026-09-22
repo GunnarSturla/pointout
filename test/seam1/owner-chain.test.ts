@@ -231,6 +231,55 @@ describe('the Owner chain, exact path', () => {
     expect(content).not.toContain('walked up')
   })
 
+  it('names the JSX, not the callback that enclosed it, when both are in the stack', async () => {
+    // ADR-0003. A callback between a component and its JSX — a `.map()`, a
+    // render prop — puts two app frames between React's top frame and its
+    // sentinel. This project takes the FIRST: the line a developer pointed at
+    // is the tag, not the expression that produced it. Spec §12 says "directly
+    // above the sentinel", which is the last one, and this is the test that
+    // fails if anyone puts that rule back.
+    //
+    // Two real call sites in the served fixture stand in for the two frames, so
+    // nothing here has to know how the remap works: send each alone, see what
+    // it renders as, then send both and see which answer comes back.
+    const inner = inTransform('_jsxDEV("span"')
+    const outer = inTransform('_jsxDEV(ChainMiddle')
+
+    const lineOf = (content: string): string | undefined =>
+      /ChainLeaf — \S+:(\d+:\d+) \(exact\)/.exec(content)?.[1]
+
+    const alone = async (at: { line: number; column: number }) =>
+      lineOf(
+        await send(
+          body({ ownerChain: [{ name: 'ChainLeaf', stack: v8Stack('ChainLeaf', at) }] }),
+        ),
+      )
+
+    const innerAlone = await alone(inner)
+    const outerAlone = await alone(outer)
+
+    // They have to render differently, or this test proves nothing.
+    expect(innerAlone).toBeDefined()
+    expect(outerAlone).toBeDefined()
+    expect(innerAlone).not.toBe(outerAlone)
+
+    const both = [
+      'Error: react-stack-top-frame',
+      `    at exports.jsxDEV (${served('/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=abcd1234')}:197:25)`,
+      `    at ChainLeaf (${served(MODULE_URL)}:${inner.line}:${inner.column})`,
+      '    at Array.map (<anonymous>)',
+      `    at ChainLeaf (${served(MODULE_URL)}:${outer.line}:${outer.column})`,
+      `    at Object.react_stack_bottom_frame (${served('/node_modules/.vite/deps/react-dom_client.js?v=abcd1234')}:14142:12)`,
+    ].join('\n')
+
+    const reported = lineOf(
+      await send(body({ ownerChain: [{ name: 'ChainLeaf', stack: both }] })),
+    )
+
+    expect(reported).toBe(innerAlone)
+    expect(reported).not.toBe(outerAlone)
+  })
+
   it('annotates a link it cannot place instead of refusing the Pick', async () => {
     // No sentinel: React's own bottom frame is not in this stack, so there is no
     // app frame to take and the link says so (spec §21).

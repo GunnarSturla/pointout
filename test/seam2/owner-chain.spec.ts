@@ -129,10 +129,7 @@ test('the whole chain arrives, innermost first', async ({ page }) => {
   expect(content.indexOf(middle)).toBeLessThan(content.indexOf(outer))
 })
 
-test('a component that merely forwards a node is not on the chain', async ({
-  page,
-  browserName,
-}) => {
+test('a component that merely forwards a node is not on the chain', async ({ page }) => {
   const token = probe('forwarder')
   await open(page, token)
   await pickAndSend(page, BADGE)
@@ -147,8 +144,24 @@ test('a component that merely forwards a node is not on the chain', async ({
   // `ArticleList` is a bare `return articles.map(…)`, so WebKit's proper tail
   // calls delete its frame and the link keeps its name while saying it has no
   // location (spec §12; ticket 06 is where that reason gets its own name).
-  if (browserName === 'webkit') expect(content).toContain('ArticleList — no location')
-  else expect(content).toContain(`ArticleList — ${NESTED_FIXTURE}:`)
+  // ADR-0003: the badge is created inside `articles.map(…)`, so ArticleList's
+  // stack carries two app frames. The link names the line the `<span>` is on,
+  // not the line the map starts on — the tag the developer pointed at.
+  //
+  // This is exact in WebKit too, which the spec's "frame directly above the
+  // sentinel" rule could not manage: that frame is ArticleList's own tail call
+  // and JSC deletes it, so the link used to read `no location` here. Choosing
+  // the JSX recovers a location Safari was losing. The genuinely tail-called
+  // case still exists and is ticket 06's `card-heading` journey.
+  const source = readFileSync(repoRoot + NESTED_FIXTURE, 'utf8').split('\n')
+  const badgeLine =
+    source.findIndex((line) => line.includes('data-fixture="passed-down-badge"')) + 1
+  const mapLine = source.findIndex((line) => line.includes('return articles.map(')) + 1
+
+  expect(badgeLine).toBeGreaterThan(0)
+  expect(mapLine).toBeGreaterThan(0)
+  expect(content).toContain(`ArticleList — ${NESTED_FIXTURE}:${badgeLine}:`)
+  expect(content).not.toContain(`ArticleList — ${NESTED_FIXTURE}:${mapLine}:`)
 })
 
 test('an element with no fiber still sends, and says how far it walked up', async ({
