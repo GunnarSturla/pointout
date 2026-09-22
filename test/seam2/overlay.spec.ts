@@ -25,7 +25,19 @@ const TARGET_NAME = 'seam 2 fake session'
 const PICKED = '[data-fixture="card-heading"]'
 const PICKED_TAG = 'h3'
 const OWNER_NAME = 'CardHeading'
-const OWNER_FILE = 'NestedOwners.tsx'
+
+/**
+ * The chip's filename is the innermost Owner-chain link's file: where
+ * `CardHeading` wrote this `<h3>`, which is the file `CardHeading` itself lives
+ * in (ticket 05 — before that it was the file `<CardHeading>` was *used* in,
+ * which is a different file in any codebase that puts a component in its own
+ * module). `CardHeading` is a bare `return <h3>`, so WebKit's proper tail calls
+ * delete that frame and the chip names no file rather than naming the wrong one
+ * (spec §12, §21). `test/seam2/owner-chain.spec.ts` picks a fixture that every
+ * engine keeps.
+ */
+const ownerFile = (browserName: string) =>
+  browserName === 'webkit' ? '' : 'NestedOwners.tsx'
 
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
@@ -109,6 +121,7 @@ async function pick(page: Page, selector: string): Promise<void> {
 
 test('holding Alt and hovering shows the Highlight and a chip naming the component and its file', async ({
   page,
+  browserName,
 }) => {
   await open(page, probe('alt'))
   await expect(page.locator(HIGHLIGHT)).toBeHidden()
@@ -119,7 +132,7 @@ test('holding Alt and hovering shows the Highlight and a chip naming the compone
 
   await expect(page.locator(HIGHLIGHT)).toBeVisible()
   await expect(page.locator(CHIP_NAME)).toHaveText(OWNER_NAME)
-  await expect(page.locator(CHIP_FILE)).toHaveText(OWNER_FILE)
+  await expect(page.locator(CHIP_FILE)).toHaveText(ownerFile(browserName))
 
   await page.keyboard.up('Alt')
   await expect(page.locator(HIGHLIGHT)).toBeHidden()
@@ -127,6 +140,7 @@ test('holding Alt and hovering shows the Highlight and a chip naming the compone
 
 test('clicking the Picker arms, and the same Highlight and chip appear on hover', async ({
   page,
+  browserName,
 }) => {
   await open(page, probe('picker'))
   await arm(page)
@@ -136,7 +150,7 @@ test('clicking the Picker arms, and the same Highlight and chip appear on hover'
 
   await expect(page.locator(HIGHLIGHT)).toBeVisible()
   await expect(page.locator(CHIP_NAME)).toHaveText(OWNER_NAME)
-  await expect(page.locator(CHIP_FILE)).toHaveText(OWNER_FILE)
+  await expect(page.locator(CHIP_FILE)).toHaveText(ownerFile(browserName))
 })
 
 test('while armed, the computed styles of page elements are unchanged but the cursor', async ({

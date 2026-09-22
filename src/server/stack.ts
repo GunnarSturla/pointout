@@ -1,0 +1,120 @@
+// Borrowed: the two stack-frame regexes, the V8-first grammar sniff, and the
+//   owner-stack trim that cuts a raw `_debugStack` down to its app frames
+// From: React DevTools — https://github.com/facebook/react
+// Version: v19.3.0 (2026-09-22)
+// License: MIT — full text in LICENSE-THIRDPARTY
+// Changes: upstream reads `error.stack` itself and answers every frame as a
+//   tuple carrying its enclosing position and its async flag; this takes the
+//   raw string the Overlay already read — with `Error.prepareStackTrace` held
+//   at `undefined` around the read, as upstream also does — and answers one
+//   parsed frame, because the server wants a location rather than a trace. The
+//   source-map lookup upstream performs in the browser is dropped: the remap
+//   here goes through Vite's own module graph. The two regexes, the sniff that
+//   tries V8 before the shared Gecko/JavaScriptCore grammar, and the trim
+//   between React's top frame and its bottom-frame sentinel are upstream's.
+
+/** One frame of a stack, in whichever grammar the engine wrote it. */
+export interface StackFrame {
+  /** The function name the engine printed. Empty for an anonymous frame. */
+  name: string
+  url: string
+  /** 1-based, as every engine prints it. */
+  line: number
+  /** 1-based, as every engine prints it. */
+  column: number
+}
+
+/** V8: `    at NAME (URL:LINE:COLUMN)`, with its three anonymous spellings. */
+const V8_FRAME =
+  /^ *at (?:(.+) \((?:(.+):(\d+):(\d+)|<anonymous>)\)|(?:async )?(.+):(\d+):(\d+)|<anonymous>)$/
+
+/** The shared Gecko and JavaScriptCore grammar: `NAME@URL:LINE:COLUMN`. */
+const GECKO_FRAME = /^((?:.*".+")?[^@]*)@(.+):(\d+):(\d+)$/
+
+/** The message line V8 prefixes a stack with. It is not a frame. */
+const V8_STACK_HEAD = 'Error: react-stack-top-frame\n'
+
+/** The two spellings React has used for the frame below every app frame. */
+const BOTTOM_FRAME = 'react_stack_bottom_frame'
+const BOTTOM_FRAME_DASHED = 'react-stack-bottom-frame'
+
+/**
+ * Cut a raw owner stack down to the app frames between React's own top frame
+ * and its bottom-frame sentinel. Empty when there is no sentinel — the stack
+ * never reached app code — and empty when nothing is left between the two,
+ * which is the frame an engine's proper tail calls deleted.
+ */
+export function trimOwnerStack(raw: string): string {
+  let stack = raw
+  if (stack.startsWith(V8_STACK_HEAD)) {
+    // V8's default formatting prefixes the message, which is neither wanted
+    // nor needed.
+    stack = stack.slice(V8_STACK_HEAD.length)
+  }
+  let at = stack.indexOf('\n')
+  // Pop the JSX frame: React captured it inside its own runtime.
+  if (at !== -1) stack = stack.slice(at + 1)
+
+  at = stack.indexOf(BOTTOM_FRAME)
+  if (at === -1) at = stack.indexOf(BOTTOM_FRAME_DASHED)
+  if (at !== -1) at = stack.lastIndexOf('\n', at)
+
+  // Everything below the sentinel is React's internals. No sentinel at all
+  // means this stack never came out to app code, so there is nothing to keep.
+  return at === -1 ? '' : stack.slice(0, at)
+}
+
+/**
+ * One frame, in whichever grammar it is written — sniffed from the content and
+ * never from the user agent. V8 is tried first, because a url with an `@` in it
+ * (`/@vite/client`, `/@fs/…`) would otherwise satisfy the Gecko pattern on a V8
+ * line. Null for a frame that carries no location at all: `at <anonymous>`,
+ * `map@[native code]`, and anything else that is not a frame.
+ */
+export function parseFrame(line: string): StackFrame | null {
+  const v8 = V8_FRAME.exec(line)
+  if (v8) {
+    const [, name, namedUrl, namedLine, namedColumn, bareUrl, bareLine, bareColumn] = v8
+    if (namedUrl) return frame(name ?? '', namedUrl, namedLine, namedColumn)
+    if (bareUrl) return frame('', bareUrl, bareLine, bareColumn)
+    return null
+  }
+
+  const gecko = GECKO_FRAME.exec(line)
+  if (gecko) {
+    const [, name, url, geckoLine, geckoColumn] = gecko
+    if (url) return frame(name ?? '', url, geckoLine, geckoColumn)
+  }
+  return null
+}
+
+function frame(
+  name: string,
+  url: string,
+  line: string | undefined,
+  column: string | undefined,
+): StackFrame {
+  return { name, url, line: Number(line), column: Number(column) }
+}
+
+// --- end of borrowed code ---
+
+/**
+ * The app frame of one Owner-chain link: the frame directly above React's
+ * bottom-frame sentinel, once React's own top frame has been discarded
+ * (spec §12). Ticket 04 measured that it is the line above the sentinel in all
+ * three grammars, whichever engine wrote it.
+ *
+ * Null when there is no app frame to take — no sentinel, nothing between the
+ * sentinel and the top frame, or a frame with no location. A link whose app
+ * frame is null is annotated, never dropped (spec §21).
+ */
+export function appFrame(raw: string): StackFrame | null {
+  const lines = trimOwnerStack(raw).split('\n')
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]
+    if (line === undefined || line.trim() === '') continue
+    return parseFrame(line)
+  }
+  return null
+}

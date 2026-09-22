@@ -8,7 +8,7 @@
 // forcing; ticket 09 the Highlight lifecycle and the opt-in to motion; ticket 10
 // the Target row; ticket 12 the Picker's peek and the Stack.
 
-import { readOwner } from './fiber.js'
+import { readOwner, readOwnerChain } from './fiber.js'
 import { createHighlight } from './highlight.js'
 import { elementAtPoint } from './hit-test.js'
 import { openPanel } from './panel.js'
@@ -170,13 +170,16 @@ export function startOverlay(document: Document): OverlayHandle {
 /**
  * The Pointer inputs, measured when the Pick is sent rather than when it was
  * made. The descriptor is the floor — tag, `id`, `data-testid` — because the
- * allowlist, the caps and the redaction are ticket 07's, and the Owner chain is
- * ticket 05's.
+ * allowlist, the caps and the redaction are ticket 07's.
+ *
+ * The Owner chain is read here rather than at pick time for the same reason as
+ * the geometry: a Pick that was moved carries the element it ended on.
  */
 function pointerOf(view: Window, element: Element): Omit<PickBody, 'note' | 'target'> {
   const rect = element.getBoundingClientRect()
   const id = element.id || undefined
   const testId = element.getAttribute('data-testid') || undefined
+  const owners = readOwnerChain(element)
 
   return {
     url: view.location.href,
@@ -192,5 +195,7 @@ function pointerOf(view: Window, element: Element): Omit<PickBody, 'note' | 'tar
       x: Math.round(rect.left),
       y: Math.round(rect.top),
     },
+    ownerChain: owners.links,
+    walkUp: owners.walkUp,
   }
 }

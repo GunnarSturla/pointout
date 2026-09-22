@@ -82,6 +82,12 @@ export async function startServer({
     fixture,
     log: () => recorder.text(),
     async close() {
+      // First. A test that asked for a module leaves Vite's dependency
+      // optimizer running behind the answer, and `close()` called while it runs
+      // never returns — measured against plain Vite with no plugin at all, so it
+      // is Vite's own behaviour and not this plugin's. `waitForRequestsIdle` is
+      // Vite's own way to say "when you have finished with what I asked for".
+      await server.waitForRequestsIdle()
       await server.close()
       restoreEnv()
       fixture.cleanup()

@@ -1,4 +1,5 @@
 import { NestedOwners } from './fixtures/NestedOwners.tsx'
+import { OwnerChainDepth } from './fixtures/OwnerChainDepth.tsx'
 import { DependencyComponent } from './fixtures/DependencyComponent.tsx'
 import { SvgIcon } from './fixtures/SvgIcon.tsx'
 import { FullViewportDecoy } from './fixtures/FullViewportDecoy.tsx'
@@ -25,6 +26,7 @@ export function App() {
           </p>
         </header>
         <NestedOwners />
+        <OwnerChainDepth />
         <DependencyComponent />
         <SvgIcon />
       </main>

@@ -15,6 +15,7 @@ import { refuseForeignOrigin, refuseNonLoopback, refuseWrongNonce } from './guar
 import type { Refusal } from './guard.js'
 import { DONE, FAILED, SENT, TTL_FAILURE, WORKING, createLedger } from './ledger.js'
 import type { Ledger } from './ledger.js'
+import { resolveOwnerChain } from './owner-chain.js'
 import { parsePickBody, readRequestBody } from './pick.js'
 import { QUEUED_UNADDRESSED, createPickQueue } from './queue.js'
 import type { PickQueue } from './queue.js'
@@ -40,6 +41,8 @@ type Policy = 'read' | 'ingress' | 'credential'
 /** Everything the endpoints share, worked out once per dev server. */
 interface RequestContext {
   facts: ServerFacts
+  /** The dev server itself: the module graph is where an Owner chain is remapped. */
+  server: ViteDevServer
   queue: PickQueue
   /** What became of every Pick, after its entry has left the queue. */
   ledger: Ledger
@@ -94,6 +97,7 @@ export function installAgentEndpoints(
   const ownOrigins = onceOwnOrigins(server)
   const context: RequestContext = {
     facts,
+    server,
     route,
     logger,
     queue: createPickQueue(),
@@ -267,6 +271,15 @@ async function ingestPick(
   const parsed = parsePickBody(body.value)
   if (!parsed.ok) return sendRefusal(logger, response, parsed.refusal)
   const pick = parsed.value
+
+  // Resolved here, at ingest, against the module graph as it stands now: a Pick
+  // drained an hour later must carry the position its frames meant when it was
+  // made, not one remapped through a transform that has moved since (spec §12).
+  pick.pointer.ownerChain = await resolveOwnerChain(
+    context.server,
+    facts.root,
+    pick.ownerLinks,
+  )
 
   const { candidates } = readCandidates(facts)
   const choice = resolveTarget(pick.target, candidates)

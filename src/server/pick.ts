@@ -2,6 +2,8 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import type { IncomingMessage } from 'node:http'
 import { now } from './clock.js'
 import type { Refusal } from './guard.js'
+import { parseOwnerChain } from './owner-chain.js'
+import type { OwnerLink, OwnerLinkInput } from './owner-chain.js'
 
 // Pick ingress: what arrives on the wire from the Overlay, what is refused, and
 // the Pick that comes out the other side (spec §11, §13). Nothing here renders
@@ -60,6 +62,14 @@ export interface Pointer {
   viewport: Viewport
   descriptor: ElementDescriptor
   geometry: Geometry
+  /**
+   * The Owner chain, innermost first, filled in at ingest once the frames have
+   * been remapped through the module graph. Empty until then, and empty for an
+   * element React never owned.
+   */
+  ownerChain: OwnerLink[]
+  /** How many DOM levels the Overlay walked up to find a fiber (spec §4, §12). */
+  walkUp: number
 }
 
 /** One selection, as the server holds it from ingest onwards. */
@@ -71,6 +81,13 @@ export interface Pick {
   pointer: Pointer
   note: string | null
   target: Target | null
+  /**
+   * The raw stack strings the Overlay sent, one per Owner-chain link. Excerpts
+   * (`CONTEXT.md`): validated here, read by the parser, and never interpolated
+   * into the body an agent reads — which is why they sit beside the Pointer
+   * rather than inside it.
+   */
+  ownerLinks: OwnerLinkInput[]
 }
 
 /** Either a value, or the refusal that says why there is none. */
@@ -131,7 +148,12 @@ export function readRequestBody(request: IncomingMessage): Promise<Parsed<string
 }
 
 /** Mint a Pick from a body that has already been parsed and checked. */
-function mintPick(pointer: Pointer, note: string | null, target: Target | null): Pick {
+function mintPick(
+  pointer: Pointer,
+  note: string | null,
+  target: Target | null,
+  ownerLinks: OwnerLinkInput[],
+): Pick {
   return {
     id: randomUUID(),
     nonce: randomBytes(6).toString('hex'),
@@ -139,6 +161,7 @@ function mintPick(pointer: Pointer, note: string | null, target: Target | null):
     pointer,
     note,
     target,
+    ownerLinks,
   }
 }
 
@@ -186,12 +209,20 @@ export function parsePickBody(text: string): Parsed<Pick> {
   const pointer = parsePointer(parsed)
   if (!pointer.ok) return pointer
 
+  const owners = parseOwnerChain(parsed)
+  if (!owners.ok) return owners
+
   const target = parseTarget(parsed.target)
   if (!target.ok) return target
 
   return {
     ok: true,
-    value: mintPick(pointer.value, typeof note === 'string' ? note : null, target.value),
+    value: mintPick(
+      { ...pointer.value, walkUp: owners.value.walkUp },
+      typeof note === 'string' ? note : null,
+      target.value,
+      owners.value.links,
+    ),
   }
 }
 
@@ -219,6 +250,10 @@ function parsePointer(body: Record<string, unknown>): Parsed<Pointer> {
       viewport: parsedViewport.value,
       descriptor: parsedDescriptor.value,
       geometry: parsedGeometry.value,
+      // Both filled in by ingest: the chain has to be remapped through the
+      // module graph, and reading that graph is asynchronous.
+      ownerChain: [],
+      walkUp: 0,
     },
   }
 }

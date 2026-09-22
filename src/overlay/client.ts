@@ -6,6 +6,7 @@
 // here swallows one.
 
 import { API_BASE, PICK_PATH, SESSIONS_PATH } from '../api.js'
+import type { OwnerChainLink } from './fiber.js'
 
 /** The one Candidate a Pick is addressed to, as the body names it. */
 export interface TargetRef {
@@ -32,6 +33,10 @@ export interface PickBody {
   viewport: { width: number; height: number }
   descriptor: { tag: string; id?: string; testId?: string }
   geometry: { width: number; height: number; x: number; y: number }
+  /** The Owner chain, innermost first, whole and uncapped (spec §6). */
+  ownerChain: OwnerChainLink[]
+  /** How many DOM levels were walked up to find a fiber at all (spec §4). */
+  walkUp: number
   note: string | null
   target: TargetRef | null
 }

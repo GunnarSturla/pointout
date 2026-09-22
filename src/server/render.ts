@@ -16,6 +16,7 @@
 
 import { pickActionUrl } from '../api.js'
 import { now } from './clock.js'
+import type { OwnerLink } from './owner-chain.js'
 import type { Pick } from './pick.js'
 
 /**
@@ -42,10 +43,41 @@ function pointerRows({ pointer }: Pick): Array<[string, string]> {
     'geometry',
     `${geometry.width}×${geometry.height} at (${geometry.x},${geometry.y})`,
   ])
+  // The whole chain, innermost first, one link per line under one label: the
+  // value a developer wants changed is as often set by an ancestor as by the
+  // element's own line (`CONTEXT.md`, spec §13).
+  const { ownerChain, walkUp } = pointer
+  if (ownerChain.length === 0) rows.push(['owner chain', 'none'])
+  ownerChain.forEach((link, index) => {
+    rows.push([index === 0 ? 'owner chain' : '', ownerLine(link)])
+  })
+  // Never a silent walk-up (spec §21): a Pointer that walked up says how far,
+  // so the agent is never told a location belongs to an element it does not.
+  if (walkUp > 0) {
+    rows.push([
+      'walked up',
+      `${count(walkUp, 'DOM level')} from the picked element before a React fiber was found`,
+    ])
+  }
   return rows
 }
 
 // --- end of borrowed code ---
+
+/**
+ * One link of the Owner chain: who wrote the call site, where, and what that
+ * position says about itself. A link that could not be placed keeps its name and
+ * states its reason — a Pick degrades by annotation, never by refusal
+ * (`CONTEXT.md`, spec §12).
+ */
+function ownerLine({ name, location, confidence }: OwnerLink): string {
+  const who = name ?? '(anonymous)'
+  if (confidence.kind === 'exact') return `${who} — ${location} (exact)`
+  if (confidence.kind === 'approximate') {
+    return `${who} — ${location} (approximate: ${confidence.reason})`
+  }
+  return `${who} — no location (absent: ${confidence.reason})`
+}
 
 /** The Fence (`CONTEXT.md`): the nonce is what the text inside cannot forge. */
 const noteFence = (nonce: string) => `--- note ${nonce} ---`
