@@ -16,8 +16,14 @@
 
   "rules": {
     // The Overlay publishes `__viteAgentInspect` to the consumer's page. The
-    // name is the contract a seam-2 test reads, not a style choice.
-    "no-underscore-dangle": ["error", { "allow": ["__viteAgentInspect"] }],
+    // name is the contract a seam-2 test reads, not a style choice. `_debugOwner`
+    // and `_debugStack` are React's own fiber field names, which this repo reads
+    // and does not get to choose; reading them is the whole owner-chain mechanism
+    // (spec §4, §6).
+    "no-underscore-dangle": [
+      "error",
+      { "allow": ["__viteAgentInspect", "_debugOwner", "_debugStack"] }
+    ],
 
     // A side-effect import is how Vite loads CSS, and `packaging.test` requires
     // the package on purpose, to prove that requiring it throws.

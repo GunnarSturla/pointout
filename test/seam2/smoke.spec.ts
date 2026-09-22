@@ -42,17 +42,33 @@ test('the fixed full-viewport decoy covers the page and dismisses', async ({ pag
   await expect(page.locator('[data-fixture="full-viewport-decoy-restore"]')).toBeVisible()
 })
 
-test('the Overlay module is served and evaluated', async ({ page }) => {
+test('the Overlay module is served, evaluated, and mounted on one open shadow root', async ({
+  page,
+}) => {
   await expect
     .poll(() =>
       // The marker's shape is written out here rather than imported from the
       // Overlay: what the page exposes is the contract, and a test that still
       // passes after the Overlay renames its internals is the test we want.
-      page.evaluate(
-        () =>
-          (globalThis as { __viteAgentInspect?: { stage?: string } }).__viteAgentInspect
-            ?.stage,
-      ),
+      page.evaluate(() => {
+        const marker = (
+          globalThis as {
+            __viteAgentInspect?: { apiBase?: string; host?: Element }
+          }
+        ).__viteAgentInspect
+        const host = marker?.host
+        return {
+          apiBase: marker?.apiBase,
+          tag: host?.tagName.toLowerCase(),
+          mode: host?.shadowRoot ? 'open' : 'closed or absent',
+          roots: document.querySelectorAll('vite-agent-inspect').length,
+        }
+      }),
     )
-    .toBe('scaffold')
+    .toEqual({
+      apiBase: '/__agent',
+      tag: 'vite-agent-inspect',
+      mode: 'open',
+      roots: 1,
+    })
 })

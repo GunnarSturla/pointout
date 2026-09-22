@@ -1,4 +1,4 @@
-import { unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import type { Server, Socket } from 'node:net'
 import { join } from 'node:path'
@@ -21,6 +21,12 @@ type SocketFixture = Pick<FixtureEnv, 'registryDir' | 'socketDir'>
 export interface FakeSessionSpec extends Omit<SessionSpec, 'socket'> {
   /** The token the key file publishes. `null` writes no key file at all. */
   peerToken?: string | null
+  /**
+   * Append every received line to this file as well as to memory. Seam 2 needs
+   * it: the session is bound in Playwright's `globalSetup` process and the
+   * specs run in worker processes, so a file is the only thing they share.
+   */
+  logFile?: string
 }
 
 export interface FakeSession {
@@ -43,8 +49,11 @@ export async function listeningSession(
   fixture: SocketFixture,
   spec: FakeSessionSpec,
 ): Promise<FakeSession> {
-  const { peerToken = 'peer-token-' + Math.random().toString(16).slice(2), ...entry } =
-    spec
+  const {
+    peerToken = 'peer-token-' + Math.random().toString(16).slice(2),
+    logFile,
+    ...entry
+  } = spec
 
   // `socket: false` keeps the registry writer from putting a plain file where the
   // listener is about to bind.
@@ -71,7 +80,9 @@ export async function listeningSession(
       while ((newline = buffered.indexOf('\n')) !== -1) {
         const line = buffered.slice(0, newline)
         buffered = buffered.slice(newline + 1)
-        if (line.trim()) lines.push(line)
+        if (!line.trim()) continue
+        lines.push(line)
+        if (logFile) appendFileSync(logFile, line + '\n')
       }
     })
     connection.on('error', () => {})

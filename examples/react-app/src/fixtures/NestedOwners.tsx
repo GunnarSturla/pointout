@@ -15,7 +15,11 @@ const articles = [
 ]
 
 function CardHeading({ children }: { children: ReactNode }) {
-  return <h3 className="card-heading">{children}</h3>
+  return (
+    <h3 className="card-heading" data-fixture="card-heading">
+      {children}
+    </h3>
+  )
 }
 
 function ArticleCard({ title, badge }: { title: string; badge: ReactNode }) {
