@@ -13,9 +13,17 @@ export interface TargetRef {
   pid: number
 }
 
-/** A live agent session a Pick could be addressed to, as `/sessions` sends it. */
-export interface Candidate extends TargetRef {
+/** A Target the Overlay can put in front of a developer: it has a name. */
+export interface NamedTarget extends TargetRef {
   name: string
+}
+
+/** A live agent session a Pick could be addressed to, as `/sessions` sends it. */
+export interface Candidate extends NamedTarget {
+  status: string
+  waitingFor: string | null
+  /** Where *idle for Nd* comes from. Never `updatedAt`, which is not a heartbeat. */
+  statusUpdatedAt: string | null
   startedThisServer: boolean
 }
 
@@ -28,31 +36,52 @@ export interface PickBody {
   target: TargetRef | null
 }
 
+/**
+ * What the registry turned out to be, and who is in it. `hookFloor` is the
+ * server's own word for a registry it could not read: the Candidates are empty
+ * for a reason that is not "nobody is running", and the Panel says so
+ * differently (spec §7's two zero states).
+ */
+export interface Sessions {
+  candidates: Candidate[]
+  hookFloor: boolean
+}
+
 /** Accepted, with whatever the server wants said about it; or refused, with why. */
 export type Sent =
   | { ok: true; pickId: string; state: string; reason?: string }
-  | { ok: false; reason: string }
+  /**
+   * Refused. `replacement` is the 409's own: the named Target has left and this
+   * is what the chain yields instead — offered, never taken (spec §14, §21).
+   */
+  | { ok: false; reason: string; replacement?: NamedTarget }
 
 /**
- * The Candidates, read at pick time (spec §14: on demand, never on a timer).
- * A registry this server cannot read is a refusal like any other — ticket 10
- * owns the two zero states and the in-Panel picker.
+ * The Candidates, read on demand (spec §14: at pick time, then on the Overlay's
+ * one tick while something is watching — never on a background timer).
  */
-export async function readCandidates(): Promise<
-  { ok: true; candidates: Candidate[] } | { ok: false; reason: string }
+export async function readSessions(): Promise<
+  { ok: true; sessions: Sessions } | { ok: false; reason: string }
 > {
   try {
     const response = await fetch(API_BASE + SESSIONS_PATH, {
       headers: { accept: 'application/json' },
     })
     const body = (await response.json()) as {
+      registry?: { hookFloor?: boolean }
       candidates?: Candidate[]
       reason?: string
     }
     if (!response.ok) {
       return { ok: false, reason: body.reason ?? answered(response.status) }
     }
-    return { ok: true, candidates: body.candidates ?? [] }
+    return {
+      ok: true,
+      sessions: {
+        candidates: body.candidates ?? [],
+        hookFloor: body.registry?.hookFloor === true,
+      },
+    }
   } catch (error) {
     return { ok: false, reason: unreachable(error) }
   }
@@ -70,9 +99,15 @@ export async function sendPick(body: PickBody): Promise<Sent> {
       pickId?: string
       state?: string
       reason?: string
+      replacement?: NamedTarget
     }
     if (!response.ok) {
-      return { ok: false, reason: answer.reason ?? answered(response.status) }
+      const replacement = named(answer.replacement)
+      return {
+        ok: false,
+        reason: answer.reason ?? answered(response.status),
+        ...(replacement ? { replacement } : {}),
+      }
     }
     return {
       ok: true,
@@ -86,16 +121,68 @@ export async function sendPick(body: PickBody): Promise<Sent> {
 }
 
 /**
- * Steps 1 and 2 of §14's preselect chain, which is all ticket 04 needs: the
- * entry that started this dev server, else the sole Candidate. Step 3 (the last
- * Target used from this origin) and step 4 (nothing, Send disabled) are
- * ticket 10's, along with the row that shows the choice.
+ * Spec §14's preselect chain, the browser's half of it: the last Target used
+ * from this origin while it is still a Candidate, else the entry that started
+ * this dev server, else the sole Candidate, else nothing — and the Panel
+ * disables Send and says why. A Candidate in `waiting` stays in the chain,
+ * flagged by the row rather than skipped by it.
+ *
+ * §14 numbers the remembered Target third, *after* the `CLAUDE_PID` match. Taken
+ * literally that makes it unreachable in the case it exists for: the entry that
+ * started this dev server is the default a developer overrides, and story 31
+ * asks that overriding it once be enough. So a remembered Target that is still a
+ * Candidate wins, and the numbered chain is what it falls back to.
  */
-export function preselect(candidates: Candidate[]): Candidate | null {
-  return (
-    candidates.find((candidate) => candidate.startedThisServer) ??
-    (candidates.length === 1 ? (candidates[0] ?? null) : null)
-  )
+export function preselect(
+  candidates: Candidate[],
+  remembered: string | null,
+): Candidate | null {
+  const lastUsed = candidates.find((candidate) => candidate.sessionId === remembered)
+  if (lastUsed) return lastUsed
+  const startedThisServer = candidates.find((candidate) => candidate.startedThisServer)
+  if (startedThisServer) return startedThisServer
+  return candidates.length === 1 ? (candidates[0] ?? null) : null
+}
+
+/**
+ * The last Target used, by origin (spec §14). `localStorage` is per-origin
+ * already; the key says so as well, because the spec names the origin and a key
+ * that reads like the rule is one nobody has to check twice.
+ *
+ * Storage a consumer's page has disabled is not an error the Overlay reports:
+ * the chain simply falls through to step 4.
+ */
+export function rememberedTarget(view: Window): string | null {
+  try {
+    return view.localStorage.getItem(lastTargetKey(view))
+  } catch {
+    return null
+  }
+}
+
+export function rememberTarget(view: Window, sessionId: string): void {
+  try {
+    view.localStorage.setItem(lastTargetKey(view), sessionId)
+  } catch {
+    // A page with storage denied chooses its Target once per Pick, and that is
+    // the whole cost of it.
+  }
+}
+
+function lastTargetKey(view: Window): string {
+  return `vite-agent-inspect:last-target:${view.location.origin}`
+}
+
+/** A replacement is only usable if it carries all three parts of an address. */
+function named(value: NamedTarget | undefined): NamedTarget | null {
+  if (!value || typeof value.sessionId !== 'string' || typeof value.pid !== 'number') {
+    return null
+  }
+  return {
+    sessionId: value.sessionId,
+    pid: value.pid,
+    name: typeof value.name === 'string' ? value.name : value.sessionId,
+  }
 }
 
 function answered(status: number): string {

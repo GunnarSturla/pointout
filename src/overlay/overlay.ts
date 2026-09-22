@@ -109,6 +109,7 @@ export function startOverlay(document: Document): OverlayHandle {
     mode = 'picked'
     panel = openPanel({
       document,
+      view,
       shadow,
       element,
       pointer: () => pointerOf(view, element),

@@ -26,10 +26,16 @@ function isSameOrigin(headers: IncomingHttpHeaders, ownOrigins: Set<string>): bo
 
 // --- end of borrowed code ---
 
-/** A refusal the caller sends as-is. `null` from a check means "may proceed". */
+/**
+ * A refusal the caller sends as-is. `null` from a check means "may proceed".
+ *
+ * Every refusal names its part and says why; one that has something further the
+ * Overlay must act on — the replacement a re-resolved Target yields (spec §14) —
+ * carries it beside the two, rather than burying it in the prose.
+ */
 export interface Refusal {
   status: number
-  body: { error: string; reason: string }
+  body: { error: string; reason: string } & Record<string, unknown>
 }
 
 /** IPv4 loopback, IPv6 loopback, and IPv4-mapped-into-IPv6 loopback. */

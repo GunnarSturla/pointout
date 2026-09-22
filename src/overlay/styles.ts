@@ -116,11 +116,91 @@ export const OVERLAY_STYLESHEET = `
 .target {
   flex: 1;
   min-width: 0;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: ${FONT};
+  font-size: 12px;
+  text-align: start;
+  opacity: 0.75;
+  cursor: default;
+}
+
+.target[data-expandable] { cursor: pointer }
+
+.target-line {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.target-action {
+  flex: none;
+  font-weight: 600;
+}
+
+.targets {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid rgb(127 127 127 / 45%);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.target-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: ${FONT};
   font-size: 12px;
-  opacity: 0.75;
+  text-align: start;
+  cursor: pointer;
+}
+
+.target-row[data-chosen] { background: rgb(79 124 255 / 14%) }
+
+.row-name { font-weight: 600 }
+
+.row-status,
+.row-idle,
+.row-waiting { opacity: 0.75 }
+
+.started-badge {
+  padding: 0 5px;
+  border: 1px solid #4f7cff;
+  border-radius: 999px;
+  color: #4f7cff;
+  font-size: 11px;
+}
+
+.empty {
+  padding: 6px 2px;
+  font-size: 12px;
+}
+
+.cancel {
+  flex: none;
+  padding: 5px 10px;
+  border: 1px solid rgb(127 127 127 / 45%);
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: ${FONT};
+  cursor: pointer;
 }
 
 .send {
