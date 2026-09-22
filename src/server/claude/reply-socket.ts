@@ -5,8 +5,8 @@ import { join } from 'node:path'
 
 // The reply address (spec §16). A Vite plugin listening in Claude Code's own
 // socket namespace is a visible step, accepted knowingly, and it comes with two
-// safety properties that land with the first bind rather than with Receipt
-// parsing (ticket 13):
+// safety properties that land with the first bind rather than with what is read
+// off it:
 //
 //   1. it never binds over a path a registry entry names, and
 //   2. it unlinks its socket on shutdown.
@@ -17,8 +17,11 @@ import { join } from 'node:path'
 // again. It is removed only after the registry has been asked, only when it
 // really is a socket, and the posture line says it happened.
 //
-// For now the socket accepts connections and discards what arrives; ticket 13
-// parses Receipts off it.
+// What arrives here is NDJSON, one frame per line, on a connection the sender
+// opens for it. This module splits the lines and nothing else: what a line means
+// is `receipt-frames.ts`, and which Pick it names is `route.ts`. A line it
+// cannot use never reaches either, and never takes the connection down — the
+// next frame on the same connection is still served (spec §16, user story 82).
 
 /** Test-only. A consumer never sets it. */
 const SOCKET_DIR_ENV = 'VITE_AGENT_INSPECT_SOCKET_DIR'
@@ -38,10 +41,22 @@ export interface ReplySocket {
   close(): void
 }
 
+/**
+ * How long a single frame may be before it is discarded unread. A control frame
+ * is a few hundred bytes; anything approaching this is not one, and buffering it
+ * would let whatever can reach this socket decide how much memory a dev server
+ * holds.
+ */
+const LINE_MAX_CHARACTERS = 64 * 1024
+
 export interface ReplySocketOptions {
   socketDir: string
   /** Every path the session registry names, Candidate or not. */
   claimedPaths: Iterable<string>
+  /** One NDJSON line, as it arrived. Never throws back into the socket. */
+  receive(line: string): void
+  /** A line this socket would not even hand on, and why (spec §21). */
+  refuse(why: string): void
 }
 
 /**
@@ -52,6 +67,8 @@ export interface ReplySocketOptions {
 export async function bindReplySocket({
   socketDir,
   claimedPaths,
+  receive,
+  refuse,
 }: ReplySocketOptions): Promise<ReplySocket> {
   // `<pid>.sock` satisfies the harness's strict reply-address grammar, and is
   // the one name this dev server can claim without inventing an identity.
@@ -93,9 +110,27 @@ export async function bindReplySocket({
   }
 
   const server = createServer((connection) => {
-    // Ticket 13 parses what arrives. Until then it is drained rather than left
-    // to fill a buffer, and an error on it never reaches the dev server.
-    connection.resume()
+    connection.setEncoding('utf8')
+    let buffered = ''
+    connection.on('data', (chunk: string) => {
+      buffered += chunk
+      let newline: number
+      while ((newline = buffered.indexOf('\n')) !== -1) {
+        const line = buffered.slice(0, newline)
+        buffered = buffered.slice(newline + 1)
+        if (line.trim()) receive(line)
+      }
+      // The remainder is a frame still arriving — unless it has grown past any
+      // frame this socket knows, in which case it is dropped here and whatever
+      // follows the next newline is read as a line of its own. That line is
+      // unusable too, and is refused out loud like any other (spec §21).
+      if (buffered.length > LINE_MAX_CHARACTERS) {
+        refuse(`a frame longer than ${LINE_MAX_CHARACTERS} characters`)
+        buffered = ''
+      }
+    })
+    // An error on this connection is the sender's, and never the dev server's
+    // to fall over on.
     connection.on('error', () => {})
   })
   server.on('error', () => {})

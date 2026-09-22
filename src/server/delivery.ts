@@ -1,4 +1,5 @@
 import type { Target } from './pick.js'
+import type { ReplyListener } from './receipt.js'
 
 // The second-harness seam (spec §18). Everything a delivery route needs to be
 // asked is here, in this project's own vocabulary; everything Claude Code
@@ -22,6 +23,13 @@ export interface DeliveryRoute {
   /** The one line this route contributes to the startup posture block. */
   postureLine: string
   deliver(delivery: Delivery): Promise<DeliveryOutcome>
+  /**
+   * Where what the route hears back goes (spec §16). A route correlates what
+   * arrives to the Picks it wrote and hands on only those; a route that has no
+   * return leg, or is told nothing, simply never calls it — which is the floor
+   * v0 would have had without Receipts at all. Registered once.
+   */
+  listen(listener: ReplyListener): void
   /** Release whatever the route is holding. Safe to call twice. */
   close(): void
 }

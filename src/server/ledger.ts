@@ -8,13 +8,15 @@ import type { QueueEntry } from './queue.js'
 // answers "what happened to it" — and the Overlay reads the second one.
 //
 // **The rule this module exists to enforce**: a Pick's state advances only on
-// Pick-specific evidence — an ack, a done, a Receipt (ticket 13) or this
-// server's own clock. Session-level evidence (registry status, an idle notice)
+// Pick-specific evidence — an ack, a done, a Receipt or this server's own
+// clock. Session-level evidence (registry status, an idle notice)
 // colours the Target row and never moves a Pick. So nothing here takes a
 // session as an argument, and nothing here can.
 
-/** Spec §17. `held` and `unknown` arrive with tickets 13 and 14. */
+/** Spec §17. `unknown` arrives with ticket 14. */
 export const SENT = 'sent'
+/** A Receipt said the Target is holding it until a developer approves it. */
+export const HELD = 'held'
 export const WORKING = 'working'
 export const DONE = 'done'
 export const FAILED = 'failed'
@@ -28,6 +30,7 @@ export const FAILED = 'failed'
 export type PickState =
   | typeof QUEUED_UNADDRESSED
   | typeof SENT
+  | typeof HELD
   | typeof WORKING
   | typeof DONE
   | typeof FAILED

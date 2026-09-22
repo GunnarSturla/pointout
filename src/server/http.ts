@@ -26,6 +26,8 @@ import { resolveOwnerChain } from './owner-chain.js'
 import { parsePickBody, readRequestBody } from './pick.js'
 import { QUEUED_UNADDRESSED, createPickQueue } from './queue.js'
 import type { PickQueue } from './queue.js'
+import { createIdleLog, recordReplies } from './receipt.js'
+import type { IdleLog } from './receipt.js'
 import { readCandidates } from './registry.js'
 import { renderPicks } from './render.js'
 import { pickStatuses } from './status.js'
@@ -54,6 +56,8 @@ interface RequestContext {
   queue: PickQueue
   /** What became of every Pick, after its entry has left the queue. */
   ledger: Ledger
+  /** When each Target last finished a turn. Never moves a Pick (spec §17). */
+  idle: IdleLog
   route: DeliveryRoute
   /** Screen Capture, available or disabled with its reason (spec §10). */
   captures: CaptureService
@@ -127,8 +131,13 @@ export function installAgentEndpoints(
     logger,
     queue: createPickQueue(),
     ledger: createLedger(now),
+    idle: createIdleLog(),
     origin: () => loopbackOrigin(server),
   }
+
+  // The route bound its reply address before this server had a ledger to move.
+  // It has one now, so what comes back stops being logged and starts counting.
+  recordReplies(route, context)
 
   // Nothing here calls `next`: every `/__agent` path is answered or refused,
   // and Vite's SPA fallback never sees one.
@@ -221,9 +230,9 @@ function sessions(
 function reportStatus(
   request: Connect.IncomingMessage,
   response: ServerResponse,
-  { facts, queue, ledger }: RequestContext,
+  { facts, queue, ledger, idle }: RequestContext,
 ): void {
-  sendJson(response, 200, { picks: pickStatuses(facts, queue, ledger) })
+  sendJson(response, 200, { picks: pickStatuses(facts, queue, ledger, idle) })
 }
 
 /**

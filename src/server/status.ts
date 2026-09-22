@@ -1,5 +1,6 @@
 import type { Ledger, PickState, Transition } from './ledger.js'
 import type { PickQueue } from './queue.js'
+import type { IdleLog } from './receipt.js'
 import { readCandidates } from './registry.js'
 import type { RegistryQuery } from './registry.js'
 import { addresses } from './targeting.js'
@@ -9,8 +10,9 @@ import { addresses } from './targeting.js'
 //
 // The two halves come from different places on purpose (spec §17). The state is
 // Pick-specific evidence and lives in the ledger; the Target row is
-// session-level evidence, read live from the registry on every poll, and it
-// colours the row without ever moving the Pick.
+// session-level evidence — read live from the registry on every poll, and from
+// the idle notices this server has heard — and it colours the row without ever
+// moving the Pick.
 
 /** The Target row §17 draws under a Pick, as this server can answer it. */
 export interface TargetRow {
@@ -24,6 +26,13 @@ export interface TargetRow {
   name: string | null
   status: string | null
   waitingFor: string | null
+  /**
+   * When this Target last finished a turn, as an idle notice reported it —
+   * ticket 14's report-back clock reads it. Null until one has arrived, which
+   * is most of the time: a notice is one-shot, per Pick. It is the Target's own
+   * clock, not this server's.
+   */
+  idleAt: number | null
 }
 
 /** One Pick, as the Overlay polls it. */
@@ -48,6 +57,7 @@ export function pickStatuses(
   facts: RegistryQuery,
   queue: PickQueue,
   ledger: Ledger,
+  idle: IdleLog,
 ): PickStatus[] {
   // One registry read for the whole poll: two reads could answer two Picks
   // addressed to the same session differently.
@@ -74,6 +84,7 @@ export function pickStatuses(
             name: live?.name ?? null,
             status: live?.status ?? null,
             waitingFor: live?.waitingFor ?? null,
+            idleAt: idle.latest(target),
           }
         : null,
     }

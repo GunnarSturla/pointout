@@ -1,5 +1,5 @@
 import { appendFileSync, unlinkSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
+import { connect, createServer } from 'node:net'
 import type { Server, Socket } from 'node:net'
 import { join } from 'node:path'
 import { writeSession } from './registry.js'
@@ -14,6 +14,12 @@ import type { FixtureEnv } from './fixture-env.js'
 // The key file is the harness's too: `<registryDir>/<pid>.<hash>.key`, holding the
 // `peerToken` the auth frame carries. Its name is spelled out here rather than
 // imported, like every other harness-shaped string.
+//
+// The return leg is here as well. A Receipt is a fresh outbound connection from
+// the session to the address the sender published in `from` — never an answer on
+// the connection the Pick arrived over — so `replyTo` is what a fake session uses
+// to say what became of a Pick, and `replyAddress()` is where it learns where to
+// say it.
 
 /** Only the two directories are needed, so a partial fixture will do. */
 type SocketFixture = Pick<FixtureEnv, 'registryDir' | 'socketDir'>
@@ -38,6 +44,11 @@ export interface FakeSession {
   peerToken: string | null
   /** Every NDJSON line this session's inbox received, oldest first. */
   lines(): string[]
+  /**
+   * The `uds:` address the dev server published in the frames it wrote here —
+   * where a Receipt goes. Throws when nothing carrying one has arrived yet.
+   */
+  replyAddress(): string
   /** The same lines, parsed. */
   frames(): Array<Record<string, unknown>>
   /** Resolve once `count` lines have arrived; reject if they do not. */
@@ -104,6 +115,14 @@ export async function listeningSession(
     socketPath,
     peerToken,
     lines: () => [...lines],
+
+    replyAddress() {
+      for (const line of lines) {
+        const from = (JSON.parse(line) as { from?: unknown }).from
+        if (typeof from === 'string' && from.startsWith('uds:')) return from
+      }
+      throw new Error(`no frame at ${socketPath} carried a uds: reply address`)
+    },
     frames: () => lines.map((line) => JSON.parse(line) as Record<string, unknown>),
 
     async awaitLines(count, timeoutMs = 4000) {
@@ -148,5 +167,48 @@ export function fakeSessions(): FakeSessions {
     async closeAll() {
       while (sessions.length) await sessions.pop()!.close()
     },
+  }
+}
+
+/**
+ * One open connection to a dev server's reply address, held open on purpose: a
+ * frame the server could not use must leave the socket serving the next one, and
+ * the only way to see that is to send both down the same connection.
+ */
+export interface ReplyConnection {
+  /** One NDJSON line per frame. */
+  send(...frames: unknown[]): Promise<void>
+  /** A raw line, for the frames a test needs to be malformed. */
+  sendRaw(line: string): Promise<void>
+  close(): Promise<void>
+}
+
+/** Connect to a `uds:<path>` reply address, the way the harness does. */
+export async function replyTo(address: string): Promise<ReplyConnection> {
+  const path = address.startsWith('uds:') ? address.slice('uds:'.length) : address
+  const socket = connect(path)
+  socket.on('error', () => {})
+
+  await new Promise<void>((resolve, reject) => {
+    socket.once('error', reject)
+    socket.once('connect', () => {
+      socket.removeListener('error', reject)
+      resolve()
+    })
+  })
+
+  const write = (line: string) =>
+    new Promise<void>((resolve, reject) => {
+      socket.write(line, (error) => (error ? reject(error) : resolve()))
+    })
+
+  return {
+    send: (...frames) =>
+      write(frames.map((frame) => JSON.stringify(frame) + '\n').join('')),
+    sendRaw: (line) => write(line + '\n'),
+    close: () =>
+      new Promise<void>((resolve) => {
+        socket.end(() => resolve())
+      }),
   }
 }

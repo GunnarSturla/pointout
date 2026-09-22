@@ -39,6 +39,7 @@ interface PickStatus {
     name: string | null
     status: string | null
     waitingFor: string | null
+    idleAt: number | null
   } | null
 }
 
@@ -326,6 +327,9 @@ describe('what a status row carries', () => {
       name: 'the one in the terminal',
       status: 'waiting',
       waitingFor: 'permission',
+      // No idle notice has come back for this Target, and a row never invents
+      // one: null says the Target has not been heard from, not that it is busy.
+      idleAt: null,
     })
   })
 
@@ -350,6 +354,7 @@ describe('what a status row carries', () => {
       name: null,
       status: null,
       waitingFor: null,
+      idleAt: null,
     })
   })
 

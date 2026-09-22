@@ -10,7 +10,8 @@ is stale — say so.
 The server side: root discovery and cwd normalization, the Guard (loopback always,
 Origin on ingress), the session registry read and Candidate filter, the startup posture
 block, Pick ingest, the claim-once queue and its ledger, `GET /__agent/status`, the
-reply socket, the drain endpoint and CLI, and Screen Capture.
+reply socket and the Receipts read off it, the drain endpoint and CLI, and Screen
+Capture.
 
 The Overlay: one open shadow root, the Picker, Highlight and Panel, the hit test with
 its shield, the Owner chain with per-frame Confidence, and Target selection.
@@ -30,6 +31,12 @@ its shield, the Owner chain with per-frame Confidence, and Target selection.
 - **`CONTEXT.md` is binding on identifiers as well as prose**, including its `_Avoid_`
   lists. Pick, Pointer, Note, Fence, Guard, Candidate, Target, Receipt, Ack, Overlay,
   Picker, Highlight, Panel, Stack, Confidence, Screen Capture.
+- **Motion is opt-in, and lives in one place.** Every moving declaration sits inside
+  the single `@media (prefers-reduced-motion: no-preference)` block at the bottom of
+  `src/overlay/styles.ts`; nothing outside it may move, and a module that animates in
+  script has to name `prefers-reduced-motion` itself. A seam-1 test reads the built
+  Overlay for both. See `docs/motion.md`, which also holds the deviation
+  pre-registered against the `review-animations` gate.
 - **Borrowed code is credited**: a provenance header, an end-of-borrow marker, and a
   `LICENSE-THIRDPARTY` entry. A test checks the header and the entry agree.
 
@@ -77,8 +84,9 @@ it before committing. Your ticket names which files are yours.
 ## Known open items
 
 - The TTL sentence *"nobody prompted Claude in this repo within 30 minutes"* is a
-  stretch for a Pick written to a socket and **false** for a drained one. Ticket 14 owns
-  the fix.
+  stretch for a Pick written to a socket, **false** for a drained one, and false twice
+  over for a `held` one — somebody was asked, and it was delivered. Ticket 14 owns the
+  fix; ticket 13 left it exactly as it found it.
 - **Ticket 19 cannot test fail-closed by stripping `Origin`** — see above. It needs
   another mechanism.
 - Spec §12's "frame directly above the sentinel" sentence is superseded by ADR-0003;
