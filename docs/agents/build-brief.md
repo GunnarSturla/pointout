@@ -13,11 +13,23 @@ block, Pick ingest, the claim-once queue and its ledger, `GET /__agent/status`, 
 reply socket and the Receipts read off it, the drain endpoint and CLI, and Screen
 Capture.
 
+The CLI: `drain`, and `init` (ticket 16), which writes the two hook entries into the
+project's `.claude/settings.json` and the setup skill into `.claude/skills/`. The
+harness-neutral half is `src/cli/setup.ts` (`HarnessSetup`); the Claude half, and the
+skill text, live in `src/cli/claude/`. It mirrors `DeliveryRoute` in
+`src/server/delivery.ts` rather than sharing one interface with it.
+
 The Overlay: one open shadow root, the Picker, Highlight, Panel and Stack, the hit
 test with its shield, the Owner chain with per-frame Confidence, and Target selection.
 The Panel, Stack and Picker are React components fed by an imperative controller; the
 Highlight is imperative (ADR-0004). The Panel's placement is arithmetic in
-`src/overlay/placement.ts`; there is no runtime dependency.
+`src/overlay/placement.ts`; there is no runtime dependency. A Pick's chip words and
+next action come from one `say(state, reason, name)` in `stack.tsx`; `held` and
+`failed` Receipts reach the chip (ticket 27).
+
+Seam 3's no-model tier (ticket 20) spawns a real, scrubbed, throwaway session through
+`test/harness/claude-session.ts` and checks the harness shapes v0 pins, at no token
+cost.
 
 The shapes that cross HTTP live once, in `src/wire.ts`, and both halves import them.
 The server keeps one ledger per dev server (`src/server/ledger.ts`): a Pick is in the
@@ -74,6 +86,23 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 - **`ours(event)` may not be `composedPath().includes(host)`** — with the shield up
   that is true of every page click and no Pick can be made.
 
+- **A `session_id`-mismatched frame produces no Receipt** (Claude Code 2.1.280,
+  ticket 20). It is dropped silently. Spec §15's sentence saying it comes back as a
+  Receipt, and the premise of the stand-in in `test/seam1/receipts.test.ts`, are wrong.
+- **An idle notice from a session that has never finished a turn carries no
+  `finished_at`.** v0 subscribes only after a Pick, so it is not affected.
+- **A session registers only after the folder-trust prompt is accepted**, and a
+  session that inherits `CLAUDE_CODE_CHILD_SESSION` publishes a key file and a socket
+  but never registers.
+- **The Overlay's import graph is checked for harness words.** `test/seam1/overlay-harness-neutral.test.ts`
+  fails any Claude Code mechanism string in `src/overlay/**`, and
+  `test/seam1/overlay-words.test.ts` fails a second spelling of *approve it in your
+  terminal* or any "delivered" that is not "Not delivered". Import the constant from
+  `words.ts`.
+- **A seam-2 spec can send real Receipts**: read `from` and `msg_id` off the delivered
+  frame in `SEAM2_FRAMES_LOG` and call `replyTo(from)` from
+  `test/harness/session-socket.ts`. Nothing fakes `/status`.
+
 ## The gates, and how to run them fast
 
 | | |
@@ -82,6 +111,10 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 | `npm run test:seam1` | ~47s |
 | `npm run test:seam2:fast` | ~18s, Chromium only — **iterate on this** |
 | `npm run test:seam2` | ~46s, all three engines — **run before you commit** |
+
+**Seam 2 binds a fixed port (5178).** Agents running in parallel worktrees must each
+set `SEAM2_PORT` to their own port, or a bind failure reads as a broken test.
+`npm run test:seam3` really spawns a session; it is never in `npm test`.
 
 Warnings are denied. Fix a finding; never suppress it. A rule may be configured in
 `.oxlintrc.json` only with a comment line directly above saying why, and a test fails
@@ -95,6 +128,16 @@ your hunks rather than the file. If a commit lands under you, rebase your thinki
 it before committing. Your ticket names which files are yours.
 
 ## Known open items
+
+- **The Overlay still names the harness in three places** (ticket 16): spec §17's
+  sentences say "Claude", the wire carries `registry.hookFloor`, and `api.ts`, which
+  the Overlay imports, exports the hook budget and `DRAIN_PATH`. Ticket 16's
+  "no reference to Claude or hooks" box is met in substance only; a follow-up needs a
+  harness-neutral wire name and the hook budget out of `api.ts`.
+- **`CONTEXT.md`'s Receipt says "bad outcomes only"**, but a `delivered` Receipt
+  releases a `held` Pick. The definition needs that clause.
+- **"reply" is on Ack's _Avoid_ list**, yet the code says "reply address" and the
+  harness has `replyTo()`. Settle the word.
 
 - The TTL sentence *"nobody prompted Claude in this repo within 30 minutes"* is a
   stretch for a Pick written to a socket, **false** for a drained one, and false twice
