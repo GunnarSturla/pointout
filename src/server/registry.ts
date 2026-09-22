@@ -95,6 +95,34 @@ export function readCandidates({ registryDir, root, claudePid }: RegistryQuery):
 }
 
 /**
+ * Every socket path the registry names, whatever shape the entry is in. The
+ * reply socket refuses to bind over one of these (spec §16), and that refusal
+ * is about ownership rather than usability: an entry this plugin cannot read is
+ * still a session that owns its socket.
+ */
+export function claimedSocketPaths(directory: string): string[] {
+  let names: string[]
+  try {
+    names = readdirSync(directory).filter((name) => name.endsWith('.json'))
+  } catch {
+    return []
+  }
+
+  const paths: string[] = []
+  for (const name of names) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(join(directory, name), 'utf8'))
+      const path = (parsed as { messagingSocketPath?: unknown } | null)
+        ?.messagingSocketPath
+      if (typeof path === 'string' && path.length > 0) paths.push(path)
+    } catch {
+      // Not JSON, or gone since the listing. It names no path either way.
+    }
+  }
+  return paths
+}
+
+/**
  * Read the registry directory. Never throws: an unreadable registry is a state
  * this plugin reports, not an error it propagates.
  *

@@ -6,7 +6,11 @@ import type { FixtureEnv } from './fixture-env.js'
 // pointed at. The field names are the harness's, not ours: the plugin pins on
 // this shape and says so out loud when it does not find it.
 
-let nextPid = 40_000
+// Far above any pid this machine hands out, because a fake session's socket is
+// `<socketDir>/<pid>.sock` and so is the dev server's own reply socket: a fake
+// session that happened to pick the test runner's pid would make the server
+// refuse to bind, for a reason that has nothing to do with the test.
+let nextPid = 400_000
 
 /** Only the two directories are needed, so a partial fixture will do. */
 type RegistryFixture = Pick<FixtureEnv, 'registryDir' | 'socketDir'>

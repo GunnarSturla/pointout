@@ -1,4 +1,6 @@
 import type { ViteDevServer } from 'vite'
+import { socketDirectory } from './claude/reply-socket.js'
+import type { DeliveryRoute } from './delivery.js'
 import { discoverRepoRoot } from './paths.js'
 import type { RootMethod } from './paths.js'
 import {
@@ -26,6 +28,11 @@ export interface ServerFacts {
   rootMethod: RootMethod
   registryDir: string
   /**
+   * The directory the harness keeps its message sockets in, and where this dev
+   * server binds its own reply address (spec §16).
+   */
+  socketDir: string
+  /**
    * The pid of the session whose shell started this dev server, inherited
    * through the environment. Null when nothing started it.
    */
@@ -45,12 +52,17 @@ export function createServerFacts({
     root,
     rootMethod: method,
     registryDir: registryDirectory(),
+    socketDir: socketDirectory(),
     claudePid: parsePid(process.env.CLAUDE_PID),
   }
 }
 
 /** One block, once, when the server is actually listening (spec §2, §21). */
-export function announcePosture(server: ViteDevServer, facts: ServerFacts): void {
+export function announcePosture(
+  server: ViteDevServer,
+  facts: ServerFacts,
+  route: DeliveryRoute,
+): void {
   const print = () => {
     const { registry, candidates } = readCandidates(facts)
 
@@ -58,6 +70,7 @@ export function announcePosture(server: ViteDevServer, facts: ServerFacts): void
       .add('root', rootLine(facts.root, facts.rootMethod))
       .add('guard', GUARD_LINE)
       .add('registry', registryLine(registry, candidates.length))
+      .add('reply socket', route.postureLine)
 
     const address = server.httpServer?.address()
     const host = address && typeof address === 'object' ? address.address : null

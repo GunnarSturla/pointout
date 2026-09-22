@@ -48,7 +48,7 @@ is not implemented.
 server, with the plugin, against the real example app, so the module graph and the
 sourcemaps are real. Tests POST and GET against it.
 
-Three helpers sit beside it, all of them fixture code under the same rule:
+Four helpers sit beside it, all of them fixture code under the same rule:
 
 - `test/harness/temp-app.ts` builds a throwaway consumer in a temp directory — a
   checkout that may or may not be a git repository, linked worktrees and sibling repos
@@ -62,6 +62,11 @@ Three helpers sit beside it, all of them fixture code under the same rule:
 - `test/harness/registry.ts` writes fake session entries into the registry directory
   the plugin was pointed at. The field names are the harness's, spelled out rather than
   imported: the plugin pins on that shape, and the test is what says so.
+- `test/harness/session-socket.ts` makes a fake session that really listens: it
+  binds a unix socket at the path its registry entry names, writes the
+  `<pid>.<hash>.key` file the `peerToken` comes from, and records every NDJSON
+  line written to it. It is how a delivery is observed — the frames at the
+  socket, not a function the server exports.
 - `test/harness/logger.ts` is a Vite `Logger` that records instead of printing. The
   startup posture block is read through it — the server's own output, which is the kind
   of observation these conventions ask for, and a passing run stays quiet.

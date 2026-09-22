@@ -1,9 +1,15 @@
 import type { ServerResponse } from 'node:http'
 import type { Connect, Logger, ViteDevServer } from 'vite'
 import { API_BASE, PICK_PATH, SESSIONS_PATH } from '../api.js'
+import type { DeliveryRoute } from './delivery.js'
 import { refuseForeignOrigin, refuseNonLoopback } from './guard.js'
 import type { Refusal } from './guard.js'
+import { parsePickBody, readRequestBody } from './pick.js'
+import { createPickQueue } from './queue.js'
+import type { PickQueue } from './queue.js'
 import { readCandidates } from './registry.js'
+import { renderPicks } from './render.js'
+import { resolveTarget } from './targeting.js'
 import type { ServerFacts } from './index.js'
 
 // The HTTP surface (spec §20). Mounted inside `configureServer`'s body, so it
@@ -17,11 +23,21 @@ import type { ServerFacts } from './index.js'
  */
 type Policy = 'read' | 'ingress'
 
+/** Everything the endpoints share, worked out once per dev server. */
+interface RequestContext {
+  facts: ServerFacts
+  queue: PickQueue
+  route: DeliveryRoute
+  logger: Logger
+  /** This server's own loopback origin: the ack and done URLs hang off it. */
+  origin(): string
+}
+
 type Handler = (
   request: Connect.IncomingMessage,
   response: ServerResponse,
-  facts: ServerFacts,
-) => void
+  context: RequestContext,
+) => void | Promise<void>
 
 interface Endpoint {
   method: string
@@ -32,12 +48,23 @@ interface Endpoint {
 
 const ENDPOINTS: Endpoint[] = [
   { method: 'GET', path: SESSIONS_PATH, policy: 'read', handle: sessions },
-  { method: 'POST', path: PICK_PATH, policy: 'ingress', handle: pickIngestNotBuilt },
+  { method: 'POST', path: PICK_PATH, policy: 'ingress', handle: ingestPick },
 ]
 
-export function installAgentEndpoints(server: ViteDevServer, facts: ServerFacts): void {
+export function installAgentEndpoints(
+  server: ViteDevServer,
+  facts: ServerFacts,
+  route: DeliveryRoute,
+): void {
   const { logger } = server.config
   const ownOrigins = onceOwnOrigins(server)
+  const context: RequestContext = {
+    facts,
+    route,
+    logger,
+    queue: createPickQueue(),
+    origin: () => loopbackOrigin(server),
+  }
 
   // Nothing here calls `next`: every `/__agent` path is answered or refused,
   // and Vite's SPA fallback never sees one.
@@ -75,14 +102,27 @@ export function installAgentEndpoints(server: ViteDevServer, facts: ServerFacts)
       if (foreign) return sendRefusal(logger, response, foreign)
     }
 
-    return endpoint.handle(request, response, facts)
+    // A handler that throws is a bug in this plugin, and a bug that answered
+    // nothing would look to the Overlay like a network that dropped the Pick.
+    Promise.resolve(endpoint.handle(request, response, context)).catch((error: Error) => {
+      logger.error(
+        `vite-agent-inspect: ${API_BASE}${path} threw: ${error.stack ?? error.message}`,
+      )
+      if (!response.headersSent) {
+        sendJson(response, 500, {
+          error: 'internal-error',
+          reason: `vite-agent-inspect failed to answer ${API_BASE}${path}: ${error.message}`,
+        })
+      }
+    })
+    return undefined
   })
 }
 
 function sessions(
   request: Connect.IncomingMessage,
   response: ServerResponse,
-  facts: ServerFacts,
+  { facts }: RequestContext,
 ): void {
   const { registry, candidates } = readCandidates(facts)
   sendJson(response, 200, {
@@ -96,14 +136,61 @@ function sessions(
   })
 }
 
-function pickIngestNotBuilt(
+/**
+ * Pick ingest (spec §11, §13, §14, §15): check the body, mint the Pick, resolve
+ * the Target, queue it, render it, and write it. Every refusal names its part;
+ * an accepted Pick that could not be addressed is still accepted, and says so.
+ */
+async function ingestPick(
   request: Connect.IncomingMessage,
   response: ServerResponse,
-): void {
-  // The Guard covers this path from ticket 02 on; the ingest itself is ticket 03.
-  sendJson(response, 404, {
-    error: 'not-implemented',
-    reason: 'Pick ingest is not built yet: this dev server accepts no Pick.',
+  context: RequestContext,
+): Promise<void> {
+  const { facts, queue, route, logger } = context
+
+  const body = await readRequestBody(request)
+  if (!body.ok) return sendRefusal(logger, response, body.refusal)
+
+  const parsed = parsePickBody(body.value)
+  if (!parsed.ok) return sendRefusal(logger, response, parsed.refusal)
+  const pick = parsed.value
+
+  const { candidates } = readCandidates(facts)
+  const choice = resolveTarget(pick.target, candidates)
+  if (!choice.ok) return sendRefusal(logger, response, choice.refusal)
+
+  // The entry carries the Target it was resolved to, not the one the body
+  // named: a preselected Pick was addressed here, and the queue is what knows it.
+  pick.target = choice.target
+    ? { sessionId: choice.target.sessionId, pid: choice.target.pid }
+    : null
+
+  const entry = queue.add(pick)
+  let unwritten: string | undefined
+
+  if (pick.target) {
+    const outcome = await route.deliver({
+      pickId: pick.id,
+      body: renderPicks([pick], { origin: context.origin() }),
+      target: pick.target,
+    })
+    if (outcome.written) queue.markSent(pick.id)
+    else {
+      unwritten = outcome.reason
+      logger.warn(
+        `vite-agent-inspect: pick ${pick.id} was not delivered: ${outcome.reason}`,
+      )
+    }
+  }
+
+  // The Pick id, and the queue state that says whether anything was written.
+  // The Target row, the chip words and every later state belong to ticket 11's
+  // status endpoint; what a 200 must not be is silent about a Pick that went
+  // nowhere (spec §21).
+  sendJson(response, 200, {
+    pickId: pick.id,
+    state: entry.state,
+    ...(unwritten ? { reason: unwritten } : {}),
   })
 }
 
@@ -139,6 +226,22 @@ function onceOwnOrigins(server: ViteDevServer): () => Set<string> {
     }
     return origins
   }
+}
+
+/**
+ * The origin the ack and done URLs are printed with. Loopback by address, not
+ * by name: the caller is the agent's shell on this machine, and a hostname it
+ * would have to resolve is one more thing that can be wrong.
+ *
+ * In middleware mode there is no `httpServer` and no port to print — but there
+ * are also no `resolvedUrls`, so `onceOwnOrigins` is empty and every Pick is
+ * already refused at the Origin check before a body is ever rendered.
+ */
+function loopbackOrigin(server: ViteDevServer): string {
+  const address = server.httpServer?.address()
+  const port = address && typeof address === 'object' ? address.port : 0
+  const scheme = server.config.server.https ? 'https' : 'http'
+  return `${scheme}://127.0.0.1:${port}`
 }
 
 function sendRefusal(logger: Logger, response: ServerResponse, refusal: Refusal): void {

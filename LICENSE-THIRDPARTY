@@ -29,8 +29,11 @@ SPDX identifier alone, or a link is not a licence.
 
 Source:  https://github.com/scaccogatto/vite-plugin-herdr
 Version: 0.2.0 (2026-09-21)
-Used in: src/server/guard.ts
-Taken:   the fail-closed same-origin check on Pick ingress
+Used in: src/server/guard.ts, src/server/render.ts
+Taken:   the fail-closed same-origin check on Pick ingress, and the payload
+         format — a labelled prose block naming the picked element, its page and
+         its geometry, with the developer's own words kept in a section of their
+         own — that the Pointer prose evolved from
 
 MIT License
 

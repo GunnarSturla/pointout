@@ -1,5 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
+import { createClaudeRoute } from './server/claude/route.js'
+import type { DeliveryRoute } from './server/delivery.js'
 import { installAgentEndpoints } from './server/http.js'
 import { announcePosture, createServerFacts } from './server/index.js'
 import type { AgentInspectOptions, ServerFacts } from './server/index.js'
@@ -28,6 +30,8 @@ const overlayEntry = fileURLToPath(new URL('./overlay/index.js', import.meta.url
 export function agentInspect(options: AgentInspectOptions = {}): Plugin {
   /** Worked out once at `configResolved`; every request reads it. */
   let facts: ServerFacts | null = null
+  /** The delivery route, once `configureServer` has bound its reply socket. */
+  let route: DeliveryRoute | null = null
 
   // Vite runs `configResolved` before `configureServer`, so this never fires.
   // It throws rather than shrugging: a plugin that quietly served no endpoints
@@ -56,10 +60,26 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
       facts = createServerFacts({ viteRoot: config.root, options })
     },
 
-    configureServer(server) {
+    async configureServer(server) {
       const resolved = resolvedFacts()
-      installAgentEndpoints(server, resolved)
-      announcePosture(server, resolved)
+
+      // The reply socket is bound before anything is served, so the posture
+      // block can state where it bound — or why it did not (spec §16, §21).
+      route = await createClaudeRoute({
+        ...resolved,
+        logger: server.config.logger,
+      })
+      server.httpServer?.once('close', route.close)
+
+      installAgentEndpoints(server, resolved, route)
+      announcePosture(server, resolved, route)
+    },
+
+    // The socket is unlinked on shutdown (spec §16). `httpServer` covers the
+    // ordinary dev server; this covers middleware mode, where there is none.
+    // Closing twice is a no-op.
+    buildEnd() {
+      route?.close()
     },
 
     resolveId(id) {

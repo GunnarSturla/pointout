@@ -93,6 +93,14 @@ describe('the startup posture block', () => {
     expect(server.log()).toMatch(/1 entry in an unrecognised shape, ignored/)
   })
 
+  it('states where the reply socket bound, inside the one block', async () => {
+    const { server } = await apps.start({ app: { git: true } })
+    const log = server.log()
+
+    expect(occurrences(log, BLOCK_HEADING)).toBe(1)
+    expect(log).toMatch(/reply socket\s+bound at \S+\.sock/)
+  })
+
   it('warns that LAN Picks will be refused when Vite is bound off loopback', async () => {
     const { server } = await apps.start({ app: { git: true }, host: '0.0.0.0' })
 
