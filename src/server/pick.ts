@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import type { IncomingMessage } from 'node:http'
+import { now } from './clock.js'
 import type { Refusal } from './guard.js'
 
 // Pick ingress: what arrives on the wire from the Overlay, what is refused, and
@@ -134,7 +135,7 @@ function mintPick(pointer: Pointer, note: string | null, target: Target | null):
   return {
     id: randomUUID(),
     nonce: randomBytes(6).toString('hex'),
-    createdAt: Date.now(),
+    createdAt: now(),
     pointer,
     note,
     target,

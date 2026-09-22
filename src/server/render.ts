@@ -15,6 +15,7 @@
 //   server never opens a source file.
 
 import { pickActionUrl } from '../api.js'
+import { now } from './clock.js'
 import type { Pick } from './pick.js'
 
 /**
@@ -68,10 +69,10 @@ export interface RenderOptions {
  * rendering anything of its own.
  */
 export function renderPicks(picks: Pick[], { origin }: RenderOptions): string {
-  const now = Date.now()
+  const at = now()
   const heading = `vite-agent-inspect — ${count(picks.length, 'pick')} from the browser.`
   const blocks = picks.map((pick, index) =>
-    renderPick(pick, index, picks.length, origin, now),
+    renderPick(pick, index, picks.length, origin, at),
   )
   return [heading, ...blocks].join('\n\n') + '\n'
 }
@@ -81,14 +82,11 @@ function renderPick(
   index: number,
   total: number,
   origin: string,
-  now: number,
+  at: number,
 ): string {
   const rows: Array<[string, string]> = [
     ['pick id', pick.id],
-    [
-      'picked',
-      `${new Date(pick.createdAt).toISOString()} (${age(now - pick.createdAt)})`,
-    ],
+    ['picked', `${new Date(pick.createdAt).toISOString()} (${age(at - pick.createdAt)})`],
     ['fence nonce', pick.nonce],
     ['ack', pickActionUrl(origin, 'ack', pick.id, pick.nonce)],
     ['done', pickActionUrl(origin, 'done', pick.id, pick.nonce)],

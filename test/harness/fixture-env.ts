@@ -18,6 +18,22 @@ export const ENV_SOCKET_DIR = 'VITE_AGENT_INSPECT_SOCKET_DIR'
 export const ENV_CLAUDE_PID = 'CLAUDE_PID'
 export const ENV_PATH = 'PATH'
 
+/**
+ * Not a harness boundary — the server's own clock. Thirty minutes is longer
+ * than any test is allowed to take, so seam 1 moves the clock instead of
+ * waiting for it. Test-only, like the four above; a consumer never sets it.
+ */
+export const ENV_CLOCK_SKEW = 'VITE_AGENT_INSPECT_CLOCK_SKEW_MS'
+
+/**
+ * Make time pass for every dev server in this process. `0` puts the clock back,
+ * which is what a test does in `afterEach`.
+ */
+export function advanceClock(milliseconds: number): void {
+  if (milliseconds === 0) delete process.env[ENV_CLOCK_SKEW]
+  else process.env[ENV_CLOCK_SKEW] = String(milliseconds)
+}
+
 /** A 1×1 PNG. What the fake `screencapture` writes when it is asked to succeed. */
 const KNOWN_PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='

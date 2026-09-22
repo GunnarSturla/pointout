@@ -78,6 +78,31 @@ export function refuseForeignOrigin(
   return null
 }
 
+/**
+ * Ack and done (spec §11). The Pick's nonce is the credential and there is no
+ * other: no token, and no `Origin` requirement, because the caller is the
+ * agent's own shell and it sends none. A wrong nonce and a missing one are
+ * different mistakes and are told apart, so the agent that made one can read
+ * which.
+ */
+export function refuseWrongNonce(given: string | null, expected: string): Refusal | null {
+  if (!given) {
+    return forbidden(
+      'nonce-missing',
+      'refused an ack or done carrying no nonce: the nonce printed beside the ' +
+        'pick is the credential, and this endpoint has no other.',
+    )
+  }
+  if (given !== expected) {
+    return forbidden(
+      'nonce-mismatch',
+      'refused an ack or done whose nonce is not the one this pick was minted ' +
+        'with. Nothing about the pick was changed.',
+    )
+  }
+  return null
+}
+
 function forbidden(error: string, reason: string): Refusal {
   return { status: 403, body: { error, reason } }
 }

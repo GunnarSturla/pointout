@@ -1,14 +1,26 @@
 import type { ServerResponse } from 'node:http'
 import type { Connect, Logger, ViteDevServer } from 'vite'
-import { API_BASE, PICK_PATH, SESSIONS_PATH } from '../api.js'
+import {
+  API_BASE,
+  NONCE_PARAM,
+  PICK_PATH,
+  SESSIONS_PATH,
+  STATUS_PATH,
+  parsePickAction,
+} from '../api.js'
+import type { PickAction } from '../api.js'
+import { now } from './clock.js'
 import type { DeliveryRoute } from './delivery.js'
-import { refuseForeignOrigin, refuseNonLoopback } from './guard.js'
+import { refuseForeignOrigin, refuseNonLoopback, refuseWrongNonce } from './guard.js'
 import type { Refusal } from './guard.js'
+import { DONE, FAILED, SENT, TTL_FAILURE, WORKING, createLedger } from './ledger.js'
+import type { Ledger } from './ledger.js'
 import { parsePickBody, readRequestBody } from './pick.js'
-import { createPickQueue } from './queue.js'
+import { QUEUED_UNADDRESSED, createPickQueue } from './queue.js'
 import type { PickQueue } from './queue.js'
 import { readCandidates } from './registry.js'
 import { renderPicks } from './render.js'
+import { pickStatuses } from './status.js'
 import { resolveTarget } from './targeting.js'
 import type { ServerFacts } from './index.js'
 
@@ -19,14 +31,18 @@ import type { ServerFacts } from './index.js'
 /**
  * `read` is loopback-only, like everything here. `ingress` additionally requires
  * an Origin this server is serving on: the callers differ, and a browser sends
- * no Origin on a same-origin GET.
+ * no Origin on a same-origin GET. `credential` is the agent's own shell, which
+ * carries the Pick's nonce and sends no Origin at all — so an Origin is checked
+ * there only when one is present (spec §11).
  */
-type Policy = 'read' | 'ingress'
+type Policy = 'read' | 'ingress' | 'credential'
 
 /** Everything the endpoints share, worked out once per dev server. */
 interface RequestContext {
   facts: ServerFacts
   queue: PickQueue
+  /** What became of every Pick, after its entry has left the queue. */
+  ledger: Ledger
   route: DeliveryRoute
   logger: Logger
   /** This server's own loopback origin: the ack and done URLs hang off it. */
@@ -41,14 +57,32 @@ type Handler = (
 
 interface Endpoint {
   method: string
+  /** How this endpoint is named in a refusal, and how an exact path is matched. */
   path: string
+  /** For a path with a Pick id in it. Exact equality on `path` otherwise. */
+  matches?: (path: string) => boolean
   policy: Policy
   handle: Handler
 }
 
+/** `POST /__agent/pick/<id>/ack` and its twin: the Pick's nonce is the credential. */
+function pickActionEndpoint(action: PickAction): Endpoint {
+  return {
+    method: 'POST',
+    path: `${PICK_PATH}/<id>/${action}`,
+    matches: (path) => parsePickAction(path)?.action === action,
+    policy: 'credential',
+    handle: (request, response, context) =>
+      recordPickAction(action, request, response, context),
+  }
+}
+
 const ENDPOINTS: Endpoint[] = [
   { method: 'GET', path: SESSIONS_PATH, policy: 'read', handle: sessions },
+  { method: 'GET', path: STATUS_PATH, policy: 'read', handle: reportStatus },
   { method: 'POST', path: PICK_PATH, policy: 'ingress', handle: ingestPick },
+  pickActionEndpoint('ack'),
+  pickActionEndpoint('done'),
 ]
 
 export function installAgentEndpoints(
@@ -63,6 +97,7 @@ export function installAgentEndpoints(
     route,
     logger,
     queue: createPickQueue(),
+    ledger: createLedger(now),
     origin: () => loopbackOrigin(server),
   }
 
@@ -72,11 +107,18 @@ export function installAgentEndpoints(
     const path = (request.url ?? '/').split('?')[0] ?? '/'
 
     // Loopback first, and for every path: whether an endpoint exists here is
-    // not something a caller off this machine gets to learn.
+    // not something a caller off this machine gets to learn, and a caller off
+    // this machine makes this server do nothing else either.
     const offMachine = refuseNonLoopback(request)
     if (offMachine) return sendRefusal(logger, response, offMachine)
 
-    const atPath = ENDPOINTS.filter((endpoint) => endpoint.path === path)
+    // Before anything is matched, let alone handled: an entry past its TTL has
+    // left the queue by the time any route could reach it (spec §15).
+    expireStale(context)
+
+    const atPath = ENDPOINTS.filter((endpoint) =>
+      endpoint.matches ? endpoint.matches(path) : endpoint.path === path,
+    )
     if (atPath.length === 0) {
       return sendRefusal(logger, response, {
         status: 404,
@@ -97,7 +139,13 @@ export function installAgentEndpoints(
       })
     }
 
-    if (endpoint.policy === 'ingress') {
+    // An Origin is required on ingress and merely checked on the credential
+    // endpoints: a shell sends none, and a browser that sent one must still be
+    // this dev server's own page (spec §11).
+    const originMatters =
+      endpoint.policy === 'ingress' ||
+      (endpoint.policy === 'credential' && request.headers.origin !== undefined)
+    if (originMatters) {
       const foreign = refuseForeignOrigin(request, ownOrigins())
       if (foreign) return sendRefusal(logger, response, foreign)
     }
@@ -137,6 +185,71 @@ function sessions(
 }
 
 /**
+ * Every Pick this dev server accepted, in the state the ledger holds it, with
+ * the Target row read live beside each (spec §17, §20). Loopback like the rest,
+ * and no Origin requirement: the Overlay polls it on a same-origin GET.
+ */
+function reportStatus(
+  request: Connect.IncomingMessage,
+  response: ServerResponse,
+  { facts, queue, ledger }: RequestContext,
+): void {
+  sendJson(response, 200, { picks: pickStatuses(facts, queue, ledger) })
+}
+
+/**
+ * Ack and done (spec §11, §17). The nonce is the credential; an unknown Pick and
+ * a wrong nonce are each refused with no state changed. The ack takes the entry
+ * out of the claim-once queue, which is what keeps a developer who types before
+ * the agent answers from receiving the same Pick a second time (spec §15).
+ */
+function recordPickAction(
+  action: PickAction,
+  request: Connect.IncomingMessage,
+  response: ServerResponse,
+  { queue, ledger, logger }: RequestContext,
+): void {
+  const url = request.url ?? '/'
+  const [path = '/', query = ''] = url.split('?')
+  const parsed = parsePickAction(path)
+  const record = parsed ? ledger.get(parsed.pickId) : undefined
+  if (!record) {
+    return sendRefusal(logger, response, {
+      status: 404,
+      body: {
+        error: 'unknown-pick',
+        reason:
+          `refused an ${action} for a pick this dev server never accepted. ` +
+          'A pick is known only to the server that minted it.',
+      },
+    })
+  }
+
+  const wrongNonce = refuseWrongNonce(
+    new URLSearchParams(query).get(NONCE_PARAM),
+    record.pick.nonce,
+  )
+  if (wrongNonce) return sendRefusal(logger, response, wrongNonce)
+
+  // Done as well as ack: a finished Pick is not one the floor may hand out.
+  queue.remove(record.pick.id)
+  const state = action === 'ack' ? WORKING : DONE
+  ledger.advance(record.pick.id, state)
+  sendJson(response, 200, { pickId: record.pick.id, state })
+}
+
+/**
+ * Spec §15 and §21: an entry nobody drained within its TTL leaves the queue,
+ * and says so — in the log and in the ledger — rather than quietly staying put.
+ */
+function expireStale({ queue, ledger, logger }: RequestContext): void {
+  for (const entry of queue.sweep(now())) {
+    ledger.advance(entry.pick.id, FAILED, TTL_FAILURE)
+    logger.warn(`vite-agent-inspect: pick ${entry.pick.id} expired. ${TTL_FAILURE}`)
+  }
+}
+
+/**
  * Pick ingest (spec §11, §13, §14, §15): check the body, mint the Pick, resolve
  * the Target, queue it, render it, and write it. Every refusal names its part;
  * an accepted Pick that could not be addressed is still accepted, and says so.
@@ -146,7 +259,7 @@ async function ingestPick(
   response: ServerResponse,
   context: RequestContext,
 ): Promise<void> {
-  const { facts, queue, route, logger } = context
+  const { facts, queue, ledger, route, logger } = context
 
   const body = await readRequestBody(request)
   if (!body.ok) return sendRefusal(logger, response, body.refusal)
@@ -182,6 +295,15 @@ async function ingestPick(
       )
     }
   }
+
+  // A write that failed leaves the Pick `queued-unaddressed` rather than
+  // `failed`: the hook floor can still take it, and the reason is carried so
+  // nothing about the attempt is silent (spec §21).
+  ledger.open(
+    entry,
+    entry.state === QUEUED_UNADDRESSED ? QUEUED_UNADDRESSED : SENT,
+    unwritten,
+  )
 
   // The Pick id, and the queue state that says whether anything was written.
   // The Target row, the chip words and every later state belong to ticket 11's

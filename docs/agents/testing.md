@@ -99,6 +99,17 @@ exactly these strings, and `test/harness/fixture-env.ts` sets them.
 
 Each override is test-only. A consumer never sets any of them.
 
+## Making time pass
+
+`VITE_AGENT_INSPECT_CLOCK_SKEW_MS` is a fifth override, and the odd one out: it is
+not a harness boundary but the server's own clock, read afresh on every call. Spec
+§15 gives every queue entry thirty minutes, which is longer than a test is allowed
+to take, so seam 1 moves the clock rather than waiting for it —
+`advanceClock(31 * 60 * 1000)` from `test/harness/fixture-env.ts`, and
+`advanceClock(0)` in `afterEach` to put it back. It is process-wide, so it moves
+every dev server the file has open; seam 1 runs one file at a time, which is what
+makes that safe. Like the four above, a consumer never sets it.
+
 ## The example app
 
 `examples/react-app/` is the test bed and the development target. Fixtures live one per
