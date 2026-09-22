@@ -23,6 +23,13 @@ The five canonical triage roles, each label string equal to its name. See
 Three seams; `npm test` runs seams 1 and 2. No test imports a server module. See
 `docs/agents/testing.md` — read it before writing a test.
 
+### TypeScript, packaging, lint and format
+
+Everything is TypeScript; the package is `tsc`-emitted ESM in `dist/`, not `src/`. A
+relative import inside `src/` writes `.js`. oxfmt formats on save and oxlint gates a
+finished task, both as hooks; the formatter never touches prose. See
+`docs/agents/packaging.md` — read it before writing a source file.
+
 ### Borrowed code
 
 Targeted, non-UI and credited: a per-file provenance header plus an entry in

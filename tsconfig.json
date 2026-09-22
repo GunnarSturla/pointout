@@ -1,0 +1,37 @@
+{
+  // The repository's own check: the package, the tests and the harness together.
+  // `dist` is the package's product; a green `npm run typecheck` is this file's.
+  // The example app is checked by its own config, because its lib and its JSX
+  // are the browser's rather than Node's.
+  "compilerOptions": {
+    "target": "es2023",
+    // The Overlay is browser code and the server side is Node code, and both
+    // live under `src/`. One project spans both libs; ADR-0001 records the
+    // tradeoff and when to split it.
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": ["node"],
+
+    // Node resolution, which is what the emit has to survive: a relative
+    // import keeps the `.js` extension the built file will actually have.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "verbatimModuleSyntax": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "noEmit": true
+  },
+  "include": [
+    "src",
+    "test",
+    "vitest.config.ts",
+    "vitest.seam3.config.ts",
+    "playwright.config.ts"
+  ]
+}

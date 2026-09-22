@@ -1,0 +1,42 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+
+  // Configured to this codebase rather than the other way round: oxfmt's
+  // defaults are semicolons and double quotes, and reformatting the whole
+  // repository to suit a tool's defaults is the tool choosing the diff.
+  // `printWidth` was measured against the existing code, not guessed.
+  "semi": false,
+  "singleQuote": true,
+  "trailingComma": "all",
+  "arrowParens": "always",
+  "printWidth": 90,
+  "tabWidth": 2,
+
+  // Import sorting stays off. The order here is meaningful — Node built-ins,
+  // then Vite, then local — and a sorter would flatten it.
+
+  "ignorePatterns": [
+    // Markdown is prose, not code, and this repository's prose is a record:
+    // the spec, the tracker, the resolved research and the domain glossary.
+    // Running a formatter over a closed ticket rewrites the record — and the
+    // default run reflows 56 of them. Prose stays hand-written.
+    "**/*.md",
+
+    // The tracker and the five spikes, which are committed dead ends (spec §1),
+    // are excluded again by path: neither is code this repository edits.
+    ".scratch/**",
+    "spike-*/**",
+
+    "dist/**",
+    "**/dist/**",
+    "coverage/**",
+    "test-results/**",
+
+    // npm rewrites these on every install, so a formatter and a package manager
+    // would take turns reformatting the same file.
+    "package.json",
+    "package-lock.json",
+    "**/package.json",
+    "**/package-lock.json"
+  ]
+}

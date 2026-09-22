@@ -12,3 +12,9 @@ coverage/
 
 # vite
 .vite/
+
+# typescript build state
+*.tsbuildinfo
+
+# personal, machine-specific Claude Code settings
+.claude/settings.local.json

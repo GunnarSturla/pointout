@@ -1,0 +1,26 @@
+{
+  // The test bed's own check. Separate from the package's: this is browser code
+  // built by Vite, so the lib is the DOM's, the JSX is React's, and module
+  // resolution is the bundler's rather than Node's.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": ["vite/client", "node"],
+
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true,
+    "jsx": "react-jsx",
+    // The app keeps the explicit-extension import style it was written in.
+    "allowImportingTsExtensions": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "noEmit": true
+  },
+  "include": ["src", "vite.config.ts"]
+}

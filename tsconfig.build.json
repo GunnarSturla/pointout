@@ -1,0 +1,23 @@
+{
+  // The package's emit: one file in, one file out, ESM, with declarations and
+  // source maps beside each module. No bundler — see ADR-0001.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "removeComments": false,
+
+    // Incremental, so the `pre` hook on a second test command in one `npm test`
+    // costs nothing. Inside `dist` on purpose: incremental state and emit have
+    // to live and die together, or deleting `dist` leaves a compiler that
+    // believes it already emitted and a consumer with nothing to import. It is
+    // kept out of the package by a negation in `files`, and a test checks that.
+    "incremental": true,
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": ["src"]
+}

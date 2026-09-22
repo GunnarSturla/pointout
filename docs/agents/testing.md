@@ -19,6 +19,10 @@ When a test needs a string the server also uses — an endpoint path, a virtual 
 id — it writes the string out. The duplication is the point: it is the contract, and
 a test that still passes after the server renames its internals is the test we want.
 
+The rule has a type-level half, since ticket 23: **no test imports a server module's
+types either.** A test that needs the shape of a payload writes that shape out, the same
+way it writes out a path. See `packaging.md` for the rest of what TypeScript changed.
+
 Test helpers under `test/harness/` are fixture code, not tests, and are held to the
 same rule: they start the server, fake the harness and hand back a URL. They import
 Vite, never `src/`.
@@ -40,29 +44,36 @@ costs tokens. It needs the `claude` CLI and a login, skips with that reason when
 is missing, and never runs in CI. Tickets 20 and 21 build it; today it reports that it
 is not implemented.
 
-**Seam 1** is where most tests live. `test/harness/dev-server.mjs` starts a real Vite dev
+**Seam 1** is where most tests live. `test/harness/dev-server.ts` starts a real Vite dev
 server, with the plugin, against the real example app, so the module graph and the
 sourcemaps are real. Tests POST and GET against it.
 
 Three helpers sit beside it, all of them fixture code under the same rule:
 
-- `test/harness/temp-app.mjs` builds a throwaway consumer in a temp directory — a
+- `test/harness/temp-app.ts` builds a throwaway consumer in a temp directory — a
   checkout that may or may not be a git repository, linked worktrees and sibling repos
   on demand, and a written `vite.config.js` that loads the plugin the way a consumer
   does, carrying whatever Vite settings the test needs Vite itself to have. It is how
-  root discovery and cwd routing are exercised against real git. Its `tempApps()`
+  root discovery and cwd routing are exercised against real git. That written config is
+  JavaScript on purpose: it is fixture output imitating what a consumer hands to Vite,
+  not source this repository type-checks. Its `tempApps()`
   holds the apps and servers one file opened: `afterEach(apps.cleanup)` closes them,
   last opened first, so a server always outlives its app.
-- `test/harness/registry.mjs` writes fake session entries into the registry directory
+- `test/harness/registry.ts` writes fake session entries into the registry directory
   the plugin was pointed at. The field names are the harness's, spelled out rather than
   imported: the plugin pins on that shape, and the test is what says so.
-- `test/harness/logger.mjs` is a Vite `Logger` that records instead of printing. The
+- `test/harness/logger.ts` is a Vite `Logger` that records instead of printing. The
   startup posture block is read through it — the server's own output, which is the kind
   of observation these conventions ask for, and a passing run stays quiet.
 
 **Seam 2** exists because a browser is the only honest way to produce a real owner stack.
 Few journeys, chosen for what only a browser can show. It runs against the same server,
-booted by `test/harness/serve.mjs` on a fixed port.
+booted by `test/harness/serve.ts` on a fixed port — Playwright's `globalSetup`, not its
+`webServer`: the module is TypeScript, Playwright compiles its own, and `node` on this
+repo's Node floor cannot run it (type stripping is unflagged only from 22.18; the floor
+is 22.12). The port is bound strictly, so a dev server left over
+from an interrupted run fails seam 2 loudly with the port named, rather than being
+silently attached to.
 
 **Seam 3** exists because the first two fake the harness, and v0 depends on undocumented
 surfaces that have already churned. A suite that fakes them can pass forever against a
@@ -72,7 +83,7 @@ harness that has moved.
 
 Seam 1 fakes the harness at its boundaries, through environment overrides the plugin
 needs anyway. These names are normative; the plugin reads them from `process.env` by
-exactly these strings, and `test/harness/fixture-env.mjs` sets them.
+exactly these strings, and `test/harness/fixture-env.ts` sets them.
 
 | variable | what it overrides |
 | --- | --- |
@@ -86,9 +97,9 @@ Each override is test-only. A consumer never sets any of them.
 ## The example app
 
 `examples/react-app/` is the test bed and the development target. Fixtures live one per
-file under `src/fixtures/`, each carrying `data-fixture` attributes that tests select on.
-Add the fixture your ticket needs; `src/App.jsx` lists the ones still to come and which
-ticket owns each.
+file under `examples/react-app/src/fixtures/`, each carrying `data-fixture` attributes
+that tests select on. Add the fixture your ticket needs;
+`examples/react-app/src/App.tsx` lists the ones still to come and which ticket owns each.
 
 Nothing in the example app animates. The spec's default is no motion (§9); ticket 09 opts
 in under `prefers-reduced-motion`, and a test bed that shimmers on its own would make that
@@ -96,7 +107,7 @@ assertion meaningless.
 
 ## Seam 1 also holds the repo-shape checks
 
-`test/seam1/repo-shape.test.js` asserts on files rather than on HTTP: that the first
+`test/seam1/repo-shape.test.ts` asserts on files rather than on HTTP: that the first
 commit carries the tracker and the five spikes, that each spike README opens by saying it
 is a dead end, and that no source file imports from a spike directory. They are still
 outside-in — they read what is on disk — and they have nowhere better to live.

@@ -1,0 +1,60 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  // The gate denies warnings (see `npm run lint`), so everything enabled here
+  // has to be something worth stopping for. `pedantic` was measured and left
+  // out: it wants a `u` flag on every regex in the Guard's tests and finds
+  // nothing this repository cares about.
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
+
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise", "node"],
+
+  "env": { "builtin": true, "node": true },
+
+  "rules": {
+    // The Overlay publishes `__viteAgentInspect` to the consumer's page. The
+    // name is the contract a seam-2 test reads, not a style choice.
+    "no-underscore-dangle": ["error", { "allow": ["__viteAgentInspect"] }],
+
+    // A side-effect import is how Vite loads CSS, and `packaging.test` requires
+    // the package on purpose, to prove that requiring it throws.
+    "import/no-unassigned-import": "off",
+
+    // A helper defined inside the `describe` that uses it is how these tests
+    // are written, and moving them out would separate each from its subject.
+    "unicorn/consistent-function-scoping": "off"
+  },
+
+  "ignorePatterns": [
+    "dist/**",
+    "**/dist/**",
+    "coverage/**",
+    "test-results/**",
+    // Committed dead ends, never edited (spec §1).
+    "spike-*/**"
+  ],
+
+  "overrides": [
+    {
+      "files": ["test/**/*.ts"],
+      "plugins": ["vitest"]
+    },
+    {
+      // Two `it.skip`s hold the place tickets 20 and 21 fill. They are the
+      // suite's current answer to "what does this command do today", not
+      // forgotten tests.
+      "files": ["test/seam3/**/*.ts"],
+      "plugins": ["vitest"],
+      "rules": { "vitest/no-disabled-tests": "off" }
+    },
+    {
+      "files": ["examples/react-app/**/*.tsx"],
+      "plugins": ["react"],
+      // React 19's automatic JSX runtime: nothing needs `React` in scope.
+      "rules": { "react/react-in-jsx-scope": "off" }
+    }
+  ]
+}
