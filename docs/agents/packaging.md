@@ -6,9 +6,10 @@ Read this before writing a source file. The decision itself, with its alternativ
 
 ## The shape
 
-Everything in this repository is TypeScript. `src/` is `.ts`, the CommonJS stub is
-`.cts`, the tests and the harness are `.ts`, the three runner configs are `.ts`, and
-the example app is `.tsx`.
+Everything in this repository is TypeScript. `src/` is `.ts`, with the Overlay's
+three React surfaces in `.tsx` (ADR-0004); the CommonJS stub is `.cts`, the tests and
+the harness are `.ts`, the three runner configs are `.ts`, and the example app is
+`.tsx`.
 
 The package a consumer installs is **`dist/`, not `src/`**. `tsc` emits it one file in,
 one file out — `src/server/http.ts` becomes `dist/server/http.js`, with `.d.ts` and a
@@ -44,14 +45,24 @@ import type { ViteDevServer } from 'vite'
 ```
 
 Get this wrong and the emitted file carries a runtime import of a package that is only a
-peer dependency.
+peer dependency. The Overlay's surfaces are the deliberate case: `"jsx": "react-jsx"`
+makes every `.tsx` module import `react/jsx-runtime`, and the components import `react`
+and `react-dom/client` themselves. Those resolve to the consumer's own React when Vite
+serves the Overlay, which is why `react` and `react-dom` are peer dependencies and the
+plugin names both in `optimizeDeps.include`.
 
 ## Where a type belongs
 
-Beside the module that owns it, exported from there — `Candidate` and `Registry` in
+Beside the module that owns it, exported from there — `Registry` in
 `server/registry.ts`, `Refusal` in `server/guard.ts`, `ServerFacts` in `server/index.ts`.
 There is no `types.ts`; a type that has no owning module is usually a module waiting to
 be found.
+
+The one exception is the wire. Every shape that crosses HTTP between the Overlay and
+the dev server, or between the drain CLI and the dev server, is written once in
+`src/wire.ts` — `PickBody`, `Candidate`, `PickStatus`, the Pick states, the Excerpt
+kinds, the Note cap — and both halves import it. A wire shape spelled twice by hand is
+a shape that drifts; `api.ts` names the paths, `wire.ts` names what travels on them.
 
 Types are named in `CONTEXT.md`'s vocabulary. The glossary applies to type names exactly
 as it applies to prose: a `Candidate` is a Candidate, and nothing else gets called one.

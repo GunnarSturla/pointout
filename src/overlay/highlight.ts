@@ -27,8 +27,8 @@
 
 import { viewportBox } from './deep-element.js'
 import type { ViewportBox } from './deep-element.js'
-import { part } from './root.js'
 import type { OwnerFacts } from './fiber.js'
+import { part } from './root.js'
 
 /** Room the chip needs above the box before it drops below it. */
 const CHIP_CLEARANCE = 22
@@ -51,6 +51,12 @@ export interface Highlight {
    * (spec §5, user story 25).
    */
   whenGone(listener: () => void): void
+  /**
+   * Told when the page itself moved the element — a hot update, a reflow the
+   * page made on its own — as opposed to a scroll or resize the Overlay already
+   * saw. The Overlay re-measures everything else anchored to the page on it.
+   */
+  whenMoved(listener: () => void): void
 }
 
 export function createHighlight(document: Document, shadow: ShadowRoot): Highlight {
@@ -70,7 +76,8 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
   let seen: ViewportBox | null = null
   /** True once that element has left the page. Cleared by the next `show`. */
   let gone = false
-  let told: (() => void) | null = null
+  let toldGone: (() => void) | null = null
+  let toldMoved: (() => void) | null = null
 
   let watchingMutations: MutationObserver | null = null
   let watchingSize: ResizeObserver | null = null
@@ -81,7 +88,7 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
 
   const place = (element: Element, instant: boolean) => {
     // The box is fixed in the top document, and the element may be inside a
-    // frame, so its own client rect is not where it is (ticket 08).
+    // frame, so its own client rect is not where it is.
     const rect = viewportBox(element)
     seen = rect
 
@@ -114,7 +121,7 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
     gone = true
     unwatch()
     box.setAttribute('data-gone', '')
-    told?.()
+    toldGone?.()
   }
 
   const schedule = () => {
@@ -123,6 +130,7 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
     scheduled = view.requestAnimationFrame(() => {
       scheduled = 0
       track()
+      toldMoved?.()
     })
   }
 
@@ -200,7 +208,11 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
     },
 
     whenGone(listener) {
-      told = listener
+      toldGone = listener
+    },
+
+    whenMoved(listener) {
+      toldMoved = listener
     },
   }
 }

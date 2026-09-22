@@ -3,16 +3,14 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 import type { Logger } from 'vite'
+import type { Target } from '../../wire.js'
 import { now } from '../clock.js'
-import { claimedSocketPaths, readCandidates } from '../registry.js'
-import type { RegistryQuery } from '../registry.js'
-import { addresses } from '../targeting.js'
+import type { Delivery, DeliveryOutcome, DeliveryRoute } from '../delivery.js'
+import type { ReplyListener } from '../receipt.js'
+import { claimedSocketPaths } from '../registry.js'
 import { readReplyFrame } from './receipt-frames.js'
 import { bindReplySocket } from './reply-socket.js'
 import type { ReplySocket } from './reply-socket.js'
-import type { Delivery, DeliveryOutcome, DeliveryRoute } from '../delivery.js'
-import type { Target } from '../pick.js'
-import type { ReplyListener } from '../receipt.js'
 
 // The Claude Code delivery route: the inbox socket and what comes back at the
 // reply address, spoken as the probes measured it (spike 14 and spike 16 are the
@@ -29,7 +27,10 @@ import type { ReplyListener } from '../receipt.js'
 /** The whole conversation is three lines, then the connection closes. */
 const WRITE_TIMEOUT_MS = 2000
 
-interface ClaudeRouteOptions extends RegistryQuery {
+export interface ClaudeRouteOptions {
+  /** Where the harness keeps its session entries and their key files. */
+  registryDir: string
+  /** Where the harness keeps its sockets, and where this route binds its own. */
   socketDir: string
   logger: Logger
 }
@@ -129,22 +130,9 @@ export async function createClaudeRoute(
       listener = ear
     },
 
-    async deliver({ pickId, body, target }: Delivery): Promise<DeliveryOutcome> {
+    async deliver({ pickId, body, target, session }: Delivery): Promise<DeliveryOutcome> {
       if (written.has(pickId)) {
         return { written: false, reason: `pick ${pickId} was already written once` }
-      }
-
-      // Where the Target's inbox is. Looked up here rather than carried in the
-      // Delivery, because a socket path is this harness's business and the seam
-      // above speaks only of a Target.
-      const entry = readCandidates(options).registry.entries.find((session) =>
-        addresses(session, target),
-      )
-      if (!entry) {
-        return {
-          written: false,
-          reason: `session ${target.sessionId} is no longer in the registry`,
-        }
       }
 
       const token = peerToken(options.registryDir, target.pid)
@@ -180,11 +168,11 @@ export async function createClaudeRoute(
 
       written.add(pickId)
       try {
-        await writeFrames(entry.messagingSocketPath, frames)
+        await writeFrames(session.messagingSocketPath, frames)
       } catch (error) {
         return {
           written: false,
-          reason: `writing to ${entry.messagingSocketPath} failed: ${(error as Error).message}`,
+          reason: `writing to ${session.messagingSocketPath} failed: ${(error as Error).message}`,
         }
       }
 

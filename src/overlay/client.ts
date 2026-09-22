@@ -6,45 +6,18 @@
 // here swallows one.
 
 import { API_BASE, PICK_PATH, SESSIONS_PATH, STATUS_PATH } from '../api.js'
-import type { Descriptor, Excerpt } from './describe.js'
-import type { OwnerChainLink } from './fiber.js'
+import type {
+  Candidate,
+  NamedTarget,
+  PickAccepted,
+  PickBody,
+  PickStatus,
+  RefusalBody,
+  SessionsResponse,
+  StatusResponse,
+} from '../wire.js'
 
-/** The one Candidate a Pick is addressed to, as the body names it. */
-export interface TargetRef {
-  sessionId: string
-  pid: number
-}
-
-/** A Target the Overlay can put in front of a developer: it has a name. */
-export interface NamedTarget extends TargetRef {
-  name: string
-}
-
-/** A live agent session a Pick could be addressed to, as `/sessions` sends it. */
-export interface Candidate extends NamedTarget {
-  status: string
-  waitingFor: string | null
-  /** Where *idle for Nd* comes from. Never `updatedAt`, which is not a heartbeat. */
-  statusUpdatedAt: string | null
-  startedThisServer: boolean
-}
-
-export interface PickBody {
-  url: string
-  viewport: { width: number; height: number }
-  descriptor: Descriptor
-  geometry: { width: number; height: number; x: number; y: number }
-  /** The Owner chain, innermost first, whole and uncapped (spec §6). */
-  ownerChain: OwnerChainLink[]
-  /** How many DOM levels were walked up to find a fiber at all (spec §4). */
-  walkUp: number
-  /** Content lifted from the page as evidence (`CONTEXT.md`, spec §13). */
-  excerpts: Excerpt[]
-  /** Which redaction rules fired; the server writes the sentence (spec §13). */
-  redactions: string[]
-  note: string | null
-  target: TargetRef | null
-}
+export type { Candidate, NamedTarget, PickBody, PickStatus }
 
 /**
  * What the registry turned out to be, and who is in it. `hookFloor` is the
@@ -55,6 +28,8 @@ export interface PickBody {
 export interface Sessions {
   candidates: Candidate[]
   hookFloor: boolean
+  /** When this read was answered: what *idle for Nd* is counted from. */
+  readAt: number
 }
 
 /** Accepted, with whatever the server wants said about it; or refused, with why. */
@@ -64,12 +39,42 @@ export type Sent =
    * inside the 32 KiB payload cap. Information, not a refusal: the Pick was
    * accepted and the Note travelled whole (spec §7, §13).
    */
-  | { ok: true; pickId: string; state: string; reason?: string; trimmed?: string }
+  | { ok: true; pickId: string; reason?: string; trimmed?: string }
   /**
    * Refused. `replacement` is the 409's own: the named Target has left and this
    * is what the chain yields instead — offered, never taken (spec §14, §21).
    */
   | { ok: false; reason: string; replacement?: NamedTarget }
+
+/** What one request came back with: the body, or the reason there is none. */
+type Answer<T> =
+  | { ok: true; body: T }
+  | { ok: false; reason: string; refusal: Partial<RefusalBody> }
+
+/**
+ * One request to the dev server, and one reading of what came back. A refusal's
+ * own reason travels through; a status with no words, and a server that could
+ * not be reached, each get a sentence here so nothing arrives silent (spec §21).
+ */
+async function request<T>(path: string, init?: RequestInit): Promise<Answer<T>> {
+  try {
+    const response = await fetch(API_BASE + path, init)
+    const body = (await response.json()) as T & Partial<RefusalBody>
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason:
+          body.reason ??
+          `the dev server answered ${response.status} and said nothing about why.`,
+        refusal: body,
+      }
+    }
+    return { ok: true, body }
+  } catch (error) {
+    const said = error instanceof Error ? error.message : String(error)
+    return { ok: false, reason: `could not reach the dev server: ${said}`, refusal: {} }
+  }
+}
 
 /**
  * The Candidates, read on demand (spec §14: at pick time, then on the Overlay's
@@ -78,100 +83,48 @@ export type Sent =
 export async function readSessions(): Promise<
   { ok: true; sessions: Sessions } | { ok: false; reason: string }
 > {
-  try {
-    const response = await fetch(API_BASE + SESSIONS_PATH, {
-      headers: { accept: 'application/json' },
-    })
-    const body = (await response.json()) as {
-      registry?: { hookFloor?: boolean }
-      candidates?: Candidate[]
-      reason?: string
-    }
-    if (!response.ok) {
-      return { ok: false, reason: body.reason ?? answered(response.status) }
-    }
-    return {
-      ok: true,
-      sessions: {
-        candidates: body.candidates ?? [],
-        hookFloor: body.registry?.hookFloor === true,
-      },
-    }
-  } catch (error) {
-    return { ok: false, reason: unreachable(error) }
+  const answer = await request<SessionsResponse>(SESSIONS_PATH)
+  if (!answer.ok) return { ok: false, reason: answer.reason }
+  return {
+    ok: true,
+    sessions: {
+      candidates: answer.body.candidates ?? [],
+      hookFloor: answer.body.registry?.hookFloor === true,
+      readAt: Date.now(),
+    },
   }
-}
-
-/**
- * What became of one Pick, as `/status` answers it. The state words are §17's
- * Pick states and the queue's `queued-unaddressed`, which the Stack tells apart
- * by its sub-line; an unknown word is carried through rather than guessed at.
- *
- * The Target is here for its **name** only. Its live status is session-level
- * evidence, and §17's rule is that session-level evidence never moves a chip —
- * so the Stack has no way to read it, by construction.
- */
-export interface PickStatus {
-  pickId: string
-  state: string
-  /** The sentence the server wrote for a refusal. Null when it has none. */
-  reason: string | null
-  target: { name: string | null } | null
 }
 
 /**
  * Every Pick this dev server accepted, polled on the Overlay's one tick while
- * something is outstanding (spec §14, §20) — and never otherwise.
+ * something is outstanding (spec §14, §20) — and never otherwise. The state
+ * words are §17's; an unknown word is carried through rather than guessed at.
  */
 export async function readStatus(): Promise<
   { ok: true; picks: PickStatus[] } | { ok: false; reason: string }
 > {
-  try {
-    const response = await fetch(API_BASE + STATUS_PATH, {
-      headers: { accept: 'application/json' },
-    })
-    const body = (await response.json()) as { picks?: PickStatus[]; reason?: string }
-    if (!response.ok) {
-      return { ok: false, reason: body.reason ?? answered(response.status) }
-    }
-    return { ok: true, picks: body.picks ?? [] }
-  } catch (error) {
-    return { ok: false, reason: unreachable(error) }
-  }
+  const answer = await request<StatusResponse>(STATUS_PATH)
+  if (!answer.ok) return { ok: false, reason: answer.reason }
+  return { ok: true, picks: answer.body.picks ?? [] }
 }
 
 /** Ingest one Pick. A 4xx's reason is handed straight back to the Panel. */
 export async function sendPick(body: PickBody): Promise<Sent> {
-  try {
-    const response = await fetch(API_BASE + PICK_PATH, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const answer = (await response.json()) as {
-      pickId?: string
-      state?: string
-      reason?: string
-      trimmed?: string
-      replacement?: NamedTarget
-    }
-    if (!response.ok) {
-      const replacement = named(answer.replacement)
-      return {
-        ok: false,
-        reason: answer.reason ?? answered(response.status),
-        ...(replacement ? { replacement } : {}),
-      }
-    }
-    return {
-      ok: true,
-      pickId: answer.pickId ?? '',
-      state: answer.state ?? '',
-      ...(answer.reason ? { reason: answer.reason } : {}),
-      ...(answer.trimmed ? { trimmed: answer.trimmed } : {}),
-    }
-  } catch (error) {
-    return { ok: false, reason: unreachable(error) }
+  const answer = await request<PickAccepted>(PICK_PATH, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!answer.ok) {
+    const replacement = named(answer.refusal.replacement)
+    return { ok: false, reason: answer.reason, ...(replacement ? { replacement } : {}) }
+  }
+  const { pickId, reason, trimmed } = answer.body
+  return {
+    ok: true,
+    pickId: pickId ?? '',
+    ...(reason ? { reason } : {}),
+    ...(trimmed ? { trimmed } : {}),
   }
 }
 
@@ -238,13 +191,4 @@ function named(value: NamedTarget | undefined): NamedTarget | null {
     pid: value.pid,
     name: typeof value.name === 'string' ? value.name : value.sessionId,
   }
-}
-
-function answered(status: number): string {
-  return `the dev server answered ${status} and said nothing about why.`
-}
-
-function unreachable(error: unknown): string {
-  const said = error instanceof Error ? error.message : String(error)
-  return `could not reach the dev server: ${said}`
 }

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { API_BASE, DRAIN_PATH, HOOK_OUTPUT_LIMIT, encodedLength } from '../api.js'
 import { readDiscoveryEntries } from '../server/discovery.js'
 import type { DiscoveryEntry } from '../server/discovery.js'
+import { text } from '../server/parse.js'
 import { normalizeToWorktreeRoot } from '../server/paths.js'
 
 // The drain CLI (spec §18): one binary that runs as both hooks. It reads the
@@ -117,10 +118,6 @@ function envelope(event: string, context: string): string {
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: event, additionalContext: context },
   })
-}
-
-function text(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 function warn(message: string): void {

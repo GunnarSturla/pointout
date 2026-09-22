@@ -36,6 +36,14 @@ const OWNER_NAME = 'CardHeading'
  * (spec §12, §21). `test/seam2/owner-chain.spec.ts` picks a fixture that every
  * engine keeps.
  */
+/**
+ * The chip names the file of the Pointer's innermost link: the first frame after
+ * React's own, which is the JSX rather than the callback that enclosed it
+ * (ADR-0003). `card-heading` is a component whose body is a bare `return <h3>`,
+ * and JavaScriptCore deletes that frame outright — spec §12's
+ * `call-site-frame-elided-by-engine` — so in WebKit the chip has nothing to
+ * name, exactly as the Pointer reports no location for it.
+ */
 const ownerFile = (browserName: string) =>
   browserName === 'webkit' ? '' : 'NestedOwners.tsx'
 
@@ -158,12 +166,16 @@ test('while armed, the computed styles of page elements are unchanged but the cu
 }) => {
   await open(page, probe('styles'))
 
-  // Everything but `cursor`, on a heading, a card, a paragraph and the body:
-  // arming changes the pointer and nothing else (spec §4).
+  // Everything but `cursor`, on a heading, a card and a paragraph: arming
+  // changes the pointer and nothing else (spec §4). Not the body: its height is
+  // the whole page's, and `highlight.spec.ts` grows one fixture through a real
+  // hot update that Vite pushes to every open page — including this one, in
+  // another engine, between these two snapshots. The body's cursor is read
+  // below on its own.
   const styles = () =>
     page.evaluate(() => {
       const snapshot: Record<string, Record<string, string>> = {}
-      for (const selector of ['h1', 'article', 'p', 'body']) {
+      for (const selector of ['h1', 'article', 'p']) {
         const element = document.querySelector(selector)
         if (!element) continue
         const computed = getComputedStyle(element)

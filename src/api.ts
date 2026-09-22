@@ -7,7 +7,7 @@ export const API_BASE = '/__agent'
 /** Registry state and the Candidates a Pick could be addressed to. */
 export const SESSIONS_PATH = '/sessions'
 
-/** Pick ingress. Ticket 03 gives it a body; the Guard already covers it. */
+/** Pick ingress. */
 export const PICK_PATH = '/pick'
 
 /** Every outstanding Pick's state, and the Target row beside each (spec §20). */
@@ -62,7 +62,7 @@ export function parseCaptureId(path: string): string | null {
 /** The query parameter the ack and done URLs carry the Pick's nonce in. */
 export const NONCE_PARAM = 'n'
 
-/** The two things an agent can say about a Pick it was handed (ticket 11). */
+/** The two things an agent can say about a Pick it was handed (spec §17). */
 export type PickAction = 'ack' | 'done'
 
 const PICK_ACTIONS: readonly string[] = ['ack', 'done'] satisfies PickAction[]

@@ -1,6 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { DIRECTORY_MISSING, READABLE, SHAPE_UNRECOGNISED } from '../wire.js'
+import type { Candidate, RegistryState, Target } from '../wire.js'
 import { normalizeToWorktreeRoot } from './paths.js'
 
 // The registry is the directory of per-session JSON files under the user's
@@ -20,16 +22,6 @@ const REQUIRED_FIELDS = [
   'name',
   'messagingSocketPath',
 ] as const
-
-/** The three states, and the two of them that fall back to the hook floor. */
-export const READABLE = 'readable'
-export const DIRECTORY_MISSING = 'directory-missing'
-export const SHAPE_UNRECOGNISED = 'shape-unrecognised'
-
-export type RegistryState =
-  | typeof READABLE
-  | typeof DIRECTORY_MISSING
-  | typeof SHAPE_UNRECOGNISED
 
 /**
  * One registry file, as the harness writes it. This is the pinned shape: the
@@ -57,20 +49,6 @@ export interface Registry {
   entries: SessionEntry[]
 }
 
-/**
- * A live agent session a Pick could be addressed to, in the shape §20 publishes
- * it. Candidacy is existence, not readiness (`CONTEXT.md`).
- */
-export interface Candidate {
-  name: string
-  status: string
-  waitingFor: string | null
-  statusUpdatedAt: string | null
-  pid: number
-  sessionId: string
-  startedThisServer: boolean
-}
-
 /** What a registry read needs to know to answer both of its callers. */
 export interface RegistryQuery {
   registryDir: string
@@ -92,6 +70,27 @@ export function readCandidates({ registryDir, root, claudePid }: RegistryQuery):
 } {
   const registry = readRegistry(registryDir)
   return { registry, candidates: candidatesIn(registry, root, claudePid) }
+}
+
+/**
+ * Whether a registry entry or Candidate is the session a Target names. Both
+ * halves of the identity are compared: a pid can be reused by another session,
+ * and that is the misdelivery this check is here to catch (spec §15).
+ */
+export function addresses(
+  session: { sessionId: string; pid: number },
+  target: Target,
+): boolean {
+  return session.sessionId === target.sessionId && Number(session.pid) === target.pid
+}
+
+/**
+ * The registry entry a Target was resolved from, which is where its inbox is.
+ * Read off the registry already in hand rather than from disk again, so the
+ * entry a delivery writes to is the one the Target was chosen from.
+ */
+export function sessionOf(registry: Registry, target: Target): SessionEntry | undefined {
+  return registry.entries.find((entry) => addresses(entry, target))
 }
 
 /**

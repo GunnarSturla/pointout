@@ -1,23 +1,11 @@
+import type { Candidate, Target } from '../wire.js'
 import type { Refusal } from './guard.js'
-import type { Target } from './pick.js'
-import type { Candidate } from './registry.js'
+import { addresses } from './registry.js'
 
 // The server half of targeting (spec §14). Steps 1 and 2 of the preselect chain
 // are here because they are answered from the registry the server already read;
 // steps 3 and 4 — the last Target used from this origin, and nothing with Send
-// disabled — are the browser's and belong to ticket 10.
-
-/**
- * Whether a registry entry or Candidate is the session a Target names. Both
- * halves of the identity are compared: a pid can be reused by another session,
- * and that is the misdelivery this check is here to catch (spec §15).
- */
-export function addresses(
-  session: { sessionId: string; pid: number },
-  target: Target,
-): boolean {
-  return session.sessionId === target.sessionId && Number(session.pid) === target.pid
-}
+// disabled — are the browser's, in the Panel.
 
 export type TargetChoice =
   /** The Candidate to write to, or null: the entry stays queued-unaddressed. */

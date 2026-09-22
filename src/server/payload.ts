@@ -1,4 +1,6 @@
-import type { Parsed, Pick } from './pick.js'
+import type { ExcerptKind } from '../wire.js'
+import type { Parsed } from './parse.js'
+import type { Pick } from './pick.js'
 import { renderPicks } from './render.js'
 import type { RenderOptions } from './render.js'
 
@@ -22,7 +24,7 @@ const PAYLOAD_MAX_BYTES = 32 * 1024
  * rendered text first, then the attribute values, then everything.
  */
 interface Rung {
-  keeps(kind: string): boolean
+  keeps(kind: ExcerptKind): boolean
   said: string | null
 }
 
@@ -43,29 +45,39 @@ const LADDER: Rung[] = [
   { keeps: () => false, said: said('every excerpt this pick carried') },
 ]
 
-/**
- * Render one Pick small enough to write, trimming its Excerpts by §13's ladder
- * and **mutating the Pick** to match: the entry the queue keeps, and the body a
- * later drain renders from it, are the one that was cut down, not the one that
- * was picked. A Pick nothing fits is refused with the part named.
- */
-export function fitPayload(pick: Pick, options: RenderOptions): Parsed<string> {
-  const whole = pick.pointer.excerpts
+/** A Pick small enough to write, and the body that was written for it. */
+export interface Fitted {
+  /** The Pick as it travelled: the one the ledger keeps and a later drain renders. */
+  pick: Pick
+  body: string
+}
 
+/**
+ * Render one Pick small enough to write, trimming its Excerpts by §13's ladder.
+ * The Pick handed in is left alone; the one handed back is the one that was cut
+ * down, so the entry the ledger keeps is the Pick that travelled, not the one
+ * that was picked. A Pick nothing fits is refused with the part named.
+ */
+export function fitPayload(pick: Pick, options: RenderOptions): Parsed<Fitted> {
+  let bare = ''
   for (const rung of LADDER) {
-    pick.pointer.excerpts = whole.filter((excerpt) => rung.keeps(excerpt.kind))
-    pick.trimNote = rung.said
-    const body = renderPicks([pick], options)
-    if (Buffer.byteLength(body, 'utf8') <= PAYLOAD_MAX_BYTES) {
-      return { ok: true, value: body }
+    const fitted: Pick = {
+      ...pick,
+      pointer: {
+        ...pick.pointer,
+        excerpts: pick.pointer.excerpts.filter((excerpt) => rung.keeps(excerpt.kind)),
+      },
+      trimNote: rung.said,
     }
+    const body = renderPicks([fitted], options)
+    if (bytes(body) <= PAYLOAD_MAX_BYTES)
+      return { ok: true, value: { pick: fitted, body } }
+    bare = body
   }
 
   // Every Excerpt is gone and it still does not fit. Nothing else may be
   // shortened, so nothing is: the Pick is refused and the developer keeps what
   // they wrote (spec §7, §13, §21).
-  const body = renderPicks([pick], options)
-  const size = bytes(body)
   const part = largestPart(pick)
   return {
     ok: false,
@@ -74,7 +86,7 @@ export function fitPayload(pick: Pick, options: RenderOptions): Parsed<string> {
       body: {
         error: 'payload-too-large',
         reason:
-          `refused a Pick that renders to ${size} bytes, over the ` +
+          `refused a Pick that renders to ${bytes(bare)} bytes, over the ` +
           `${PAYLOAD_MAX_BYTES} a write may carry. Every excerpt was trimmed away ` +
           `and it still does not fit; the pointer and the note are never trimmed. ` +
           `The part that does not fit is ${part}. Nothing was sent, and the note ` +

@@ -17,6 +17,11 @@
     "moduleResolution": "nodenext",
     "verbatimModuleSyntax": true,
 
+    // The Overlay's surfaces are React components (ADR-0004). The automatic
+    // runtime emits an import of `react/jsx-runtime`, which resolves to the
+    // consumer's own React when Vite serves the Overlay.
+    "jsx": "react-jsx",
+
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,

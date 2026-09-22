@@ -1,24 +1,25 @@
 // Fiber access (spec §4), the Owner chain the Pick carries (spec §6), and the
 // two things the hover chip is allowed to say about an element (spec §5).
 //
-// **Nothing here is a stack parser.** Ticket 04 recorded the rule to resolve a
-// tension between §5 ("both free from the fiber") and §6 ("the client ships no
-// stack parser"), and ticket 05 keeps it: the chain is sent whole and raw, one
-// stack string per link, and the server remaps it with the vendored React
-// DevTools parser. The only thing read out of a stack here is the chip's
-// filename — the basename of the url in the app frame — and no line or column
-// ever reaches the chip, because they are in transformed coordinates until the
-// server remaps them.
+// **Nothing here is a stack parser.** The rule resolves a tension between §5
+// ("both free from the fiber") and §6 ("the client ships no stack parser"): the
+// chain is sent whole and raw, one stack string per link, and the server remaps
+// it with the vendored React DevTools parser. The only thing read out of a stack
+// here is the chip's filename — the basename of the url in the app frame — and
+// no line or column ever reaches the chip, because they are in transformed
+// coordinates until the server remaps them.
+
+import type { OwnerChainLink } from '../wire.js'
 
 /** How React hangs a fiber off a DOM node in every version v0 supports. */
 const FIBER_KEY_PREFIX = '__reactFiber$'
 
 /**
- * The frame React puts below every app frame in an owner stack. Measured in
- * Chromium, Firefox and WebKit: the app frame is the line directly above it in
- * all three, whichever stack grammar the engine writes.
+ * The frame React puts below every app frame in an owner stack, in the two
+ * spellings React has used for it. Everything between React's top frame and
+ * this is app code, whichever stack grammar the engine writes.
  */
-const REACT_STACK_BOTTOM_FRAME = 'react_stack_bottom_frame'
+const REACT_STACK_BOTTOM_FRAMES = ['react_stack_bottom_frame', 'react-stack-bottom-frame']
 
 /** The message line V8 prefixes a stack with. It is not a frame. */
 const V8_STACK_HEAD = 'Error: react-stack-top-frame'
@@ -40,14 +41,6 @@ export interface OwnerFacts {
   file: string | null
   /** How many `parentElement` steps it took to find a fiber at all (spec §4). */
   walkUp: number
-}
-
-/** One link of the Owner chain, exactly as the server is given it (spec §6). */
-export interface OwnerChainLink {
-  /** The component that wrote this call site: its `displayName` or `name`. */
-  name: string | null
-  /** The link's raw `_debugStack` string. Parsed by the server, never here. */
-  stack: string
 }
 
 /** The whole chain, innermost first, and how far the DOM was walked to find it. */
@@ -165,9 +158,11 @@ function componentName(type: unknown): string | null {
 
 /**
  * The basename of the url in the app frame, and nothing else. The app frame is
- * the one directly above React's own bottom-frame sentinel, once React's top
- * frame has been discarded; a stack with no such frame yields no filename rather
- * than the name of React's own runtime.
+ * the **first** after React's own top frame — the JSX itself, not the callback
+ * that enclosed it — inside the region React's bottom-frame sentinel closes.
+ * That is the server's rule too (ADR-0003), so the chip and the Pointer's
+ * innermost link always name the same file; a stack with no such frame yields
+ * no filename rather than the name of React's own runtime.
  */
 function appFrameBasename(stack: string | null): string | null {
   if (!stack) return null
@@ -177,8 +172,11 @@ function appFrameBasename(stack: string | null): string | null {
   // React captured the top frame inside its own runtime; it is never the app's.
   lines.shift()
 
-  const sentinel = lines.findIndex((line) => line.includes(REACT_STACK_BOTTOM_FRAME))
-  const frame = sentinel > 0 ? lines[sentinel - 1] : undefined
+  const sentinel = lines.findIndex((line) =>
+    REACT_STACK_BOTTOM_FRAMES.some((name) => line.includes(name)),
+  )
+  const frame =
+    sentinel > 0 ? lines.slice(0, sentinel).find((line) => line.trim()) : undefined
   if (!frame) return null
 
   const found = URL_IN_FRAME.exec(frame)

@@ -57,7 +57,8 @@
       "rules": { "vitest/no-disabled-tests": "off" }
     },
     {
-      "files": ["examples/react-app/**/*.tsx"],
+      // The test bed and the Overlay's own surfaces (ADR-0004).
+      "files": ["**/*.tsx"],
       "plugins": ["react"],
       // React 19's automatic JSX runtime: nothing needs `React` in scope.
       "rules": { "react/react-in-jsx-scope": "off" }

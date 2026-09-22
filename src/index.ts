@@ -3,14 +3,11 @@ import { fileURLToPath } from 'node:url'
 import { searchForWorkspaceRoot } from 'vite'
 import type { Plugin, UserConfig } from 'vite'
 import { createCaptureService } from './server/capture/index.js'
-import type { CaptureService } from './server/capture/index.js'
 import { createClaudeRoute } from './server/claude/route.js'
-import type { DeliveryRoute } from './server/delivery.js'
 import { createDiscovery } from './server/discovery.js'
-import type { Discovery } from './server/discovery.js'
 import { installAgentEndpoints } from './server/http.js'
-import { announcePosture, createServerFacts } from './server/index.js'
-import type { AgentInspectOptions, ServerFacts } from './server/index.js'
+import { announcePosture, createServerFacts, listeningPort } from './server/index.js'
+import type { AgentInspectOptions, ServerFacts, Services } from './server/index.js'
 
 export type { AgentInspectOptions, ServerFacts }
 
@@ -20,6 +17,13 @@ const OVERLAY_MODULE_ID = 'virtual:vite-agent-inspect/overlay'
 const RESOLVED_OVERLAY_MODULE_ID = '\0' + OVERLAY_MODULE_ID
 /** How Vite serves that resolved id over HTTP. */
 const OVERLAY_MODULE_URL = '/@id/__x00__' + OVERLAY_MODULE_ID
+
+/**
+ * What the Overlay imports from the consumer's own React. Named here so Vite
+ * prebundles them with the app's dependencies rather than discovering them on
+ * the first page load and reloading the page to optimize them.
+ */
+const OVERLAY_DEPENDENCIES = ['react/jsx-runtime', 'react-dom/client']
 
 // Both of these read off the emitted layout rather than the source layout: this
 // module is `dist/index.js` in a consumer's node_modules, so the package root is
@@ -36,12 +40,8 @@ const overlayEntry = fileURLToPath(new URL('./overlay/index.js', import.meta.url
 export function agentInspect(options: AgentInspectOptions = {}): Plugin {
   /** Worked out once at `configResolved`; every request reads it. */
   let facts: ServerFacts | null = null
-  /** The delivery route, once `configureServer` has bound its reply socket. */
-  let route: DeliveryRoute | null = null
-  /** Screen Capture, once `configureServer` has probed for it. */
-  let captures: CaptureService | null = null
-  /** The hook discovery entry, once `configureServer` has minted its secret. */
-  let discovery: Discovery | null = null
+  /** Brought up by `configureServer`, and closed with the server. */
+  let services: Services | null = null
 
   // Vite runs `configResolved` before `configureServer`, so this never fires.
   // It throws rather than shrugging: a plugin that quietly served no endpoints
@@ -67,15 +67,18 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
       // Vite resolves this field as `raw?.fs?.allow ?? [workspaceRoot]`, so
       // contributing ours *displaces* the workspace root rather than joining it
       // — and a consumer whose app is not inside this package then gets 403
-      // Restricted for their own source (ticket 25). Put the default back, but
-      // only when the consumer set none of their own: someone who narrowed
-      // `fs.allow` deliberately must not have it widened behind their back.
+      // Restricted for their own source. Put the default back, but only when
+      // the consumer set none of their own: someone who narrowed `fs.allow`
+      // deliberately must not have it widened behind their back.
       const allow = [packageRoot]
       if (!userConfig.server?.fs?.allow) {
         const root = userConfig.root ? resolve(userConfig.root) : process.cwd()
         allow.unshift(searchForWorkspaceRoot(root))
       }
-      return { server: { fs: { allow } } }
+      return {
+        server: { fs: { allow } },
+        optimizeDeps: { include: OVERLAY_DEPENDENCIES },
+      }
     },
 
     configResolved(config) {
@@ -84,44 +87,45 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
 
     async configureServer(server) {
       const resolved = resolvedFacts()
+      const { logger } = server.config
 
-      // The reply socket is bound before anything is served, so the posture
-      // block can state where it bound — or why it did not (spec §16, §21).
-      route = await createClaudeRoute({
-        ...resolved,
-        logger: server.config.logger,
+      // All three are brought up before anything is served, so the posture
+      // block can state what each of them is — where the reply socket bound or
+      // why it did not, whether this server can capture and what an earlier one
+      // left on disk, and that the dead dev servers' discovery entries are gone
+      // (spec §10, §16, §18, §21).
+      const route = await createClaudeRoute({
+        registryDir: resolved.registryDir,
+        socketDir: resolved.socketDir,
+        logger,
       })
-      server.httpServer?.once('close', route.close)
-
-      // Probed before anything is served, for the same reason as the socket:
-      // the posture block states whether this server can capture, and what an
-      // earlier dev server left on disk is swept now rather than never
-      // (spec §10, §21).
-      captures = await createCaptureService({ logger: server.config.logger })
-      server.httpServer?.once('close', captures.close)
-
-      // The secret is minted and the dead dev servers' entries are swept now;
-      // the entry itself is written once there is a port, which the posture
-      // block is what waits for (spec §18, §21).
-      discovery = createDiscovery({
+      const captures = await createCaptureService({ logger })
+      const discovery = createDiscovery({
         root: resolved.root,
-        warn: (message) => server.config.logger.warn(message),
+        warn: (message) => logger.warn(message),
       })
-      server.httpServer?.once('close', discovery.close)
+      services = { route, captures, discovery }
+      server.httpServer?.once('close', close)
 
-      installAgentEndpoints(server, resolved, route, captures, discovery)
-      announcePosture(server, resolved, route, captures, discovery)
+      installAgentEndpoints(server, resolved, services)
+
+      // The discovery entry names the port, which exists only once Vite is
+      // listening, and the posture block states where the entry went — so the
+      // two happen together and cannot disagree about whether it happened
+      // (spec §18, §21).
+      const listening = () => {
+        discovery.publish(listeningPort(server))
+        announcePosture(server, resolved, services!)
+      }
+      if (server.httpServer) server.httpServer.once('listening', listening)
+      else listening()
     },
 
     // The socket is unlinked, the captures are deleted and the discovery entry
     // is removed on shutdown (spec §10, §16, §18). `httpServer` covers the
     // ordinary dev server; this covers middleware mode, where there is none.
     // Closing twice is a no-op.
-    buildEnd() {
-      route?.close()
-      captures?.close()
-      discovery?.close()
-    },
+    buildEnd: close,
 
     resolveId(id) {
       if (id === OVERLAY_MODULE_ID) return RESOLVED_OVERLAY_MODULE_ID
@@ -144,6 +148,12 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
         },
       ]
     },
+  }
+
+  function close(): void {
+    services?.route.close()
+    services?.captures.close()
+    services?.discovery.close()
   }
 }
 

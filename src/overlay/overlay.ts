@@ -2,16 +2,16 @@
 //
 // Three states and no more. `Escape` unwinds one level — picked → armed → off —
 // which is the rule the prototype settled on and the one thing about the gesture
-// that is invisible from it.
+// that is invisible from it. The fourth thing a click can mean is written down
+// here for the same reason: while a Pick is open, Alt-click *moves* an
+// unsubmitted Pick and *starts a new one* from a submitted Panel (spec §7).
 //
-// Ticket 08 adds the rest of the hit-test rules and the armed `pointer-events`
-// forcing; ticket 09 the Highlight lifecycle and the opt-in to motion; ticket 10
-// the Target row; ticket 12 the Picker's peek, the Stack, and the Panel state
-// rules — which is where the fourth thing a click can mean lives: while a Pick
-// is open, Alt-click *moves* an unsubmitted Pick and *starts a new one* from a
-// submitted Panel (spec §7). It is written down because it is invisible from
-// the gesture.
+// What is on screen is decided here and handed to the React surfaces as props
+// (`surfaces.tsx`); the Highlight and the page's hittability are driven by hand,
+// because both change on every pointer move and neither has any state of its
+// own worth a component.
 
+import type { PickBody } from '../wire.js'
 import { createHittability } from './armed.js'
 import { viewportBox } from './deep-element.js'
 import type { ViewportBox } from './deep-element.js'
@@ -19,12 +19,12 @@ import { describeElement } from './describe.js'
 import { readOwner, readOwnerChain } from './fiber.js'
 import { createHighlight } from './highlight.js'
 import { elementAtPoint } from './hit-test.js'
-import { openPanel } from './panel.js'
-import type { Panel } from './panel.js'
-import { createPicker } from './picker.js'
+import type { PointerInputs } from './panel.js'
+import { inViewport } from './placement.js'
+import { createReflow } from './reflow.js'
 import { mountOverlayRoot } from './root.js'
-import { createStack } from './stack.js'
-import type { PickBody } from './client.js'
+import type { Submitted } from './stack.js'
+import { mountSurfaces } from './surfaces.js'
 
 /** What arms the Overlay. Alt is held; the Picker is a toggle. */
 type ArmedBy = 'alt' | 'picker'
@@ -42,50 +42,90 @@ export function startOverlay(document: Document): OverlayHandle {
   const { host, shadow } = mountOverlayRoot(document)
   const highlight = createHighlight(document, shadow)
   const hittability = createHittability(document, shadow)
+  const reflow = createReflow()
+  // After the Highlight, so the resting boxes paint over the live one and never
+  // under it — the surfaces sit later in the shadow root than the box does.
+  const surfaces = mountSurfaces(document, shadow)
 
   let mode: Mode = 'off'
   let armedBy: ArmedBy | null = null
   let hovered: Element | null = null
-  let panel: Panel | null = null
-  /** The element the open Panel is on. Moving the Pick replaces it (spec §7). */
+  /** The element the open Panel is on, or null when no Panel is open. */
   let picked: Element | null = null
+  /** How many Picks have been opened: a new Pick is a new Panel, not a re-anchoring. */
+  let pickCount = 0
+  /** True once the picked element has left the page while its Panel is open. */
+  let gone = false
   /** The Pick the open Panel sent, once it has sent one. */
   let openPickId: string | null = null
+  /** Every Pick outstanding, oldest first: what the Stack shows. */
+  let submitted: readonly Submitted[] = []
+  /** Whether the Picker was last drawn offering the way back to the Panel. */
+  let offeredWayBack = false
   /** The page's own cursor, put back exactly as it was found. */
   let pageCursor = ''
 
-  const stack = createStack({
-    document,
-    view,
-    shadow,
-    changed: () => syncPicker(),
-    dismissed(pickId) {
-      // A Pick that dismissed itself takes its own Panel with it: there is
-      // nothing left for it to be anchored to or to say (spec §8).
-      if (openPickId === pickId) off()
-    },
-  })
+  // Stable across renders: the surfaces are memoized on their props, and a
+  // callback that changed identity on every render would render them again on
+  // every scroll.
+  const onToggle = () => {
+    if (mode === 'off') arm('picker')
+    else off()
+  }
+  const onBack = () => {
+    picked?.scrollIntoView({ block: 'center', inline: 'nearest' })
+    render()
+  }
+  const onSubmitted = (pick: { pickId: string; targetName: string | null }) => {
+    openPickId = pick.pickId
+    // The frozen Highlight becomes the Stack's resting one: one box on the
+    // element, not two (spec §5).
+    highlight.hide()
+    if (picked) submitted = [...submitted, { ...pick, element: picked }]
+    render()
+  }
+  const onDismiss = (pickId: string) => {
+    submitted = submitted.filter((pick) => pick.pickId !== pickId)
+    // A Pick that dismissed itself takes its own Panel with it: there is nothing
+    // left for it to be anchored to or to say (spec §8).
+    if (openPickId === pickId) off()
+    else render()
+  }
+  const pointer = (): PointerInputs => {
+    if (!picked) throw new Error('vite-agent-inspect: no Pick is open to send')
+    return pointerOf(view, picked, highlight.lastBox())
+  }
 
-  const picker = createPicker(document, shadow, {
-    toggle() {
-      if (mode === 'off') arm('picker')
-      else off()
-    },
-    back() {
-      panel?.bringIntoView()
-      syncPicker()
-    },
-  })
+  /** The open Panel has ridden out of the viewport with its element (spec §7). */
+  const panelOffScreen = (): boolean =>
+    picked !== null &&
+    picked.isConnected &&
+    !inViewport(viewportBox(picked), { width: view.innerWidth, height: view.innerHeight })
 
   /**
-   * The Picker peeks only when there is nothing to come back to. Armed, a Panel
-   * open or a Pick outstanding all hold it out (spec §8), and an open Panel that
-   * has ridden off-screen puts the way back to it on the Picker (spec §7).
+   * Push the controller's state down. The Picker peeks only when there is
+   * nothing to come back to: armed, a Panel open or a Pick outstanding all hold
+   * it out (spec §8), and an open Panel that has ridden off-screen puts the way
+   * back to it on the Picker (spec §7).
    */
-  const syncPicker = () => {
-    picker.setArmed(mode === 'armed')
-    picker.hold(mode !== 'off' || stack.size() > 0)
-    picker.offerWayBack(panel !== null && panel.offScreen())
+  const render = () => {
+    offeredWayBack = panelOffScreen()
+    surfaces.render({
+      picker: {
+        armed: mode === 'armed',
+        held: mode !== 'off' || submitted.length > 0,
+        wayBack: offeredWayBack,
+        onToggle,
+        onBack,
+      },
+      panel: picked
+        ? {
+            key: String(pickCount),
+            props: { view, reflow, element: picked, gone, pointer, onSubmitted },
+          }
+        : null,
+      stack: { view, reflow, picks: submitted, onDismiss },
+    })
   }
 
   const arm = (by: ArmedBy) => {
@@ -99,7 +139,7 @@ export function startOverlay(document: Document): OverlayHandle {
     pageCursor = document.documentElement.style.cursor
     document.documentElement.style.cursor = 'crosshair'
     hittability.arm()
-    syncPicker()
+    render()
   }
 
   const off = () => {
@@ -110,13 +150,12 @@ export function startOverlay(document: Document): OverlayHandle {
     highlight.hide()
     document.documentElement.style.cursor = pageCursor
     hittability.disarm()
-    syncPicker()
+    render()
   }
 
   const closePanel = () => {
-    panel?.close()
-    panel = null
     picked = null
+    gone = false
     openPickId = null
   }
 
@@ -127,33 +166,27 @@ export function startOverlay(document: Document): OverlayHandle {
   const pickOn = (element: Element) => {
     hovered = element
     picked = element
+    gone = false
+    pickCount += 1
     highlight.show(element, readOwner(element))
     mode = 'picked'
     // Picked is not armed: the page goes back to the hittability its author gave
     // it while the Note is being written.
     hittability.disarm()
-    panel = openPanel({
-      document,
-      view,
-      shadow,
-      element,
-      // The element a moved Pick ended on, never the one it started on.
-      pointer: () => pointerOf(view, picked ?? element, highlight.lastBox()),
-      submitted(pick) {
-        openPickId = pick.pickId
-        // The frozen Highlight becomes the Stack's resting one: one box on the
-        // element, not two (spec §5).
-        highlight.hide()
-        stack.add({ ...pick, element: picked ?? element })
-      },
-    })
-    syncPicker()
+    render()
   }
 
   // The picked element can leave the page while its Panel is open (spec §5,
   // user story 25). The Highlight fades where it stood; the Panel is what says
   // so, and the Pick it belongs to is still sendable.
-  highlight.whenGone(() => panel?.elementGone())
+  highlight.whenGone(() => {
+    if (!picked) return
+    gone = true
+    render()
+  })
+  // A hot update moved the element under the Highlight: everything else
+  // anchored to the page moves with it.
+  highlight.whenMoved(() => reflow.emit())
 
   /** `Escape` unwinds exactly one level, never two (spec §4). */
   const unwind = () => {
@@ -164,7 +197,7 @@ export function startOverlay(document: Document): OverlayHandle {
       // Armed again, so the page is hittable again — and re-measured, because
       // what is on it may have changed while the Panel was open.
       hittability.arm()
-      syncPicker()
+      render()
       return
     }
     if (mode === 'armed') off()
@@ -208,12 +241,12 @@ export function startOverlay(document: Document): OverlayHandle {
     // developer already wrote is theirs and travels with the Pick. A submitted
     // one is a finished Pick, so this is a new one and the old Panel minimizes
     // into the Stack, where its chip has been resting since it was sent.
-    if (mode === 'picked' && panel && !panel.sent()) {
+    if (mode === 'picked' && openPickId === null) {
       picked = element
       hovered = element
+      gone = false
       highlight.show(element, readOwner(element))
-      panel.moveTo(element)
-      syncPicker()
+      render()
       return
     }
     if (mode === 'picked') closePanel()
@@ -256,10 +289,11 @@ export function startOverlay(document: Document): OverlayHandle {
 
   const onReflow = () => {
     highlight.remeasure()
-    stack.remeasure()
+    reflow.emit()
     // Whether the Panel has ridden off-screen is a question about where the page
-    // is, so it is answered where the page moves (spec §7, story 16).
-    syncPicker()
+    // is, so it is answered where the page moves (spec §7, story 16) — and only
+    // a changed answer is worth drawing.
+    if (panelOffScreen() !== offeredWayBack) render()
   }
 
   view.addEventListener('pointermove', onPointerMove, true)
@@ -272,6 +306,8 @@ export function startOverlay(document: Document): OverlayHandle {
   view.addEventListener('scroll', onReflow, true)
   view.addEventListener('resize', onReflow)
 
+  render()
+
   // No teardown: the Overlay is mounted once per page load and outlives every
   // Pick made on it. A `close()` nothing calls would be an escape hatch pretending
   // to be a lifecycle.
@@ -281,8 +317,8 @@ export function startOverlay(document: Document): OverlayHandle {
 /**
  * The Pointer inputs, measured when the Pick is sent rather than when it was
  * made. The descriptor, the Excerpts and the redactions come from
- * `describeElement` (ticket 07), which is where the allowlist, the caps and the
- * password and hidden redaction live.
+ * `describeElement`, which is where the allowlist, the caps and the password
+ * and hidden redaction live.
  *
  * The Owner chain is read here rather than at pick time for the same reason as
  * the geometry: a Pick that was moved carries the element it ended on — and a
@@ -294,12 +330,12 @@ function pointerOf(
   lastSeen: ViewportBox | null,
 ): Omit<PickBody, 'note' | 'target'> {
   // In the top document's coordinates, so a Pick made inside a frame carries
-  // the geometry a developer — and a Screen Capture — would see (ticket 08).
+  // the geometry a developer — and a Screen Capture — would see.
   //
   // An element that has left the page measures as nothing at all, so a Pick of
   // one carries the box the Highlight last saw it in. Zeroes would be a silent
   // lie to the agent about something the developer really was looking at
-  // (spec §21, ticket 09).
+  // (spec §21).
   const rect = element.isConnected
     ? viewportBox(element)
     : (lastSeen ?? viewportBox(element))

@@ -15,8 +15,10 @@ never opted in.
 Under reduce the Highlight jumps, surfaces appear and disappear where they belong, and
 every tuck is instant. Nothing is merely slower: the same states are reached, at once.
 
-Only CSS transitions and the Web Animations API are used. Floating UI computes
-positions and never animates them.
+Only CSS transitions and the Web Animations API are used. The Panel's placement is
+arithmetic in `src/overlay/placement.ts` and never animates; the React surfaces
+(ADR-0004) declare no motion of their own, and the built-Overlay test would catch one
+that did.
 
 ## What moves, and what does not
 
@@ -24,7 +26,7 @@ positions and never animates them.
 | --- | --- |
 | the Highlight travelling between two hovered elements | 170 ms, `translate` + `width` + `height` |
 | the Highlight of an element that has left the page | 120 ms, `opacity` to 0, where it stood |
-| the Picker's reveal out of its peek (ticket 12) | 220 ms, `translate` |
+| the Picker's reveal out of its peek | 220 ms, `translate` |
 
 The durations and curves are the prototype's own, not new numbers: 170 ms on
 `cubic-bezier(0.77, 0, 0.175, 1)` for the morph and 220 ms on

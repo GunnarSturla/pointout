@@ -1,5 +1,6 @@
-import type { Target } from './pick.js'
+import type { Target } from '../wire.js'
 import type { ReplyListener } from './receipt.js'
+import type { SessionEntry } from './registry.js'
 
 // The second-harness seam (spec §18). Everything a delivery route needs to be
 // asked is here, in this project's own vocabulary; everything Claude Code
@@ -14,6 +15,12 @@ export interface Delivery {
   /** The rendered body, already a plain string (`render.ts`). */
   body: string
   target: Target
+  /**
+   * The registry entry the Target was resolved from, which is where its inbox
+   * is. Carried so the route writes to the session the Target was chosen from
+   * rather than reading the registry a second time and finding something else.
+   */
+  session: SessionEntry
 }
 
 /** Written, or refused with the reason said out loud (spec §21). */

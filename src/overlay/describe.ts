@@ -11,10 +11,15 @@
 //   uncapped copy of it in the attributes would defeat that cap; upstream's
 //   redaction moves with it and now guards that Excerpt instead. And the
 //   redaction is *stated* rather than silently skipped, because an omission
-//   nobody is told about is a silent truncation (spec §21).
+//   nobody is told about is a silent truncation (spec §21) — and the two types
+//   are read off the wire's list of redaction reasons, so the page and the
+//   server can never name them differently.
 //   Not taken: the compact HTML rendering with its escaping, the 80-character
 //   clamp and the six-key computed-style summary. This Pointer carries no markup
 //   and no styles, and the caps live below with the rest of them.
+
+import { REDACTION_REASONS } from '../wire.js'
+import type { ElementDescriptor, Excerpt, ExcerptKind, RedactionReason } from '../wire.js'
 
 /**
  * What may be lifted off a picked element, beyond what the descriptor already
@@ -30,19 +35,17 @@ const ALLOWED_ATTRIBUTES: ReadonlySet<string> = new Set([
   'for',
 ])
 
-/** The two input types whose value never travels, in any form (spec §13). */
-const REDACTED_INPUT_TYPES: ReadonlySet<string> = new Set(['password', 'hidden'])
-
 /**
- * Whether this element's value is withheld, and by which rule. The attribute is
- * read before the property, because a `type` the browser does not recognise
+ * Whether this element's value is withheld, and by which rule — one of the two
+ * input types whose value never travels, in any form (spec §13). The attribute
+ * is read before the property, because a `type` the browser does not recognise
  * falls back to `text` on the property and would read as safe.
  */
-function redactsItsValue(element: Element): string | null {
+function redactsItsValue(element: Element): RedactionReason | null {
   if (element.tagName !== 'INPUT') return null
   const declared = element.getAttribute('type')
   const type = (declared ?? (element as HTMLInputElement).type).toLowerCase()
-  return REDACTED_INPUT_TYPES.has(type) ? type : null
+  return REDACTION_REASONS.find((reason) => reason === type) ?? null
 }
 
 /** The allowlisted attributes, in document order. */
@@ -66,56 +69,22 @@ const RENDERED_TEXT_MAX_CHARACTERS = 80
 /** Spec §13: the descriptor names at most this many classes, and no selector. */
 const CLASS_MAX = 2
 
-/**
- * The kinds of Excerpt v0 lifts. The set is closed because the kind is written
- * into the Fence, and a kind the server did not recognise would be a Fence
- * whose shape the page chose (`CONTEXT.md`, spec §13).
- */
-export type ExcerptKind =
-  | 'rendered-text'
-  | 'input-value'
-  | 'textarea'
-  | 'select'
-  | 'contenteditable'
-  | 'attributes'
-
-/** One piece of evidence lifted from the page (`CONTEXT.md`: Excerpt). */
-export interface Excerpt {
-  kind: ExcerptKind
-  text: string
-  /**
-   * How many characters were on the page, when that is more than are carried
-   * here. Absent when nothing was trimmed: trimming is annotated, never silent.
-   */
-  captured?: number
-}
-
-/** The element descriptor, as the wire carries it (spec §13). */
-export interface Descriptor {
-  tag: string
-  id?: string
-  testId?: string
-  role?: string
-  aria?: Record<string, string>
-  classes?: string[]
-}
-
 /** Everything the page can say about the picked element itself. */
 export interface ElementDescription {
-  descriptor: Descriptor
+  descriptor: ElementDescriptor
   excerpts: Excerpt[]
   /**
    * Why something was withheld — one of the redacted input types. The server
    * writes the sentence; the page only says which rule fired, so a Pointer can
    * never be made to carry prose the page chose.
    */
-  redactions: string[]
+  redactions: RedactionReason[]
 }
 
 /**
  * Cap a lifted value in **code points**, so an emoji costs what it looks like it
- * costs. The server's Note cap counts the same way (ticket 03), and two caps
- * that counted differently would disagree at the boundary.
+ * costs. The server's Note cap counts the same way, and two caps that counted
+ * differently would disagree at the boundary.
  */
 function cap(text: string, max: number): { text: string; captured?: number } {
   const points = [...text]
@@ -137,7 +106,7 @@ function oneLine(text: string): string {
  */
 export function describeElement(element: Element): ElementDescription {
   const excerpts: Excerpt[] = []
-  const redactions: string[] = []
+  const redactions: RedactionReason[] = []
 
   const redacted = redactsItsValue(element)
   if (redacted !== null) redactions.push(redacted)
@@ -203,8 +172,8 @@ function valueText(element: Element, kind: ExcerptKind): string {
 }
 
 /** Tag, `id`, `data-testid`, `role`, `aria-*` and two classes — no more (§13). */
-function describe(element: Element): Descriptor {
-  const descriptor: Descriptor = { tag: element.tagName.toLowerCase() }
+function describe(element: Element): ElementDescriptor {
+  const descriptor: ElementDescriptor = { tag: element.tagName.toLowerCase() }
 
   const id = element.id || undefined
   if (id) descriptor.id = id

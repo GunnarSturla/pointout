@@ -1,21 +1,20 @@
 // One block, printed once, at startup. Every "fail closed, say so out loud"
 // line in spec §21 that belongs to startup lands here; nothing logs a scattered
-// posture line of its own. Later tickets append: the reply socket (03), the
-// discovery entry (15), Screen Capture (17), the harness version (19).
+// posture line of its own. Each service contributes its line, and the harness
+// version will join them when the canaries record one.
 
-import { DIRECTORY_MISSING, SHAPE_UNRECOGNISED } from './registry.js'
-import type { Registry } from './registry.js'
+import { DIRECTORY_MISSING, SHAPE_UNRECOGNISED } from '../wire.js'
 import type { RootMethod } from './paths.js'
+import type { Registry } from './registry.js'
 
 const HEADING = 'vite-agent-inspect — startup posture'
 
-/** The block under construction. Later tickets `add` their own line to it. */
+/** The block under construction: a list of label/text pairs that renders as one. */
 export interface Posture {
   add(label: string, text: string): Posture
   render(): string
 }
 
-/** A list of label/text pairs that renders as one block. */
 export function createPosture(): Posture {
   const lines: Array<[string, string]> = []
 

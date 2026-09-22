@@ -1,12 +1,8 @@
 import type { Logger } from 'vite'
-import { FAILED, HELD, SENT } from './ledger.js'
-import type { Ledger } from './ledger.js'
-import type { Target } from './pick.js'
-import type { PickQueue } from './queue.js'
-import { readCandidates } from './registry.js'
-import type { RegistryQuery } from './registry.js'
-import { addresses } from './targeting.js'
+import { FAILED, HELD, SENT } from '../wire.js'
+import type { Target } from '../wire.js'
 import type { DeliveryRoute } from './delivery.js'
+import type { Ledger } from './ledger.js'
 
 // What comes back at the reply address, and the one rule that separates the two
 // things that arrive there (spec §16, §17).
@@ -18,9 +14,9 @@ import type { DeliveryRoute } from './delivery.js'
 // Pick-specific evidence, a Receipt moves the Pick.
 //
 // An **idle notice** is session-level: the Target finished a turn. It colours
-// the Target row and drives ticket 14's report-back clock, and it never moves a
-// Pick — which is why it is kept in a log of its own, keyed by Target, rather
-// than anywhere near the ledger.
+// the Target row and drives the report-back clock, and it never moves a Pick —
+// which is why it is kept in a log of its own, keyed by Target, rather than
+// anywhere near the ledger.
 //
 // Neither is an Ack. An Ack is the agent's own voluntary signal about the work,
 // and it arrives over HTTP with the Pick's nonce (`http.ts`).
@@ -99,8 +95,6 @@ export function createIdleLog(): IdleLog {
 
 /** Everything applying what comes back needs, and nothing else. */
 export interface ReplyEvidence {
-  facts: RegistryQuery
-  queue: PickQueue
   ledger: Ledger
   idle: IdleLog
   logger: Logger
@@ -124,8 +118,7 @@ export function recordReplies(route: DeliveryRoute, evidence: ReplyEvidence): vo
   })
 }
 
-function applyReceipt(receipt: Receipt, evidence: ReplyEvidence): void {
-  const { queue, ledger, logger } = evidence
+function applyReceipt(receipt: Receipt, { ledger, logger }: ReplyEvidence): void {
   const record = ledger.get(receipt.pickId)
   if (!record) {
     logger.warn(
@@ -135,15 +128,19 @@ function applyReceipt(receipt: Receipt, evidence: ReplyEvidence): void {
     return
   }
 
+  // Never a session id in a sentence a developer reads, and never a name this
+  // server made up: the Target's name as it stood when the Pick was addressed.
+  const name = record.pick.target?.name ?? 'the session you picked'
+
   if (receipt.status === 'held') {
     // §17 gives `held` fixed words — the chip and the imperative under it are
-    // ticket 27's — so the state carries no reason of its own. Whatever the
+    // the Overlay's — so the state carries no reason of its own. Whatever the
     // harness said for itself is said out loud here rather than published as a
     // sentence this server would then be the author of (spec §21).
     ledger.advance(receipt.pickId, HELD)
     logger.info(
-      `vite-agent-inspect: pick ${receipt.pickId} is held at ` +
-        `${nameOf(receipt.pickId, evidence)} until it is approved there.` +
+      `vite-agent-inspect: pick ${receipt.pickId} is held at ${name} until it is ` +
+        'approved there.' +
         (receipt.reason ? ` The harness said: ${receipt.reason}` : ''),
     )
     return
@@ -168,10 +165,9 @@ function applyReceipt(receipt: Receipt, evidence: ReplyEvidence): void {
   }
 
   // Dropped, refused, denied, expired. The harness will not deliver it, so no
-  // route here may either: it leaves the claim-once queue before it is ledgered,
-  // which also keeps the TTL sweep from writing its own sentence over this one.
-  const sentence = failureSentence(receipt, nameOf(receipt.pickId, evidence))
-  queue.remove(receipt.pickId)
+  // route here may either: `failed` takes it out of the claim-once queue, which
+  // also keeps the TTL sweep from writing its own sentence over this one.
+  const sentence = failureSentence(receipt, name)
   ledger.advance(receipt.pickId, FAILED, sentence)
   logger.warn(`vite-agent-inspect: pick ${receipt.pickId} ${receipt.status}. ${sentence}`)
 }
@@ -223,21 +219,4 @@ function machineValue(value: string | null): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
-}
-
-/**
- * The Target's registry name, which three of §17's sentences carry. Read live
- * from the registry at the moment the Receipt arrives, and from every entry
- * rather than from the Candidates: a session that just dropped a Pick is still
- * the session that dropped it, whatever it is working on now.
- */
-function nameOf(pickId: string, { facts, ledger }: ReplyEvidence): string {
-  const target = ledger.get(pickId)?.pick.target
-  const entry = target
-    ? readCandidates(facts).registry.entries.find((session) => addresses(session, target))
-    : undefined
-  // Never a session id in a sentence a developer reads, and never a name this
-  // server made up: a Target that has left the registry is described by what
-  // the developer did, which is still true.
-  return entry?.name ?? 'the session you picked'
 }

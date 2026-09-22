@@ -1,54 +1,40 @@
+import { FAILED, HELD, QUEUED_UNADDRESSED, SENT } from '../wire.js'
+import type { PickState, Transition } from '../wire.js'
 import type { Pick } from './pick.js'
-import { QUEUED_UNADDRESSED } from './queue.js'
-import type { QueueEntry } from './queue.js'
 
-// The ledger (spec §17): what became of every Pick this dev server accepted,
-// kept after the entry has left the claim-once queue. The two answer different
-// questions — the queue answers "can this still be delivered", the ledger
-// answers "what happened to it" — and the Overlay reads the second one.
+// The ledger (spec §15, §17): every Pick this dev server accepted, in the state
+// it is in now and with the history of how it got there. It answers both of the
+// questions the server has about a Pick — *can this still be delivered*, which
+// is spec §15's claim-once queue, and *what became of it*, which is what the
+// Overlay reads — because the first is a function of the second: a Pick is in
+// the queue exactly while its state says it is waiting.
 //
 // **The rule this module exists to enforce**: a Pick's state advances only on
 // Pick-specific evidence — an ack, a done, a Receipt or this server's own
-// clock. Session-level evidence (registry status, an idle notice)
-// colours the Target row and never moves a Pick. So nothing here takes a
-// session as an argument, and nothing here can.
+// clock. Session-level evidence (registry status, an idle notice) colours the
+// Target row and never moves a Pick. So nothing here takes a session as an
+// argument, and nothing here can.
 
-/** Spec §17. `unknown` arrives with ticket 14. */
-export const SENT = 'sent'
-/** A Receipt said the Target is holding it until a developer approves it. */
-export const HELD = 'held'
-export const WORKING = 'working'
-export const DONE = 'done'
-export const FAILED = 'failed'
+/** Spec §15. Every entry gets it from the moment it is created. */
+export const TTL_MS = 30 * 60 * 1000
 
 /**
- * The states a Pick can be reported in today. `queued-unaddressed` is the
- * queue's own word, published unchanged: §17 gives that Pick the chip **Sent**
- * with a sub-line of its own — *arrives when you next prompt Claude in this
- * repo* — and the word is what ticket 12 tells the two apart by.
- */
-export type PickState =
-  | typeof QUEUED_UNADDRESSED
-  | typeof SENT
-  | typeof HELD
-  | typeof WORKING
-  | typeof DONE
-  | typeof FAILED
-
-/**
- * Spec §17's sentence for the one failure this ticket can produce. Written by
- * v0 rather than taken from a harness, because no harness said anything: the
- * only evidence is that the clock ran out.
+ * Spec §17's sentence for the one failure the clock alone can produce. Written
+ * by v0 rather than taken from a harness, because no harness said anything: the
+ * only evidence is that the time ran out.
  */
 export const TTL_FAILURE =
   'Not delivered — nobody prompted Claude in this repo within 30 minutes.'
 
-/** One state change, with the moment it happened. */
-export interface Transition {
-  state: PickState
-  at: number
-  /** Why, when the state has a reason. Null rather than absent. */
-  reason: string | null
+/**
+ * The states in which a Pick is still in the claim-once queue: waiting for a
+ * route to take it, or written and awaiting the agent's word. An entry in any
+ * other state has left, whatever became of it.
+ */
+const QUEUED: readonly PickState[] = [QUEUED_UNADDRESSED, SENT, HELD]
+
+export function isQueued(state: PickState): boolean {
+  return QUEUED.includes(state)
 }
 
 /** Everything this server knows about one Pick after ingest. */
@@ -58,13 +44,13 @@ export interface LedgerRecord {
   reason: string | null
   /** The moment past which no route may deliver it (spec §15). */
   expiresAt: number
-  /** Oldest first. Ticket 14's report-back clock reads the send time off it. */
+  /** Oldest first. The report-back clock reads the send time off it. */
   history: Transition[]
 }
 
 export interface Ledger {
   /** Record an accepted Pick, in the state ingest left it in. */
-  open(entry: QueueEntry, state: PickState, reason?: string): LedgerRecord
+  open(pick: Pick, state: PickState, reason?: string): LedgerRecord
   /**
    * Pick-specific evidence arrived. Returns the record, or undefined for a Pick
    * this server never accepted — which the caller refuses rather than invents.
@@ -73,37 +59,69 @@ export interface Ledger {
   get(pickId: string): LedgerRecord | undefined
   /** Every Pick this server accepted, oldest first. */
   all(): LedgerRecord[]
+  /**
+   * Every Pick still `queued-unaddressed`, oldest first: exactly what the hook
+   * floor may take (spec §15). A Pick written to a socket is not among them,
+   * which is what keeps a developer who types before the agent acks from
+   * receiving the same Pick twice.
+   */
+  drainable(): LedgerRecord[]
+  /**
+   * Every queued Pick past its TTL at `at`, failed with the sentence above and
+   * handed back so the caller can say so out loud (spec §15, §21). Called before
+   * any route reads the ledger, so an expired Pick is never delivered by any of
+   * them.
+   */
+  expire(at: number): LedgerRecord[]
 }
 
 export function createLedger(clock: () => number): Ledger {
+  // Insertion-ordered, which is the order the floor drains in.
   const records = new Map<string, LedgerRecord>()
 
+  // Every transition is kept, including one that repeats the state: an agent
+  // that acks twice said it twice, and dropping the second would be this
+  // server editing the evidence.
+  const move = (record: LedgerRecord, state: PickState, reason: string | null) => {
+    record.state = state
+    record.reason = reason
+    record.history.push({ state, at: clock(), reason })
+  }
+
   return {
-    open(entry, state, reason) {
+    open(pick, state, reason) {
       const record: LedgerRecord = {
-        pick: entry.pick,
+        pick,
         state,
         reason: reason ?? null,
-        expiresAt: entry.expiresAt,
-        history: [{ state, at: entry.createdAt, reason: reason ?? null }],
+        expiresAt: pick.createdAt + TTL_MS,
+        history: [{ state, at: pick.createdAt, reason: reason ?? null }],
       }
-      records.set(entry.pick.id, record)
+      records.set(pick.id, record)
       return record
     },
 
     advance(pickId, state, reason) {
       const record = records.get(pickId)
       if (!record) return undefined
-      // Every transition is kept, including one that repeats the state: an
-      // agent that acks twice said it twice, and dropping the second would be
-      // this server editing the evidence.
-      record.state = state
-      record.reason = reason ?? null
-      record.history.push({ state, at: clock(), reason: reason ?? null })
+      move(record, state, reason ?? null)
       return record
     },
 
     get: (pickId) => records.get(pickId),
     all: () => [...records.values()],
+
+    drainable: () =>
+      [...records.values()].filter((record) => record.state === QUEUED_UNADDRESSED),
+
+    expire(at) {
+      const expired: LedgerRecord[] = []
+      for (const record of records.values()) {
+        if (!isQueued(record.state) || record.expiresAt > at) continue
+        move(record, FAILED, TTL_FAILURE)
+        expired.push(record)
+      }
+      return expired
+    },
   }
 }

@@ -15,16 +15,17 @@
 //   server never opens a source file.
 
 import { pickActionUrl } from '../api.js'
+import type { Excerpt, ExcerptKind } from '../wire.js'
 import { now } from './clock.js'
 import type { OwnerLink } from './owner-chain.js'
-import type { Excerpt, Pick } from './pick.js'
+import type { Pick } from './pick.js'
 
 /**
  * The Pointer, as labelled scalars in prose (spec §13) — the one function whose
- * shape descends from the borrow above. The Owner chain landed in ticket 05, the
- * Screen Capture line in ticket 17, and the redaction statement in ticket 07;
- * each added rows here. The Excerpts themselves are not rows: they are fenced
- * blocks below the Note, because they are lifted content and not scalars.
+ * shape descends from the borrow above. The Owner chain, the Screen Capture line
+ * and the redaction statement are each rows here. The Excerpts themselves are
+ * not: they are fenced blocks below the Note, because they are lifted content
+ * and not scalars.
  */
 function pointerRows({ pointer, captureLine }: Pick): Array<[string, string]> {
   const { url, viewport, descriptor, geometry } = pointer
@@ -126,7 +127,7 @@ const excerptFence = (kind: string, nonce: string) => `--- excerpt ${kind} ${non
 const endExcerptFence = (nonce: string) => `--- end excerpt ${nonce} ---`
 
 /** What each kind of Excerpt is, in the sentence that introduces it as data. */
-const EXCERPT_WHAT: Record<string, string> = {
+const EXCERPT_WHAT: Record<ExcerptKind, string> = {
   'rendered-text': 'the text this element renders on the page',
   'input-value': 'what is in this input',
   textarea: "this textarea's contents",
@@ -149,8 +150,8 @@ export interface RenderOptions {
 
 /**
  * The rendered content of one delivery: a list of Picks, as one plain string.
- * The inbox accepts nothing else, and ticket 15's drain calls this rather than
- * rendering anything of its own.
+ * The inbox accepts nothing else, and the hook floor's drain calls this rather
+ * than rendering anything of its own.
  */
 export function renderPicks(picks: Pick[], { origin }: RenderOptions): string {
   const at = now()
@@ -214,7 +215,7 @@ function excerptLines(pick: Pick): string[] {
 }
 
 function introduceExcerpt(excerpt: Excerpt): string {
-  const what = EXCERPT_WHAT[excerpt.kind] ?? 'content lifted from the page'
+  const what = EXCERPT_WHAT[excerpt.kind]
   const trimmed =
     excerpt.captured === undefined
       ? ''

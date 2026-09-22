@@ -2,9 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Logger } from 'vite'
-import type { CaptureRequest } from '../pick.js'
+import type { CaptureCoordinates, CaptureRequest } from '../../wire.js'
 import { regionFor } from './region.js'
-import type { Coordinates } from './region.js'
 import { openCaptureDirectory } from './directory.js'
 import type { CaptureDirectory } from './directory.js'
 import { probeScreencapture, runScreencapture } from './screencapture.js'
@@ -32,7 +31,7 @@ export interface CaptureService {
   /** This server's line in the startup posture block. */
   postureLine: string
   /** Start one capture and answer its id at once; the tool runs behind it. */
-  start(coordinates: Coordinates): string
+  start(coordinates: CaptureCoordinates): string
   /** Abort and delete. False when this server minted no such capture. */
   abort(id: string): boolean
   /**

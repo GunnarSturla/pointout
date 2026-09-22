@@ -9,6 +9,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { alive, randomSuffix, sweepDead } from './temp-files.js'
 
 // The hook discovery entry (spec §18): how a hook, which knows only a cwd,
 // finds the dev servers serving that checkout and is allowed to drain them.
@@ -26,9 +27,9 @@ import { join } from 'node:path'
 //      page can POST to loopback without CORS but cannot read a file, which is
 //      why the mode is 0600 and the directory 0700 (spec §11).
 //
-// Like the capture directory (ticket 17) this lives under the OS temp root and
-// is swept by pid liveness at startup, because a dev server that was killed
-// leaves an entry naming a port that is now somebody else's.
+// Like the capture directory, this lives under the OS temp root and is swept by
+// pid liveness at startup, because a dev server that was killed leaves an entry
+// naming a port that is now somebody else's.
 
 /** Per-user by name as well as by mode: a shared `/tmp` is the normal case. */
 const ROOT_NAME = 'vite-agent-inspect-servers'
@@ -102,12 +103,12 @@ export function createDiscovery({ root, warn }: DiscoveryOptions): Discovery {
         // Stated rather than inherited: `mkdir`'s mode is masked by the umask,
         // and this directory's whole job is to be unreadable by anyone else.
         chmodSync(directory, 0o700)
-        const swept = sweep(directory)
+        const swept = sweepDead(directory, OWNED)
 
         const entry: DiscoveryEntry = { root, port, secret, pid: process.pid }
         const written = join(
           directory,
-          `${rootKey(root)}-${process.pid}-${randomBytes(3).toString('hex')}.json`,
+          `${rootKey(root)}-${process.pid}-${randomSuffix()}.json`,
         )
         writeFileSync(written, JSON.stringify(entry, null, 2) + '\n', { mode: 0o600 })
         chmodSync(written, 0o600)
@@ -173,37 +174,6 @@ function read(path: string): DiscoveryEntry | null {
     // A file being written as we read it, or one this version does not
     // recognise. Either way it names no dev server we can reach.
     return null
-  }
-}
-
-/** Everything in the directory that no live dev server owns. Returns how many. */
-function sweep(directory: string): number {
-  let removed = 0
-  for (const name of readdirSync(directory)) {
-    const owner = OWNED.exec(name)
-    if (owner && alive(Number(owner[1]))) continue
-    try {
-      rmSync(join(directory, name), { recursive: true, force: true })
-      removed++
-    } catch {
-      // Not ours to remove. Nothing here depends on the sweep succeeding.
-    }
-  }
-  return removed
-}
-
-/**
- * Signal 0 asks the kernel about a pid without sending anything; a pid we are
- * not allowed to signal is somebody else's live process. Same rule, and the
- * same reasons, as the capture directory's sweep.
- */
-function alive(pid: number): boolean {
-  if (!Number.isInteger(pid) || pid < 1) return false
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM'
   }
 }
 

@@ -26,14 +26,14 @@ describe('the CommonJS entry', () => {
 describe('the built package', () => {
   // `npm run build` is a `pre` step of this command, so `dist` is what the
   // emit just produced. Ticket 23: one file in, one file out, no bundler.
-  const srcModules = modulesUnder('src').filter((path) => path.endsWith('.ts'))
+  const srcModules = modulesUnder('src').filter((path) => /\.tsx?$/.test(path))
 
   it('found source modules to account for', () => {
     expect(srcModules.length).toBeGreaterThan(5)
   })
 
   it.each(srcModules)('emits %s as ESM with types and a source map', (module) => {
-    const emitted = module.replace(/^src\//, 'dist/').replace(/\.ts$/, '.js')
+    const emitted = module.replace(/^src\//, 'dist/').replace(/\.tsx?$/, '.js')
 
     expect(existsSync(join(repoRoot, emitted))).toBe(true)
     expect(existsSync(join(repoRoot, emitted + '.map'))).toBe(true)

@@ -41,6 +41,16 @@ export interface ServerFacts {
   claudePid: number | null
 }
 
+/**
+ * The three things `configureServer` brings up before anything is served, each
+ * with a line of its own in the posture block and a `close` of its own.
+ */
+export interface Services {
+  route: DeliveryRoute
+  captures: CaptureService
+  discovery: Discovery
+}
+
 export function createServerFacts({
   viteRoot,
   options,
@@ -63,39 +73,27 @@ export function createServerFacts({
 export function announcePosture(
   server: ViteDevServer,
   facts: ServerFacts,
-  route: DeliveryRoute,
-  captures: CaptureService,
-  discovery: Discovery,
+  { route, captures, discovery }: Services,
 ): void {
-  const print = () => {
-    const { registry, candidates } = readCandidates(facts)
+  const { registry, candidates } = readCandidates(facts)
 
-    // Written here rather than on a `listening` handler of its own: the entry
-    // names the port, which exists only now, and the line below states where it
-    // went — so the two cannot disagree about whether it happened (spec §18).
-    discovery.publish(listeningPort(server))
+  const posture = createPosture()
+    .add('root', rootLine(facts.root, facts.rootMethod))
+    .add('guard', GUARD_LINE)
+    .add('registry', registryLine(registry, candidates.length))
+    .add('reply socket', route.postureLine)
+    .add('screen capture', captures.postureLine)
+    .add('discovery entry', discovery.postureLine)
 
-    const posture = createPosture()
-      .add('root', rootLine(facts.root, facts.rootMethod))
-      .add('guard', GUARD_LINE)
-      .add('registry', registryLine(registry, candidates.length))
-      .add('reply socket', route.postureLine)
-      .add('screen capture', captures.postureLine)
-      .add('discovery entry', discovery.postureLine)
+  const address = server.httpServer?.address()
+  const host = address && typeof address === 'object' ? address.address : null
+  if (host && !isLoopbackHost(host)) posture.add('host', lanLine(host))
 
-    const address = server.httpServer?.address()
-    const host = address && typeof address === 'object' ? address.address : null
-    if (host && !isLoopbackHost(host)) posture.add('host', lanLine(host))
-
-    server.config.logger.info('\n' + posture.render() + '\n')
-  }
-
-  if (server.httpServer) server.httpServer.once('listening', print)
-  else print()
+  server.config.logger.info('\n' + posture.render() + '\n')
 }
 
 /** The port Vite ended up on, or 0 in middleware mode, where there is none. */
-function listeningPort(server: ViteDevServer): number {
+export function listeningPort(server: ViteDevServer): number {
   const address = server.httpServer?.address()
   return address && typeof address === 'object' ? address.port : 0
 }

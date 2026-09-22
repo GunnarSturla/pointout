@@ -1,3 +1,4 @@
+import { text } from '../parse.js'
 import { RECEIPT_STATUSES } from '../receipt.js'
 import type { ReceiptStatus } from '../receipt.js'
 
@@ -94,11 +95,6 @@ export function readReplyFrame(line: string): ReplyFrame {
 
 function unusable(why: string): ReplyFrame {
   return { kind: 'unusable', why }
-}
-
-/** A non-empty string, or null: an empty one says as little as an absent one. */
-function text(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 function isReceiptStatus(value: string): value is ReceiptStatus {

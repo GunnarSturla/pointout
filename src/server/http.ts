@@ -12,27 +12,35 @@ import {
   parsePickAction,
 } from '../api.js'
 import type { PickAction } from '../api.js'
+import { DONE, QUEUED_UNADDRESSED, SENT, SENT_AWAITING_ACK, WORKING } from '../wire.js'
+import type {
+  CaptureStarted,
+  NamedTarget,
+  PickAccepted,
+  PickActionAnswer,
+  SessionsResponse,
+  StatusResponse,
+} from '../wire.js'
 import type { CaptureService } from './capture/index.js'
 import { parseCaptureBody } from './capture/region.js'
 import { now } from './clock.js'
-import type { DeliveryRoute } from './delivery.js'
+import type { DeliveryOutcome, DeliveryRoute } from './delivery.js'
 import type { Discovery } from './discovery.js'
 import { drainQueue, parseDrainBody, refuseDrainCaller } from './drain.js'
 import { refuseForeignOrigin, refuseNonLoopback, refuseWrongNonce } from './guard.js'
 import type { Refusal } from './guard.js'
-import { DONE, FAILED, SENT, TTL_FAILURE, WORKING, createLedger } from './ledger.js'
+import { createLedger } from './ledger.js'
 import type { Ledger } from './ledger.js'
 import { resolveOwnerChain } from './owner-chain.js'
+import { readRequestBody } from './parse.js'
 import { fitPayload } from './payload.js'
-import { parsePickBody, readRequestBody } from './pick.js'
-import { QUEUED_UNADDRESSED, createPickQueue } from './queue.js'
-import type { PickQueue } from './queue.js'
+import { mintPick, parsePickBody } from './pick.js'
 import { createIdleLog, recordReplies } from './receipt.js'
 import type { IdleLog } from './receipt.js'
-import { readCandidates } from './registry.js'
+import { readCandidates, sessionOf } from './registry.js'
 import { pickStatuses } from './status.js'
 import { resolveTarget } from './targeting.js'
-import type { ServerFacts } from './index.js'
+import type { ServerFacts, Services } from './index.js'
 
 // The HTTP surface (spec §20). Mounted inside `configureServer`'s body, so it
 // runs ahead of Vite's own middlewares and the SPA fallback never swallows an
@@ -53,8 +61,7 @@ interface RequestContext {
   facts: ServerFacts
   /** The dev server itself: the module graph is where an Owner chain is remapped. */
   server: ViteDevServer
-  queue: PickQueue
-  /** What became of every Pick, after its entry has left the queue. */
+  /** What became of every Pick, and which of them may still be delivered. */
   ledger: Ledger
   /** When each Target last finished a turn. Never moves a Pick (spec §17). */
   idle: IdleLog
@@ -116,9 +123,7 @@ const ENDPOINTS: Endpoint[] = [
 export function installAgentEndpoints(
   server: ViteDevServer,
   facts: ServerFacts,
-  route: DeliveryRoute,
-  captures: CaptureService,
-  discovery: Discovery,
+  { route, captures, discovery }: Services,
 ): void {
   const { logger } = server.config
   const ownOrigins = onceOwnOrigins(server)
@@ -129,7 +134,6 @@ export function installAgentEndpoints(
     captures,
     discovery,
     logger,
-    queue: createPickQueue(),
     ledger: createLedger(now),
     idle: createIdleLog(),
     origin: () => loopbackOrigin(server),
@@ -150,7 +154,7 @@ export function installAgentEndpoints(
     const offMachine = refuseNonLoopback(request)
     if (offMachine) return sendRefusal(logger, response, offMachine)
 
-    // Before anything is matched, let alone handled: an entry past its TTL has
+    // Before anything is matched, let alone handled: a Pick past its TTL has
     // left the queue by the time any route could reach it (spec §15).
     expireStale(context)
 
@@ -211,7 +215,7 @@ function sessions(
   { facts }: RequestContext,
 ): void {
   const { registry, candidates } = readCandidates(facts)
-  sendJson(response, 200, {
+  const answer: SessionsResponse = {
     registry: {
       state: registry.state,
       hookFloor: registry.hookFloor,
@@ -219,7 +223,8 @@ function sessions(
       directory: registry.directory,
     },
     candidates,
-  })
+  }
+  sendJson(response, 200, answer)
 }
 
 /**
@@ -230,14 +235,15 @@ function sessions(
 function reportStatus(
   request: Connect.IncomingMessage,
   response: ServerResponse,
-  { facts, queue, ledger, idle }: RequestContext,
+  { facts, ledger, idle }: RequestContext,
 ): void {
-  sendJson(response, 200, { picks: pickStatuses(facts, queue, ledger, idle) })
+  const answer: StatusResponse = { picks: pickStatuses(facts, ledger, idle) }
+  sendJson(response, 200, answer)
 }
 
 /**
  * Ack and done (spec §11, §17). The nonce is the credential; an unknown Pick and
- * a wrong nonce are each refused with no state changed. The ack takes the entry
+ * a wrong nonce are each refused with no state changed. Either takes the Pick
  * out of the claim-once queue, which is what keeps a developer who types before
  * the agent answers from receiving the same Pick a second time (spec §15).
  */
@@ -245,7 +251,7 @@ function recordPickAction(
   action: PickAction,
   request: Connect.IncomingMessage,
   response: ServerResponse,
-  { queue, ledger, logger }: RequestContext,
+  { ledger, logger }: RequestContext,
 ): void {
   const url = request.url ?? '/'
   const [path = '/', query = ''] = url.split('?')
@@ -269,11 +275,10 @@ function recordPickAction(
   )
   if (wrongNonce) return sendRefusal(logger, response, wrongNonce)
 
-  // Done as well as ack: a finished Pick is not one the floor may hand out.
-  queue.remove(record.pick.id)
   const state = action === 'ack' ? WORKING : DONE
   ledger.advance(record.pick.id, state)
-  sendJson(response, 200, { pickId: record.pick.id, state })
+  const answer: PickActionAnswer = { pickId: record.pick.id, state }
+  sendJson(response, 200, answer)
 }
 
 /**
@@ -285,7 +290,7 @@ function recordPickAction(
 async function drainPicks(
   request: Connect.IncomingMessage,
   response: ServerResponse,
-  { facts, queue, ledger, discovery, logger, origin }: RequestContext,
+  { facts, ledger, discovery, logger, origin }: RequestContext,
 ): Promise<void> {
   const body = await readRequestBody(request)
   if (!body.ok) return sendRefusal(logger, response, body.refusal)
@@ -299,12 +304,7 @@ async function drainPicks(
   })
   if (refused) return sendRefusal(logger, response, refused)
 
-  const drained = drainQueue({
-    queue,
-    ledger,
-    origin: origin(),
-    budget: parsed.value.budget,
-  })
+  const drained = drainQueue({ ledger, origin: origin(), budget: parsed.value.budget })
   if (drained.reason) logger.warn(`vite-agent-inspect: ${drained.reason}`)
   else if (drained.drained > 0) {
     logger.info(
@@ -317,13 +317,12 @@ async function drainPicks(
 }
 
 /**
- * Spec §15 and §21: an entry nobody drained within its TTL leaves the queue,
- * and says so — in the log and in the ledger — rather than quietly staying put.
+ * Spec §15 and §21: a Pick nobody drained within its TTL leaves the queue, and
+ * says so — in the log and in the ledger — rather than quietly staying put.
  */
-function expireStale({ queue, ledger, logger }: RequestContext): void {
-  for (const entry of queue.sweep(now())) {
-    ledger.advance(entry.pick.id, FAILED, TTL_FAILURE)
-    logger.warn(`vite-agent-inspect: pick ${entry.pick.id} expired. ${TTL_FAILURE}`)
+function expireStale({ ledger, logger }: RequestContext): void {
+  for (const record of ledger.expire(now())) {
+    logger.warn(`vite-agent-inspect: pick ${record.pick.id} expired. ${record.reason}`)
   }
 }
 
@@ -351,7 +350,8 @@ async function startCapture(
   const coordinates = parseCaptureBody(body.value)
   if (!coordinates.ok) return sendRefusal(logger, response, coordinates.refusal)
 
-  sendJson(response, 200, { captureId: captures.start(coordinates.value) })
+  const answer: CaptureStarted = { captureId: captures.start(coordinates.value) }
+  sendJson(response, 200, answer)
 }
 
 /**
@@ -381,93 +381,97 @@ function abortCapture(
 }
 
 /**
- * Pick ingest (spec §11, §13, §14, §15): check the body, mint the Pick, resolve
- * the Target, queue it, render it, and write it. Every refusal names its part;
- * an accepted Pick that could not be addressed is still accepted, and says so.
+ * Pick ingest (spec §11, §13, §14, §15): check the body, resolve what it names,
+ * mint the Pick, fit it under the cap, write it, ledger it. Every refusal names
+ * its part; an accepted Pick that could not be addressed is still accepted, and
+ * says so.
  */
 async function ingestPick(
   request: Connect.IncomingMessage,
   response: ServerResponse,
   context: RequestContext,
 ): Promise<void> {
-  const { facts, queue, ledger, route, logger } = context
+  const { facts, ledger, route, captures, logger } = context
 
   const body = await readRequestBody(request)
   if (!body.ok) return sendRefusal(logger, response, body.refusal)
 
   const parsed = parsePickBody(body.value)
   if (!parsed.ok) return sendRefusal(logger, response, parsed.refusal)
-  const pick = parsed.value
+  const input = parsed.value
 
   // Resolved here, at ingest, against the module graph as it stands now: a Pick
   // drained an hour later must carry the position its frames meant when it was
   // made, not one remapped through a transform that has moved since (spec §12).
-  pick.pointer.ownerChain = await resolveOwnerChain(
-    context.server,
-    facts.root,
-    pick.ownerLinks,
-  )
+  const ownerChain = await resolveOwnerChain(context.server, facts.root, input.ownerChain)
 
-  const { candidates } = readCandidates(facts)
-  const choice = resolveTarget(pick.target, candidates)
+  // The Pick carries the Target it was resolved to, not the one the body named:
+  // a preselected Pick was addressed here, and the ledger is what knows it.
+  const { registry, candidates } = readCandidates(facts)
+  const choice = resolveTarget(input.target, candidates)
   if (!choice.ok) return sendRefusal(logger, response, choice.refusal)
-
-  // The entry carries the Target it was resolved to, not the one the body
-  // named: a preselected Pick was addressed here, and the queue is what knows it.
-  pick.target = choice.target
-    ? { sessionId: choice.target.sessionId, pid: choice.target.pid }
+  const target: NamedTarget | null = choice.target
+    ? {
+        sessionId: choice.target.sessionId,
+        pid: choice.target.pid,
+        name: choice.target.name,
+      }
     : null
 
   // The capture the Overlay started at pick time becomes one prose line, or
   // nothing at all — and the file is deleted here when the toggle was off. A
   // capture that failed never stops the Pick: it says so and travels (spec §10).
-  pick.captureLine = await context.captures.resolve(pick.captureRequest)
+  const captureLine = await captures.resolve(input.capture ?? null)
 
-  // The 32 KiB cap, before the write and before the queue: a Pick too big to
+  // The 32 KiB cap, before the write and before the ledger: a Pick too big to
   // send is one the developer is asked to shorten, not one that waits around to
   // fail later. Excerpts are all it may trim, and it says what it took (§13).
-  const rendered = fitPayload(pick, { origin: context.origin() })
-  if (!rendered.ok) return sendRefusal(logger, response, rendered.refusal)
+  const fitted = fitPayload(mintPick(input, { ownerChain, target, captureLine }), {
+    origin: context.origin(),
+  })
+  if (!fitted.ok) return sendRefusal(logger, response, fitted.refusal)
+  const { pick, body: rendered } = fitted.value
 
-  const entry = queue.add(pick)
   let unwritten: string | undefined
-
   if (pick.target) {
-    const outcome = await route.deliver({
-      pickId: pick.id,
-      body: rendered.value,
-      target: pick.target,
-    })
-    if (outcome.written) queue.markSent(pick.id)
-    else {
+    const session = sessionOf(registry, pick.target)
+    const outcome: DeliveryOutcome = session
+      ? await route.deliver({
+          pickId: pick.id,
+          body: rendered,
+          target: pick.target,
+          session,
+        })
+      : {
+          written: false,
+          reason: `session ${pick.target.sessionId} is no longer in the registry`,
+        }
+    if (!outcome.written) {
       unwritten = outcome.reason
-      logger.warn(
-        `vite-agent-inspect: pick ${pick.id} was not delivered: ${outcome.reason}`,
-      )
+      logger.warn(`vite-agent-inspect: pick ${pick.id} was not delivered: ${unwritten}`)
     }
   }
+  const written = pick.target !== null && unwritten === undefined
 
   // A write that failed leaves the Pick `queued-unaddressed` rather than
   // `failed`: the hook floor can still take it, and the reason is carried so
-  // nothing about the attempt is silent (spec §21).
-  ledger.open(
-    entry,
-    entry.state === QUEUED_UNADDRESSED ? QUEUED_UNADDRESSED : SENT,
-    unwritten,
-  )
+  // nothing about the attempt is silent (spec §21). Ledgered only now, after
+  // the write has settled: a Pick the floor could see while its socket write
+  // was still in flight would be one it could take twice.
+  ledger.open(pick, written ? SENT : QUEUED_UNADDRESSED, unwritten)
 
-  // The Pick id, and the queue state that says whether anything was written.
-  // The Target row, the chip words and every later state belong to ticket 11's
-  // status endpoint; what a 200 must not be is silent about a Pick that went
-  // nowhere (spec §21).
-  sendJson(response, 200, {
+  // The Pick id, and whether anything was written. The Target row, the chip
+  // words and every later state are the status endpoint's; what a 200 must
+  // not be is silent about a Pick that went nowhere (spec §21).
+  const accepted: PickAccepted = {
     pickId: pick.id,
-    state: entry.state,
+    state: written ? SENT_AWAITING_ACK : QUEUED_UNADDRESSED,
     ...(unwritten ? { reason: unwritten } : {}),
     // Information, not a refusal: the Pick was accepted and the Note travelled
     // whole. The Panel renders it as one quiet line (spec §7).
     ...(pick.trimNote ? { trimmed: pick.trimNote } : {}),
-  })
+  }
+  sendJson(response, 200, accepted)
 }
 
 /**

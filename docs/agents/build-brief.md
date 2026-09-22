@@ -13,8 +13,16 @@ block, Pick ingest, the claim-once queue and its ledger, `GET /__agent/status`, 
 reply socket and the Receipts read off it, the drain endpoint and CLI, and Screen
 Capture.
 
-The Overlay: one open shadow root, the Picker, Highlight and Panel, the hit test with
-its shield, the Owner chain with per-frame Confidence, and Target selection.
+The Overlay: one open shadow root, the Picker, Highlight, Panel and Stack, the hit
+test with its shield, the Owner chain with per-frame Confidence, and Target selection.
+The Panel, Stack and Picker are React components fed by an imperative controller; the
+Highlight is imperative (ADR-0004). The Panel's placement is arithmetic in
+`src/overlay/placement.ts`; there is no runtime dependency.
+
+The shapes that cross HTTP live once, in `src/wire.ts`, and both halves import them.
+The server keeps one ledger per dev server (`src/server/ledger.ts`): a Pick is in the
+claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `held`, and
+`drainable()` and `expire()` read that off the state rather than off a second structure.
 
 ## Rules that are not negotiable
 
@@ -39,6 +47,11 @@ its shield, the Owner chain with per-frame Confidence, and Target selection.
   pre-registered against the `review-animations` gate.
 - **Borrowed code is credited**: a provenance header, an end-of-borrow marker, and a
   `LICENSE-THIRDPARTY` entry. A test checks the header and the entry agree.
+- **A wire shape is written once**, in `src/wire.ts`. The Overlay and the server import
+  it; neither spells a body, a response or a state word out by hand.
+- **The React surfaces obey the built-Overlay test too**: no `.tsx` module may contain
+  the words a moving declaration would — in prose as well as code — and React's
+  `useTransition` and `startTransition` are never imported (ADR-0004).
 
 ## Measured facts you would otherwise rediscover
 
@@ -86,7 +99,12 @@ it before committing. Your ticket names which files are yours.
 - The TTL sentence *"nobody prompted Claude in this repo within 30 minutes"* is a
   stretch for a Pick written to a socket, **false** for a drained one, and false twice
   over for a `held` one — somebody was asked, and it was delivered. Ticket 14 owns the
-  fix; ticket 13 left it exactly as it found it.
+  fix. The whole of the TTL rule is now one predicate in `ledger.ts`'s `expire()`:
+  which states expire, and with which sentence.
+- **react-dom under Trusted Types is unverified.** The Overlay's surfaces are built by
+  react-dom now, and the guarantee that nothing builds DOM from a markup string rests on
+  its behaviour under the first consumer's `require-trusted-types-for 'script'`. Check
+  it against that app before v0 is called done (ADR-0004).
 - **Ticket 19 cannot test fail-closed by stripping `Origin`** — see above. It needs
   another mechanism.
 - Spec §12's "frame directly above the sentinel" sentence is superseded by ADR-0003;

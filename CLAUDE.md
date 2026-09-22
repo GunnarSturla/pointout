@@ -35,6 +35,13 @@ relative import inside `src/` writes `.js`. oxfmt formats on save and oxlint gat
 finished task, both as hooks; the formatter never touches prose. See
 `docs/agents/packaging.md` — read it before writing a source file.
 
+### Overlay surfaces
+
+The Panel, Stack and Picker are React components in `src/overlay/*.tsx`, fed props by
+the imperative controller in `src/overlay/overlay.ts`; the Highlight stays imperative.
+Every shape that crosses HTTP is written once in `src/wire.ts`. See
+`docs/adr/0004-react-surfaces-and-hand-rolled-placement.md` before touching a surface.
+
 ### Motion
 
 No motion by default: all of it lives in one `prefers-reduced-motion: no-preference`

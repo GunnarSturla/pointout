@@ -1,6 +1,8 @@
 import { relative, sep } from 'node:path'
 import type { ViteDevServer } from 'vite'
-import type { Parsed } from './pick.js'
+import type { OwnerChainLink } from '../wire.js'
+import { refuse } from './parse.js'
+import type { Parsed } from './parse.js'
 import { originalPositionFor } from './sourcemap.js'
 import { readAppFrame } from './stack.js'
 
@@ -13,14 +15,6 @@ import { readAppFrame } from './stack.js'
 // the parser, and never interpolated into the body an agent reads. What the
 // Pointer prints is only ever built here, out of a component name, a path this
 // server computed, and numbers.
-
-/** One link of the chain as the Overlay sends it. */
-export interface OwnerLinkInput {
-  /** The owning component's `displayName` or `name`, or null when it has none. */
-  name: string | null
-  /** The link's raw `_debugStack` string, in whatever grammar the engine wrote. */
-  stack: string
-}
 
 /**
  * One degraded mode, named the way spec §12's table names it. The name travels
@@ -75,63 +69,55 @@ export interface OwnerLink {
   dependency: boolean
 }
 
-/** Everything the Overlay says about ownership, before any of it is resolved. */
-export interface OwnerChainInput {
-  links: OwnerLinkInput[]
-  /** How many `parentElement` steps it took to find a fiber at all (spec §4). */
-  walkUp: number
-}
-
-const refuse = (reason: string): Parsed<never> => ({
-  ok: false,
-  refusal: { status: 400, body: { error: 'owner-chain-unreadable', reason } },
-})
+const unreadable = (reason: string) => refuse(400, 'owner-chain-unreadable', reason)
 
 /**
  * The ingest check on the Owner chain the body carries. A chain that is absent
  * is a chain of no links, which is a Pick this server still accepts: a Pick is
  * never refused for want of an owner (spec §4).
  */
-export function parseOwnerChain(body: Record<string, unknown>): Parsed<OwnerChainInput> {
+export function parseOwnerChain(
+  body: Record<string, unknown>,
+): Parsed<{ ownerChain: OwnerChainLink[]; walkUp: number }> {
   const { ownerChain, walkUp } = body
 
   if (
     walkUp !== undefined &&
     (typeof walkUp !== 'number' || !Number.isInteger(walkUp) || walkUp < 0)
   ) {
-    return refuse(
+    return unreadable(
       'refused a Pick whose walk-up distance is not a whole number of DOM levels.',
     )
   }
   const distance = typeof walkUp === 'number' ? walkUp : 0
 
   if (ownerChain === undefined || ownerChain === null) {
-    return { ok: true, value: { links: [], walkUp: distance } }
+    return { ok: true, value: { ownerChain: [], walkUp: distance } }
   }
   if (!Array.isArray(ownerChain)) {
-    return refuse('refused a Pick whose owner chain is not a list of links.')
+    return unreadable('refused a Pick whose owner chain is not a list of links.')
   }
 
-  const links: OwnerLinkInput[] = []
+  const links: OwnerChainLink[] = []
   for (const link of ownerChain) {
     if (typeof link !== 'object' || link === null || Array.isArray(link)) {
-      return refuse(
+      return unreadable(
         'refused a Pick whose owner chain holds something that is not a link.',
       )
     }
     const { name, stack } = link as Record<string, unknown>
     if (typeof stack !== 'string') {
-      return refuse('refused a Pick whose owner chain has a link with no raw stack.')
+      return unreadable('refused a Pick whose owner chain has a link with no raw stack.')
     }
     if (name !== undefined && name !== null && typeof name !== 'string') {
-      return refuse(
+      return unreadable(
         'refused a Pick whose owner chain has a link whose component name is not text.',
       )
     }
     links.push({ name: typeof name === 'string' ? name : null, stack })
   }
 
-  return { ok: true, value: { links, walkUp: distance } }
+  return { ok: true, value: { ownerChain: links, walkUp: distance } }
 }
 
 /**
@@ -143,7 +129,7 @@ export function parseOwnerChain(body: Record<string, unknown>): Parsed<OwnerChai
 export async function resolveOwnerChain(
   server: ViteDevServer,
   root: string,
-  links: readonly OwnerLinkInput[],
+  links: readonly OwnerChainLink[],
 ): Promise<OwnerLink[]> {
   const resolved: OwnerLink[] = []
   for (const link of links) resolved.push(await resolveLink(server, root, link))
@@ -153,7 +139,7 @@ export async function resolveOwnerChain(
 async function resolveLink(
   server: ViteDevServer,
   root: string,
-  link: OwnerLinkInput,
+  link: OwnerChainLink,
 ): Promise<OwnerLink> {
   const absent = (mode: DegradedMode, reason: string, dependency = false): OwnerLink => ({
     name: link.name,
@@ -294,7 +280,7 @@ function transformDrift(
 /**
  * A frame's url, parsed. Null for a frame that names no url at all, and the
  * frame's own text never travels with the refusal: the raw stacks are Excerpts
- * and nothing lifted from one is ever interpolated into the body (ticket 05).
+ * and nothing lifted from one is ever interpolated into the body (spec §13).
  */
 function frameUrl(url: string): URL | null {
   try {

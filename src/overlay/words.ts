@@ -1,16 +1,16 @@
 // What the Overlay says about a Target and about a Pick (spec §7, §17), in one
 // module because one of these sentences belongs to three surfaces: the Target
-// row, the `held` chip (ticket 27) and the paused report-back clock (ticket 14).
-// One phrase, three tickets — so it is written once and imported, not retyped.
+// row, the `held` chip and the paused report-back clock. One phrase, three
+// surfaces — so it is written once and imported, not retyped.
 //
-// The chip words at the foot of this file are §17's table, as far as ticket 12
-// reaches it: `sent`, `working`, `done` and `failed`. `held` and `unknown` are
-// tickets 27 and 14, and they belong here beside these when they land.
+// The chip words at the foot of this file are §17's table as far as the Overlay
+// draws it today: `sent`, `working`, `done` and `failed`. `held` and `unknown`
+// belong here beside these when they land.
 
 /** Zero Candidates. The Note input is replaced by this, and there is no Target. */
 export const NO_SESSION = 'No Claude session is running in this folder'
 
-/** The registry could not be read. The input stays; delivery is ticket 15's floor. */
+/** The registry could not be read. The input stays; delivery is the hook floor's. */
 export const CANT_SEE_SESSIONS = "Can't see your sessions — sending the slower way"
 
 /** The one action that unblocks a session waiting on a permission prompt. */

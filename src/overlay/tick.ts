@@ -1,7 +1,6 @@
 // The Overlay's one tick (spec §14): about a second and a half, running only
-// while something is watching — a Panel open, the Target rows expanded, or (when
-// tickets 11 and 12 join this module) a Pick still outstanding. An idle page, a
-// collapsed Overlay and an empty Stack read nothing at all.
+// while something is watching — a Panel open, or a Pick still outstanding. An
+// idle page, a collapsed Overlay and an empty Stack read nothing at all.
 //
 // One timer, not one per watcher: a second interval would be a second answer to
 // "how often does this page talk to the dev server", and the spec gives one.
