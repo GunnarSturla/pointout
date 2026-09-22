@@ -1,4 +1,5 @@
 import type { ViteDevServer } from 'vite'
+import type { CaptureService } from './capture/index.js'
 import { socketDirectory } from './claude/reply-socket.js'
 import type { DeliveryRoute } from './delivery.js'
 import { discoverRepoRoot } from './paths.js'
@@ -62,6 +63,7 @@ export function announcePosture(
   server: ViteDevServer,
   facts: ServerFacts,
   route: DeliveryRoute,
+  captures: CaptureService,
 ): void {
   const print = () => {
     const { registry, candidates } = readCandidates(facts)
@@ -71,6 +73,7 @@ export function announcePosture(
       .add('guard', GUARD_LINE)
       .add('registry', registryLine(registry, candidates.length))
       .add('reply socket', route.postureLine)
+      .add('screen capture', captures.postureLine)
 
     const address = server.httpServer?.address()
     const host = address && typeof address === 'object' ? address.address : null

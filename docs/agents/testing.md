@@ -94,7 +94,7 @@ exactly these strings, and `test/harness/fixture-env.ts` sets them.
 | --- | --- |
 | `VITE_AGENT_INSPECT_REGISTRY_DIR` | the session registry directory, so a test can write fake session JSON and key files |
 | `VITE_AGENT_INSPECT_SOCKET_DIR` | the socket directory, so a test can bind a unix socket per fake session, record every frame written to it, and send Receipts and idle notices back |
-| `PATH` | a fake `screencapture` is placed first: it writes a known PNG, an empty file, hangs or fails, on `FAKE_SCREENCAPTURE_MODE`. On `gitShim`, a fake `git` goes in front too: it records its arguments to `fixture.gitCalls()` and execs the real one, so a test can count the subprocesses the server spawns |
+| `PATH` | a fake `screencapture` is placed first: it writes a known PNG, an empty file, hangs or fails, on `FAKE_SCREENCAPTURE_MODE`, and records every call's pid and arguments to `fixture.capturePids()` and `fixture.captureCalls()` — which is how a test reads the region the server asked for, and how it sees that an aborted capture really was killed. On `gitShim`, a fake `git` goes in front too: it records its arguments to `fixture.gitCalls()` and execs the real one, so a test can count the subprocesses the server spawns |
 | `CLAUDE_PID` | the pid the started-this-server preselect matches |
 
 Each override is test-only. A consumer never sets any of them.
@@ -109,6 +109,19 @@ to take, so seam 1 moves the clock rather than waiting for it —
 `advanceClock(0)` in `afterEach` to put it back. It is process-wide, so it moves
 every dev server the file has open; seam 1 runs one file at a time, which is what
 makes that safe. Like the four above, a consumer never sets it.
+
+## Pretending to be another operating system
+
+`VITE_AGENT_INSPECT_PLATFORM` is a sixth override, and the last one that is not a
+harness boundary: it is the platform the server believes it is on. Screen Capture is
+macOS only (spec §10), so seam 1 states the platform rather than inheriting it.
+`createFixtureEnv` sets it to `darwin`, which makes the capture journeys read the
+same on a Linux checkout as on a mac; a test that wants the disabled-with-reason
+path passes `platform: 'linux'`. Like the others, a consumer never sets it.
+
+What it does not do is make seam 1 a test of macOS. The tool is faked; whether a real
+`screencapture` behaves as documented is what the dev server's own startup probe asks,
+on the machine it is actually running on, every time it starts.
 
 ## The example app
 

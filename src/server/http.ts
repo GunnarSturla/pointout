@@ -2,13 +2,17 @@ import type { ServerResponse } from 'node:http'
 import type { Connect, Logger, ViteDevServer } from 'vite'
 import {
   API_BASE,
+  CAPTURE_PATH,
   NONCE_PARAM,
   PICK_PATH,
   SESSIONS_PATH,
   STATUS_PATH,
+  parseCaptureId,
   parsePickAction,
 } from '../api.js'
 import type { PickAction } from '../api.js'
+import type { CaptureService } from './capture/index.js'
+import { parseCaptureBody } from './capture/region.js'
 import { now } from './clock.js'
 import type { DeliveryRoute } from './delivery.js'
 import { refuseForeignOrigin, refuseNonLoopback, refuseWrongNonce } from './guard.js'
@@ -47,6 +51,8 @@ interface RequestContext {
   /** What became of every Pick, after its entry has left the queue. */
   ledger: Ledger
   route: DeliveryRoute
+  /** Screen Capture, available or disabled with its reason (spec §10). */
+  captures: CaptureService
   logger: Logger
   /** This server's own loopback origin: the ack and done URLs hang off it. */
   origin(): string
@@ -84,6 +90,14 @@ const ENDPOINTS: Endpoint[] = [
   { method: 'GET', path: SESSIONS_PATH, policy: 'read', handle: sessions },
   { method: 'GET', path: STATUS_PATH, policy: 'read', handle: reportStatus },
   { method: 'POST', path: PICK_PATH, policy: 'ingress', handle: ingestPick },
+  { method: 'POST', path: CAPTURE_PATH, policy: 'ingress', handle: startCapture },
+  {
+    method: 'DELETE',
+    path: `${CAPTURE_PATH}/<id>`,
+    matches: (path) => parseCaptureId(path) !== null,
+    policy: 'ingress',
+    handle: abortCapture,
+  },
   pickActionEndpoint('ack'),
   pickActionEndpoint('done'),
 ]
@@ -92,6 +106,7 @@ export function installAgentEndpoints(
   server: ViteDevServer,
   facts: ServerFacts,
   route: DeliveryRoute,
+  captures: CaptureService,
 ): void {
   const { logger } = server.config
   const ownOrigins = onceOwnOrigins(server)
@@ -99,6 +114,7 @@ export function installAgentEndpoints(
     facts,
     server,
     route,
+    captures,
     logger,
     queue: createPickQueue(),
     ledger: createLedger(now),
@@ -254,6 +270,59 @@ function expireStale({ queue, ledger, logger }: RequestContext): void {
 }
 
 /**
+ * Start a Screen Capture (spec §10, §20). The id is answered at once and the
+ * tool runs behind it: the Panel's entrance is never gated on a capture. One
+ * that is disabled answers the reason it is disabled, at the point of use as
+ * well as in the startup posture block (spec §21).
+ */
+async function startCapture(
+  request: Connect.IncomingMessage,
+  response: ServerResponse,
+  { captures, logger }: RequestContext,
+): Promise<void> {
+  if (captures.disabledReason) {
+    return sendRefusal(logger, response, {
+      status: 409,
+      body: { error: 'capture-disabled', reason: captures.disabledReason },
+    })
+  }
+
+  const body = await readRequestBody(request)
+  if (!body.ok) return sendRefusal(logger, response, body.refusal)
+
+  const coordinates = parseCaptureBody(body.value)
+  if (!coordinates.ok) return sendRefusal(logger, response, coordinates.refusal)
+
+  sendJson(response, 200, { captureId: captures.start(coordinates.value) })
+}
+
+/**
+ * Abort and delete (spec §10): the developer moved the Pick, or discarded it.
+ * Idempotence is not claimed — a second DELETE names a capture this server no
+ * longer holds, and says so.
+ */
+function abortCapture(
+  request: Connect.IncomingMessage,
+  response: ServerResponse,
+  { captures, logger }: RequestContext,
+): void {
+  const path = (request.url ?? '/').split('?')[0] ?? '/'
+  const id = parseCaptureId(path)
+  if (!id || !captures.abort(id)) {
+    return sendRefusal(logger, response, {
+      status: 404,
+      body: {
+        error: 'unknown-capture',
+        reason:
+          'refused to abort a capture this dev server is not holding. It was ' +
+          'aborted already, or it was never started here.',
+      },
+    })
+  }
+  sendJson(response, 200, { captureId: id, deleted: true })
+}
+
+/**
  * Pick ingest (spec §11, §13, §14, §15): check the body, mint the Pick, resolve
  * the Target, queue it, render it, and write it. Every refusal names its part;
  * an accepted Pick that could not be addressed is still accepted, and says so.
@@ -290,6 +359,11 @@ async function ingestPick(
   pick.target = choice.target
     ? { sessionId: choice.target.sessionId, pid: choice.target.pid }
     : null
+
+  // The capture the Overlay started at pick time becomes one prose line, or
+  // nothing at all — and the file is deleted here when the toggle was off. A
+  // capture that failed never stops the Pick: it says so and travels (spec §10).
+  pick.captureLine = await context.captures.resolve(pick.captureRequest)
 
   const entry = queue.add(pick)
   let unwritten: string | undefined

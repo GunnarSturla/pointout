@@ -72,6 +72,16 @@ export interface Pointer {
   walkUp: number
 }
 
+/**
+ * The Screen Capture a Pick asks to carry: the one the Overlay started at pick
+ * time, and the camera toggle as it stood at Send (spec §10). The server keeps
+ * the image when the toggle was on and deletes it when it was off.
+ */
+export interface CaptureRequest {
+  id: string
+  keep: boolean
+}
+
 /** One selection, as the server holds it from ingest onwards. */
 export interface Pick {
   id: string
@@ -88,6 +98,14 @@ export interface Pick {
    * rather than inside it.
    */
   ownerLinks: OwnerLinkInput[]
+  /** What the body asked for; the capture service is what answers it. */
+  captureRequest: CaptureRequest | null
+  /**
+   * The Pointer's Screen Capture line — a file path, or the statement that a
+   * capture was intended and failed — filled in at ingest once the capture has
+   * been resolved, and null when the Pick carries none.
+   */
+  captureLine: string | null
 }
 
 /** Either a value, or the refusal that says why there is none. */
@@ -148,20 +166,19 @@ export function readRequestBody(request: IncomingMessage): Promise<Parsed<string
 }
 
 /** Mint a Pick from a body that has already been parsed and checked. */
-function mintPick(
-  pointer: Pointer,
-  note: string | null,
-  target: Target | null,
-  ownerLinks: OwnerLinkInput[],
-): Pick {
+function mintPick(parts: {
+  pointer: Pointer
+  note: string | null
+  target: Target | null
+  ownerLinks: OwnerLinkInput[]
+  captureRequest: CaptureRequest | null
+}): Pick {
   return {
     id: randomUUID(),
     nonce: randomBytes(6).toString('hex'),
     createdAt: now(),
-    pointer,
-    note,
-    target,
-    ownerLinks,
+    ...parts,
+    captureLine: null,
   }
 }
 
@@ -215,15 +232,47 @@ export function parsePickBody(text: string): Parsed<Pick> {
   const target = parseTarget(parsed.target)
   if (!target.ok) return target
 
+  const captureRequest = parseCaptureRequest(parsed.capture)
+  if (!captureRequest.ok) return captureRequest
+
   return {
     ok: true,
-    value: mintPick(
-      { ...pointer.value, walkUp: owners.value.walkUp },
-      typeof note === 'string' ? note : null,
-      target.value,
-      owners.value.links,
-    ),
+    value: mintPick({
+      pointer: { ...pointer.value, walkUp: owners.value.walkUp },
+      note: typeof note === 'string' ? note : null,
+      target: target.value,
+      ownerLinks: owners.value.links,
+      captureRequest: captureRequest.value,
+    }),
   }
+}
+
+/**
+ * The capture half of the body (spec §20): the id the Overlay was given when it
+ * started the capture, and the toggle. Absent is the ordinary case — most Picks
+ * carry no Screen Capture, and one that is malformed is refused rather than
+ * dropped, because a Pick that silently lost its capture looks like one that
+ * never asked for one.
+ */
+function parseCaptureRequest(value: unknown): Parsed<CaptureRequest | null> {
+  if (value === undefined || value === null) return { ok: true, value: null }
+  if (!isRecord(value) || typeof value.id !== 'string' || value.id.length === 0) {
+    return refuse(
+      400,
+      'capture-unreadable',
+      'refused a Pick whose capture names no id. A capture is one this dev ' +
+        'server started, or there is none.',
+    )
+  }
+  if (typeof value.keep !== 'boolean') {
+    return refuse(
+      400,
+      'capture-unreadable',
+      'refused a Pick whose capture does not say whether the camera toggle was ' +
+        'on: the image is kept or deleted, and this server will not guess which.',
+    )
+  }
+  return { ok: true, value: { id: value.id, keep: value.keep } }
 }
 
 function parsePointer(body: Record<string, unknown>): Parsed<Pointer> {

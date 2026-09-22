@@ -13,6 +13,26 @@ export const PICK_PATH = '/pick'
 /** Every outstanding Pick's state, and the Target row beside each (spec §20). */
 export const STATUS_PATH = '/status'
 
+/** Screen Capture: POST starts one, DELETE on `<path>/<id>` aborts it (§20). */
+export const CAPTURE_PATH = '/capture'
+
+/**
+ * Which capture a `DELETE ${CAPTURE_PATH}/<id>` names, or null when the path
+ * names none. `path` is relative to `API_BASE` and carries no query, like
+ * `parsePickAction` below.
+ */
+export function parseCaptureId(path: string): string | null {
+  if (!path.startsWith(`${CAPTURE_PATH}/`)) return null
+  const id = path.slice(CAPTURE_PATH.length + 1)
+  if (id.length === 0 || id.includes('/')) return null
+  try {
+    return decodeURIComponent(id)
+  } catch {
+    // A percent escape that is not one. It names no capture this server started.
+    return null
+  }
+}
+
 /** The query parameter the ack and done URLs carry the Pick's nonce in. */
 export const NONCE_PARAM = 'n'
 

@@ -1,5 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
+import { createCaptureService } from './server/capture/index.js'
+import type { CaptureService } from './server/capture/index.js'
 import { createClaudeRoute } from './server/claude/route.js'
 import type { DeliveryRoute } from './server/delivery.js'
 import { installAgentEndpoints } from './server/http.js'
@@ -32,6 +34,8 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
   let facts: ServerFacts | null = null
   /** The delivery route, once `configureServer` has bound its reply socket. */
   let route: DeliveryRoute | null = null
+  /** Screen Capture, once `configureServer` has probed for it. */
+  let captures: CaptureService | null = null
 
   // Vite runs `configResolved` before `configureServer`, so this never fires.
   // It throws rather than shrugging: a plugin that quietly served no endpoints
@@ -71,15 +75,23 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
       })
       server.httpServer?.once('close', route.close)
 
-      installAgentEndpoints(server, resolved, route)
-      announcePosture(server, resolved, route)
+      // Probed before anything is served, for the same reason as the socket:
+      // the posture block states whether this server can capture, and what an
+      // earlier dev server left on disk is swept now rather than never
+      // (spec §10, §21).
+      captures = await createCaptureService({ logger: server.config.logger })
+      server.httpServer?.once('close', captures.close)
+
+      installAgentEndpoints(server, resolved, route, captures)
+      announcePosture(server, resolved, route, captures)
     },
 
-    // The socket is unlinked on shutdown (spec §16). `httpServer` covers the
-    // ordinary dev server; this covers middleware mode, where there is none.
-    // Closing twice is a no-op.
+    // The socket is unlinked and the captures are deleted on shutdown (spec §10,
+    // §16). `httpServer` covers the ordinary dev server; this covers middleware
+    // mode, where there is none. Closing twice is a no-op.
     buildEnd() {
       route?.close()
+      captures?.close()
     },
 
     resolveId(id) {

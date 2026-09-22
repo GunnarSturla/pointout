@@ -25,7 +25,7 @@ import type { Pick } from './pick.js'
  * Excerpts and the full descriptor rules in ticket 07, and the Screen Capture
  * line in ticket 17; each adds rows here.
  */
-function pointerRows({ pointer }: Pick): Array<[string, string]> {
+function pointerRows({ pointer, captureLine }: Pick): Array<[string, string]> {
   const { url, viewport, descriptor, geometry } = pointer
   const rows: Array<[string, string]> = [
     ['page', url],
@@ -59,6 +59,10 @@ function pointerRows({ pointer }: Pick): Array<[string, string]> {
       `${count(walkUp, 'DOM level')} from the picked element before a React fiber was found`,
     ])
   }
+  // One line, and a path rather than pixels: a Screen Capture costs the agent
+  // no context until it chooses to open the file (spec §13, user story 75). No
+  // image bytes travel, and the `file_attachments` lane stays omitted.
+  if (captureLine) rows.push(['screen capture', captureLine])
   return rows
 }
 
