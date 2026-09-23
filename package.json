@@ -42,7 +42,9 @@
     "pretest:seam2:fast": "npm run build",
     "test:seam2:fast": "playwright test --project=chromium",
     "pretest:seam3": "npm run build",
-    "test:seam3": "vitest run --config vitest.seam3.config.ts"
+    "test:seam3": "vitest run --config vitest.seam3.config.ts",
+    "pretest:seam3:model": "npm run build",
+    "test:seam3:model": "vitest run --config vitest.seam3.config.ts --mode model"
   },
   "peerDependencies": {
     "react": ">=19.0.0",

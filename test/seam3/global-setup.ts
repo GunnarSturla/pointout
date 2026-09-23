@@ -14,7 +14,7 @@ export default function announce() {
       'registry (~/.claude/sessions/) and socket directory (/tmp/cc-socks/) for',
       'the length of the run, and is killed and checked gone at the end. Its one',
       'turn is pointed at a local blackhole, so no model is reached and nothing',
-      'is spent. The model tier is ticket 21 and is not built yet.',
+      'is spent. The model tier, which spends, is `npm run test:seam3:model`.',
       '',
       harness.runnable
         ? `Running against ${harness.version}.`
