@@ -59,7 +59,7 @@ how it finds the sessions a Pick can go to.
 ## `harness version`
 
 The Claude Code version the registry's sessions report, beside the last version the
-model-tier canaries passed against (`npm run test:seam3`, ticket 21). The canaries
+model-tier canaries passed against (`npm run test:seam3:model`, ticket 21). The canaries
 record that version in `src/server/claude/verified-harness.ts`.
 
 | text | meaning |
