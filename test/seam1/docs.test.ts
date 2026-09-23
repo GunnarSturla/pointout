@@ -36,7 +36,80 @@ describe('LICENSE-THIRDPARTY', () => {
       expect(read(borrow.file)).toContain('end of borrowed code')
     }
   })
+
+  it('enters the five borrows the spec plans, and no other', () => {
+    // Spec §1 names five, and nothing else is vendored. Written out rather than
+    // read off the provenance doc: the list is the contract.
+    expect(thirdPartyEntries().map((entry) => entry.project)).toEqual([
+      'vite-plugin-herdr',
+      'React DevTools',
+      'react-grab',
+      'click-to-react-component',
+      'UI-Locator',
+    ])
+  })
+
+  it('carries a full licence text in every entry, not a name or a link', () => {
+    for (const entry of thirdPartyEntries()) {
+      for (const field of ['Source:', 'Version:', 'Used in:', 'Taken:']) {
+        expect(entry.text, `${entry.project} has no ${field}`).toContain(field)
+      }
+      expect(entry.text, entry.project).toMatch(/^MIT License$/m)
+      expect(entry.text, entry.project).toMatch(/^Copyright \(c\) /m)
+      expect(entry.flowed, entry.project).toContain(
+        'The above copyright notice and this permission notice shall be included in ' +
+          'all copies or substantial portions of the Software.',
+      )
+      expect(entry.flowed, entry.project).toContain(
+        'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND',
+      )
+    }
+  })
+
+  it('names in each entry only files whose header credits that entry', () => {
+    // The other direction from the test above: an entry naming a file that no
+    // longer borrows, or that credits someone else, is a credit nobody earned.
+    const borrows = borrowingFiles()
+    for (const entry of thirdPartyEntries()) {
+      expect(entry.usedIn.length, `${entry.project} names no file`).toBeGreaterThan(0)
+      for (const file of entry.usedIn) {
+        const borrow = borrows.find((candidate) => candidate.file === file)
+        expect(borrow, `${file} carries no provenance header`).toBeDefined()
+        expect(borrow?.project).toBe(entry.project)
+      }
+    }
+  })
 })
+
+/** One `## <project>` section under `## Entries` in LICENSE-THIRDPARTY. */
+interface ThirdPartyEntry {
+  project: string
+  usedIn: string[]
+  text: string
+  /** The same text with its line breaks taken out. */
+  flowed: string
+}
+
+function thirdPartyEntries(): ThirdPartyEntry[] {
+  const [, entries = ''] = read('LICENSE-THIRDPARTY').split(/^## Entries$/m)
+  return entries
+    .split(/^## /m)
+    .slice(1)
+    .map((section) => {
+      const [heading = '', ...rest] = section.split('\n')
+      const text = rest.join('\n')
+      const usedIn = /^Used in:\s*(.+)$/m.exec(text)?.[1] ?? ''
+      return {
+        project: heading.trim(),
+        usedIn: usedIn
+          .split(',')
+          .map((path) => path.trim())
+          .filter(Boolean),
+        text,
+        flowed: text.replaceAll(/\s+/g, ' '),
+      }
+    })
+}
 
 /** One borrow, as its file's header states it. */
 interface Borrow {

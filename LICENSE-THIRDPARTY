@@ -23,6 +23,22 @@ Taken:   <what was taken, in a clause>
 Verbatim means verbatim, including the copyright line and its years. A summary, an
 SPDX identifier alone, or a link is not a licence.
 
+## Index
+
+The five borrows, and the files that carry each one's provenance header. Nothing
+else in this repository is borrowed. `test/seam1/docs.test.ts` checks that every
+provenance header has an entry here and that every file an entry names carries
+that entry's header.
+
+| borrow | from | licence | files |
+| --- | --- | --- | --- |
+| the fail-closed same-origin guard | vite-plugin-herdr | MIT | src/server/guard.ts |
+| the payload draft the Pointer prose evolved from | vite-plugin-herdr | MIT | src/server/render.ts |
+| the stack-frame parser | React DevTools | MIT | src/server/stack.ts |
+| the deep element-at-point hit test | react-grab | MIT | src/overlay/deep-element.ts |
+| the armed `pointer-events` rule | click-to-react-component | MIT | src/overlay/armed.ts |
+| the attribute allowlist and value redaction | UI-Locator | MIT | src/overlay/describe.ts |
+
 ## Entries
 
 ## vite-plugin-herdr
