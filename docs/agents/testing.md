@@ -156,6 +156,16 @@ What it does not do is make seam 1 a test of macOS. The tool is faked; whether a
 `screencapture` behaves as documented is what the dev server's own startup probe asks,
 on the machine it is actually running on, every time it starts.
 
+## Standing in for the verified harness
+
+`VITE_AGENT_INSPECT_VERIFIED_HARNESS` is a seventh override (ticket 19). The posture
+block prints the Claude Code version the model-tier canaries last passed against,
+which ticket 21 records in `src/server/claude/verified-harness.ts`. That record
+changes every time the canaries pass. So seam 1 states the version it wants,
+`<version>@<YYYY-MM-DD>` or `never`, and the posture snapshots do not move when the
+record does. Like the others, a consumer never sets it. `docs/posture.md` lists every
+posture line.
+
 ## The example app
 
 `examples/react-app/` is the test bed and the development target. Fixtures live one per

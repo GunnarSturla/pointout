@@ -25,6 +25,8 @@ export interface SessionSpec {
   waitingFor?: string | null
   statusUpdatedAt?: string
   updatedAt?: string
+  /** The Claude Code version the entry reports, as the harness writes it. */
+  version?: string
   /** false leaves the socket path off disk. */
   socket?: boolean
   /** Fields to leave out, to fake a shape change. */
@@ -52,6 +54,7 @@ export function writeSession(
   if (entry.waitingFor !== undefined) record.waitingFor = entry.waitingFor
   if (entry.statusUpdatedAt !== undefined) record.statusUpdatedAt = entry.statusUpdatedAt
   if (entry.updatedAt !== undefined) record.updatedAt = entry.updatedAt
+  if (entry.version !== undefined) record.version = entry.version
   for (const field of entry.omit ?? []) delete record[field]
 
   writeFileSync(join(fixture.registryDir, `${pid}.json`), JSON.stringify(record, null, 2))

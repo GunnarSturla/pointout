@@ -47,6 +47,14 @@ export function sweepDead(directory: string, owned: RegExp): number {
   return removed
 }
 
+/**
+ * What a startup sweep removed, as the posture lines say it: nothing at all when
+ * nothing was removed, so the ordinary line stays short.
+ */
+export function sweptClause(swept: number): string {
+  return swept > 0 ? `; ${swept} left by dead dev servers swept` : ''
+}
+
 /** Six hex characters. Not a secret — but a temp path a stranger can predict is one they can own. */
 export function randomSuffix(): string {
   return randomBytes(3).toString('hex')

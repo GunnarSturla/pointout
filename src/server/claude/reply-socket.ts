@@ -2,6 +2,8 @@ import { chmodSync, lstatSync, mkdirSync, unlinkSync } from 'node:fs'
 import { createServer } from 'node:net'
 import type { Server } from 'node:net'
 import { join } from 'node:path'
+import { says, warns } from '../posture.js'
+import type { PostureLine } from '../posture.js'
 
 // The reply address (spec §16). A Vite plugin listening in Claude Code's own
 // socket namespace is a visible step, accepted knowingly, and it comes with two
@@ -37,7 +39,7 @@ export interface ReplySocket {
   /** `uds:<path>` once bound, and null when it is not — never a guess. */
   address: string | null
   /** Bound at which path, or why not (spec §21). */
-  postureLine: string
+  postureLine: PostureLine
   close(): void
 }
 
@@ -75,7 +77,9 @@ export async function bindReplySocket({
   const path = join(socketDir, `${process.pid}.sock`)
   const notBound = (why: string): ReplySocket => ({
     address: null,
-    postureLine: `not bound — ${why}. Receipts will not arrive; delivery is unaffected.`,
+    postureLine: warns(
+      `not bound — ${why}. Receipts will not arrive; delivery is unaffected.`,
+    ),
     close: () => {},
   })
 
@@ -155,9 +159,10 @@ export async function bindReplySocket({
 
   return {
     address: `uds:${path}`,
-    postureLine:
+    postureLine: says(
       `bound at ${path}` +
-      (removedStale ? ' (a stale socket file was removed first)' : ''),
+        (removedStale ? ' (a stale socket file was removed first)' : ''),
+    ),
     close: () => closeOnce(server, path),
   }
 }

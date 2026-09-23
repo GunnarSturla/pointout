@@ -9,7 +9,9 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { alive, randomSuffix, sweepDead } from './temp-files.js'
+import { says, warns } from './posture.js'
+import type { PostureLine } from './posture.js'
+import { alive, randomSuffix, sweepDead, sweptClause } from './temp-files.js'
 
 // The hook discovery entry (spec §18): how a hook, which knows only a cwd,
 // finds the dev servers serving that checkout and is allowed to drain them.
@@ -56,8 +58,11 @@ export function discoveryDirectory(): string {
 export interface Discovery {
   /** The secret this dev server's entry publishes, and the drain compares. */
   secret: string
-  /** Written, and where — or why not (spec §21). Read after `publish`. */
-  readonly postureLine: string
+  /**
+   * Written, and where — or why not (spec §21). Read after `publish`, which is
+   * the only place a failure to write is said: the posture block says it.
+   */
+  readonly postureLine: PostureLine
   /** Write the entry. Called once the port exists, which is at `listening`. */
   publish(port: number): void
   /** Remove it. Idempotent: a dev server may be closed twice. */
@@ -67,8 +72,6 @@ export interface Discovery {
 export interface DiscoveryOptions {
   /** The normalized repo root this dev server serves. */
   root: string
-  /** A failure to publish is stated, never thrown: the floor degrades. */
-  warn(message: string): void
 }
 
 /**
@@ -76,10 +79,11 @@ export interface DiscoveryOptions {
  * Nothing is written until `publish`, because the entry's whole purpose is to
  * name a port and there is no port until Vite is listening.
  */
-export function createDiscovery({ root, warn }: DiscoveryOptions): Discovery {
+export function createDiscovery({ root }: DiscoveryOptions): Discovery {
   const secret = randomBytes(24).toString('hex')
   let path: string | null = null
-  let line = 'not written — this dev server has not started listening'
+  // A failure to publish is stated, never thrown: the floor degrades.
+  let line = warns('not written — this dev server has not started listening')
 
   return {
     secret,
@@ -90,10 +94,10 @@ export function createDiscovery({ root, warn }: DiscoveryOptions): Discovery {
     publish(port) {
       if (path) return
       if (!Number.isInteger(port) || port <= 0) {
-        line =
+        line = warns(
           'not written — this dev server is not listening on a TCP port, so no ' +
-          'hook could reach it; picks left for the next prompt will expire'
-        warn(`vite-agent-inspect: no hook discovery entry written. ${line}`)
+            'hook could reach it; picks left for the next prompt will expire',
+        )
         return
       }
 
@@ -114,15 +118,12 @@ export function createDiscovery({ root, warn }: DiscoveryOptions): Discovery {
         chmodSync(written, 0o600)
 
         path = written
-        line =
-          `${written} (user-only; removed at shutdown` +
-          (swept > 0 ? `, ${swept} left by dead dev servers swept` : '') +
-          ')'
+        line = says(`${written} (user-only; removed at shutdown${sweptClause(swept)})`)
       } catch (error) {
-        line =
+        line = warns(
           `not written — ${(error as Error).message}. Picks left for the next ` +
-          'prompt cannot be drained by a hook and will expire'
-        warn(`vite-agent-inspect: no hook discovery entry written. ${line}`)
+            'prompt cannot be drained by a hook and will expire',
+        )
       }
     },
 
@@ -130,7 +131,7 @@ export function createDiscovery({ root, warn }: DiscoveryOptions): Discovery {
       if (!path) return
       rmSync(path, { force: true })
       path = null
-      line = 'removed at shutdown'
+      line = says('removed at shutdown')
     },
   }
 }

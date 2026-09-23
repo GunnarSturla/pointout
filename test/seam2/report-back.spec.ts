@@ -320,6 +320,51 @@ test('sending it to another session writes a fresh Pick there and forgets the ol
   expect((await statusRow(page, fresh.pickId))?.state).toBe('sent')
 })
 
+// Spec §21: a resolution the server refuses is shown in the chip in the server's
+// own words (ticket 19's audit). The chosen session is swapped on the way out
+// for one that is no Candidate, so the refusal is the real server's.
+test('a retarget the server refuses shows its reason in the chip, and moves nothing', async ({
+  page,
+}) => {
+  const token = probe('elsewhere-refused')
+  const delivered = await offered(page, token)
+  const chip = chipOf(page, delivered.pickId)
+
+  await page.route('**/__agent/pick/*/report', (route) =>
+    route.continue({
+      postData: JSON.stringify({
+        resolve: 'retarget',
+        target: { sessionId: 'no-such-session', pid: 999_999 },
+      }),
+    }),
+  )
+  try {
+    await chip.locator(ELSEWHERE).click()
+    const rows = page.locator(`${STACK} ${TARGETS} ${TARGET_ROW}`)
+    await expect(rows.filter({ hasText: SECOND_NAME })).toBeVisible()
+
+    const refused = page.waitForResponse((response) => response.url().endsWith('/report'))
+    await rows.filter({ hasText: SECOND_NAME }).click()
+    const response = await refused
+    // A session that has left, and one that would take it instead: §14's 409.
+    expect(response.status()).toBe(409)
+    const { error, reason } = (await response.json()) as { error: string; reason: string }
+    expect(error).toBe('target-replaced')
+    expect(reason).toContain('no-such-session')
+
+    await expect(chip.locator('[data-part="offer-refusal"]')).toHaveText(reason)
+    // Nothing moved: the Pick is where it was, and nothing reached the other session.
+    expect((await statusRow(page, delivered.pickId))?.state).toBe('sent')
+    expect(
+      framesIn(SECOND_FRAMES_LOG_ENV).some(
+        (frame) => frame.type === 'user' && contentOf(frame).includes(token),
+      ),
+    ).toBe(false)
+  } finally {
+    await page.unrouteAll({ behavior: 'ignoreErrors' })
+  }
+})
+
 test('two Picks to an idle Target both raise offers, and the summary holds', async ({
   page,
 }) => {

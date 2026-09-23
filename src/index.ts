@@ -100,10 +100,7 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
         logger,
       })
       const captures = await createCaptureService({ logger })
-      const discovery = createDiscovery({
-        root: resolved.root,
-        warn: (message) => logger.warn(message),
-      })
+      const discovery = createDiscovery({ root: resolved.root })
       services = { route, captures, discovery }
       server.httpServer?.once('close', close)
 

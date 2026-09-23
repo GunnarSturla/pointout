@@ -388,6 +388,59 @@ describe('a Pick that carries a Screen Capture', () => {
     expect(filesIn(captureDirectory(server))).toEqual([])
   })
 
+  // A refusal is the developer's to fix and send again, and the capture the page
+  // still holds is part of what they send again (spec §21: a refused Pick has
+  // had nothing done to it). Before ticket 19 the capture was resolved before
+  // the cap was checked, so the resend was told it held no capture.
+  it('keeps the capture for the resend when the Pick is refused as too large', async () => {
+    const { app, server, env } = await startCaptureServer()
+    const session = await sessions.open(env, { cwd: app.checkout, pid: 500_109 })
+    const target = { sessionId: session.sessionId, pid: session.pid }
+
+    const { json } = await postCapture(server)
+    const directory = captureDirectory(server)
+    await until(() => filesIn(directory).length === 1, 'the capture to land')
+
+    const tooLarge = await postPick(server, {
+      ...pickBody({ id: json.captureId, keep: true }, target),
+      url: `http://localhost:5173/${'u'.repeat(40_000)}`,
+    })
+    expect(tooLarge.status).toBe(413)
+    expect(filesIn(directory)).toHaveLength(1)
+
+    const resent = await postPick(
+      server,
+      pickBody({ id: json.captureId, keep: true }, target),
+    )
+    expect(resent.status).toBe(200)
+    await session.awaitLines(2)
+
+    const body = renderedBody(session)
+    expect(body).not.toMatch(/holds no capture/)
+    expect(body).toContain(join(directory, filesIn(directory)[0] as string))
+  })
+
+  it('leaves the file to the resend when a Pick with the toggle off is refused', async () => {
+    const { app, server, env } = await startCaptureServer()
+    const session = await sessions.open(env, { cwd: app.checkout, pid: 500_110 })
+    const target = { sessionId: session.sessionId, pid: session.pid }
+
+    const { json } = await postCapture(server)
+    const directory = captureDirectory(server)
+    await until(() => filesIn(directory).length === 1, 'the capture to land')
+
+    const tooLarge = await postPick(server, {
+      ...pickBody({ id: json.captureId, keep: false }, target),
+      url: `http://localhost:5173/${'u'.repeat(40_000)}`,
+    })
+    expect(tooLarge.status).toBe(413)
+    expect(filesIn(directory)).toHaveLength(1)
+
+    // The page can still let go of it, which it could not if it were gone.
+    expect((await deleteCapture(server, json.captureId)).status).toBe(200)
+    await until(() => filesIn(directory).length === 0, 'the capture to be deleted')
+  })
+
   it('gives up on a capture that hangs, and says that in the payload', async () => {
     const { app, server, env } = await startCaptureServer()
     const session = await sessions.open(env, { cwd: app.checkout, pid: 500_105 })
@@ -451,7 +504,7 @@ describe('the startup probe', () => {
     expect(json).toEqual({
       error: 'capture-disabled',
       reason:
-        "this dev server is not running on macOS (platform: linux), and v0 crops the display with macOS's own screencapture tool",
+        "this dev server is not running on macOS (platform: linux), and v0 takes a Screen Capture with macOS's own screencapture tool",
     })
   })
 
