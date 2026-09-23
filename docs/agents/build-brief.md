@@ -37,7 +37,10 @@ whether a `sent` or `unknown` Pick is offered. Each TTL case has its own sentenc
 
 Seam 3's no-model tier (ticket 20) spawns a real, scrubbed, throwaway session through
 `test/harness/claude-session.ts` and checks the harness shapes v0 pins, at no token
-cost.
+cost. Its model tier (ticket 21, `npm run test:seam3:model`) costs tokens, runs a
+blackholed bystander session beside the real one, and on a fully green run rewrites
+`src/server/claude/verified-harness.ts` — `VERIFIED_HARNESS` is `null` or a three-line
+`{ version, verifiedAt }` literal, and nothing but its reporter may change that shape.
 
 The shapes that cross HTTP live once, in `src/wire.ts`, and both halves import them.
 The server keeps one ledger per dev server (`src/server/ledger.ts`): a Pick is in the
@@ -115,6 +118,18 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
   seam-2 session, `seam 2 report-back session` (`SEAM2_REPORT_BACK_FRAMES_LOG`), exists
   for that. Ending the default session's turn broke `receipts.spec.ts`'s silence
   journey in every engine.
+- **A session started below the repo root runs none of the root's hooks** (2.1.280,
+  ticket 21). It still loads the skills and is still a Candidate, so the socket reaches
+  it and the hook floor does not. The README must tell consumers to start Claude Code
+  at the root.
+- **A peer-message turn runs `UserPromptSubmit`**, so a socket delivery drains the whole
+  unaddressed queue into that turn. A Stop drain leaves three transcript records
+  (`hook_success`, `hook_additional_context`, `stop_hook_summary`).
+- **Outside safe mode a registry entry is written first without `status`**, and v0
+  rejects it as unrecognised until the full entry lands.
+- **A lone Candidate is preselected**, so a Pick with no Target never stays
+  `queued-unaddressed`; a hook canary needs a second, bystander session.
+- **`manual` is today's CLI name** for the spec's "default" permission mode.
 - **A Playwright route that holds an answer must be unrouted before its test ends**
   (`page.unrouteAll({ behavior: 'ignoreErrors' })`), or it throws into the next test on
   that worker, which never runs; Playwright exits 1 with *1 error was not a part of any
@@ -155,6 +170,10 @@ it before committing. Your ticket names which files are yours.
   releases a `held` Pick. The definition needs that clause.
 - **"reply" is on Ack's _Avoid_ list**, yet the code says "reply address" and the
   harness has `replyTo()`. Settle the word.
+- **Spec corrections owed** (tickets 20 and 21): §15's mismatched-`session_id`
+  Receipt does not exist; "every state except idle and you never type again" is false
+  for a session started below the root; the origin record carries a fourth field,
+  `msg_id`; the Stop drain leaves three records, not one; "default mode" is `manual`.
 - **`CONTEXT.md` has no term for the report-back offer and no definition of
   `unknown`** (ticket 14), and none for the Shutter (ticket 18), which is now in
   `data-shutter`, `styles.ts` and `docs/motion.md`.
