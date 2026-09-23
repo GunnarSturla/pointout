@@ -13,6 +13,15 @@ block, Pick ingest, the claim-once queue and its ledger, `GET /__agent/status`, 
 reply socket and the Receipts read off it, the drain endpoint and CLI, and Screen
 Capture.
 
+The startup posture block is complete and ordered (ticket 19); every line and what it
+means is in `docs/posture.md`. It is logged once, at `warn` when any line degrades.
+`src/server/claude/harness-version.ts` compares the registry's newest `version` with
+`VERIFIED_HARNESS` and warns, never refuses; seam 1 overrides the record with
+`VITE_AGENT_INSPECT_VERIFIED_HARNESS` (`<semver>@<YYYY-MM-DD>` or `never`), test-only.
+A Pick refused at the cap no longer spends its capture: `ingestPick` takes the claim
+only after `fitPayload` accepts. The §21 audit table, one test per item, is in ticket
+19.
+
 The CLI: `drain`, and `init` (ticket 16), which writes the two hook entries into the
 project's `.claude/settings.json` and the setup skill into `.claude/skills/`. The
 harness-neutral half is `src/cli/setup.ts` (`HarnessSetup`); the Claude half, and the
@@ -170,6 +179,12 @@ it before committing. Your ticket names which files are yours.
   releases a `held` Pick. The definition needs that clause.
 - **"reply" is on Ack's _Avoid_ list**, yet the code says "reply address" and the
   harness has `replyTo()`. Settle the word.
+- **`CONTEXT.md`'s Screen Capture says "a cropped image"**, with *crop* and *image*
+  both on its own _Avoid_ list. The server's sentences no longer say "crop" (ticket 19).
+- **Ticket 19 left three small gaps**: the temp directory's "not opened" posture line
+  has no test; a capture-able server that refuses the page's capture request still
+  reads to the agent as only "none was started"; the drain's too-large line still
+  reaches the agent as context when it fits the budget (ticket 15's choice).
 - **Spec corrections owed** (tickets 20 and 21): §15's mismatched-`session_id`
   Receipt does not exist; "every state except idle and you never type again" is false
   for a session started below the root; the origin record carries a fourth field,
@@ -177,16 +192,9 @@ it before committing. Your ticket names which files are yours.
 - **`CONTEXT.md` has no term for the report-back offer and no definition of
   `unknown`** (ticket 14), and none for the Shutter (ticket 18), which is now in
   `data-shutter`, `styles.ts` and `docs/motion.md`.
-- **Ticket 17's posture and 409 sentence says "v0 crops the display"**; *crop* is on
-  `CONTEXT.md`'s _Avoid_ list, and seams 1 and 2 both spell the sentence out.
-- **An over-cap 413 has already kept or deleted the Pick's capture** (ticket 18):
-  `ingestPick` resolves the capture before `fitPayload`, so the resend is told the Pick
-  holds no capture with that id. Ticket 19's audit.
 - **react-dom under Trusted Types is unverified.** The Overlay's surfaces are built by
   react-dom now, and the guarantee that nothing builds DOM from a markup string rests on
   its behaviour under the first consumer's `require-trusted-types-for 'script'`. Check
   it against that app before v0 is called done (ADR-0004).
-- **Ticket 19 cannot test fail-closed by stripping `Origin`** — see above. It needs
-  another mechanism.
 - Spec §12's "frame directly above the sentinel" sentence is superseded by ADR-0003;
   ticket 22 corrects the sentence.
