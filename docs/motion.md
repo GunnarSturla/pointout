@@ -141,6 +141,84 @@ The second, smaller deviation is the `width`/`height` animation above: a perform
 finding under the same standards, accepted for the reason given there. It is the gate's
 second target.
 
+## Running the gate
+
+This section is for the human who runs `review-animations`. Ticket 22 prepared it and
+did not run the gate.
+
+### What the gate reviews
+
+These are all the declarations in the `prefers-reduced-motion: no-preference` block
+at the bottom of `src/overlay/styles.ts`. Nothing else in the Overlay moves, and
+`test/seam1/overlay-build.test.ts` holds that. Each row says whether the decision
+behind it is pre-registered, which means the gate may not silently reverse it, or
+free, which means the gate may change it.
+
+| # | surface | selector | what moves | how often | standing |
+| --- | --- | --- | --- | --- | --- |
+| 1 | the armed-hover Highlight morph | `.highlight` | `translate`, `width`, `height`: 170 ms, `cubic-bezier(0.77, 0, 0.175, 1)` | every hover move while armed | **pre-registered deviation** from the frequency rule. The first target |
+| 2 | the morph's use of `width`/`height` rather than `scale` | `.highlight` | as row 1 | as row 1 | **pre-registered deviation** from the performance rule. The second target |
+| 3 | the Highlight of an element that left the page | `.highlight[data-gone]` | `opacity` to 0: 120 ms linear | rare | free |
+| 4 | the Picker's reveal out of its peek | `.picker-peek` | `translate`: 220 ms, `cubic-bezier(0.23, 1, 0.32, 1)` | each time the pointer reaches the bottom edge | free |
+| 5 | the shutter reopening after a Screen Capture frame | `.highlight`, `.stack`, `.picker-peek` | `opacity` from 0: 120 ms linear. Closing is never eased | every Pick and every move of one | free. The hide is the feature and stays; only the opening is motion |
+| 6 | the report-back countdown line | `.countdown` | `transform: scaleX`: each 1000 ms step linear, set one step ahead | rare: a Pick that did not land | free, including the reduce-mode behaviour of showing empty for the last second |
+
+Two rules are not motion but bear on it, and the gate should see them too. **Nothing
+travels on its first appearance**, and **tracking is not travelling**: `.highlight[data-placing]`
+turns the transition off for a placement. Both are described above.
+
+### Building and opening the Overlay
+
+The gate should review the built Overlay: the emitted `dist/overlay/`, served by a
+real dev server to the in-repo example app. It should not review `src/`.
+
+1. From the repository root, run `npm install` once, then `npm run dev`. `predev`
+   builds `dist/` first, then Vite serves `examples/react-app/` and prints its URL.
+2. Open that URL in a browser, with the system's reduced-motion setting **off**. On
+   macOS that is System Settings → Accessibility → Display → Reduce motion. Turn it
+   on afterwards to see that the Overlay does not move at all.
+3. **Rows 1–3**: hold Alt/Option, or click the Picker at the bottom centre, and move
+   over the example app's fixtures. Click an element to pick it. Each fixture has a
+   `data-fixture` attribute, and one of them unmounts its element on a button press
+   (row 3).
+4. **Row 4**: with nothing armed, move the pointer to the bottom edge, onto the
+   Picker's peek.
+5. **Row 5**: pick an element, then Alt-click a second one to move the Pick. The
+   shutter blinks each time, whether or not a Screen Capture is taken.
+6. **Row 6** needs a Pick that did not land. The deterministic way is to watch the
+   seam-2 journey headed, in Chromium:
+
+   ```sh
+   npm run build
+   SEAM2_PORT=5199 npx playwright test test/seam2/report-back.spec.ts \
+     --project=chromium --headed --debug -g "with motion allowed"
+   ```
+
+   `--debug` opens the Playwright inspector. The journey ends a few seconds after the
+   line starts to shorten, so step through it there to hold the page open. `npx playwright` skips the `pretest` build, which is why `npm run build` comes
+   first.
+
+Without a Claude Code session running in this checkout, the Panel shows its
+zero-Candidate state and no Pick can be sent. Rows 1–5 can still be reviewed. For the
+Stack to appear with a real Pick in it, start Claude Code at the repository root first.
+
+### The outcome
+
+The gate has **not** run. Nothing in this section records an outcome. Whoever runs it
+fills in the lines below.
+
+- **Run by, and when**:
+- **Skill version, or the commit of `~/.claude/skills/review-animations/`**:
+- **Build reviewed (commit)**:
+- **Row 1, the armed-hover morph**: kept as a deviation / changed / withdrawn, and
+  why:
+- **Row 2, `width`/`height`**: kept as a deviation / changed / withdrawn, and why:
+- **Rows 3–6, the gate's findings, and what was changed**:
+- **Deviations accepted**, each with its warrant:
+
+If the gate reverses either pre-registered decision, say so here in so many words,
+and change spec §5 and §9 to match. A reversal must not be silent.
+
 ## How the rule is held
 
 `test/seam1/overlay-build.test.ts` reads the **built** Overlay — what the consumer's
