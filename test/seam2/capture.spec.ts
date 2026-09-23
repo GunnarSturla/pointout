@@ -443,6 +443,9 @@ test.describe('a capture at every pick', () => {
     await expect(page.locator(PANEL)).toBeVisible({ timeout: 1000 })
     expect(Date.now() - clicked).toBeLessThan(1000)
     expect(answered).toBe(false)
+    // The held answer outlives the test; left in flight, its fetch throws into
+    // whichever test the worker runs next.
+    await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 })
 
