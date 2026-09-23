@@ -25,6 +25,8 @@ const SECOND_PID = 400_002
 /** `test/harness/registry.ts` names a fake session by its pid. */
 const SECOND_SESSION_ID = 'session-400002'
 const WAITING_NAME = 'seam 2 waiting session'
+/** Addressed only by the report-back journeys, which end its turns on purpose. */
+const REPORT_BACK_NAME = 'seam 2 report-back session'
 const WAITING_FOR = 'Bash(rm -rf build)'
 const OTHER_REPO_NAME = 'seam 2 other repo session'
 
@@ -146,11 +148,12 @@ test('the footer shows the preselected Target and the row lists every Candidate'
 
   await page.locator(TARGET).click()
   const rows = page.locator(`${TARGETS} ${ROW}`)
-  await expect(rows).toHaveCount(3)
+  await expect(rows).toHaveCount(4)
   await expect(rows.locator(ROW_NAME)).toHaveText([
     STARTED_NAME,
     SECOND_NAME,
     WAITING_NAME,
+    REPORT_BACK_NAME,
   ])
 
   // The badge is on the one that started this dev server, and nowhere else.

@@ -106,3 +106,27 @@ export function parsePickAction(
     return null
   }
 }
+
+/** The last segment of the path the Overlay resolves a report-back offer on. */
+const REPORT_SEGMENT = 'report'
+
+/**
+ * `/pick/<id>/report`, relative to `API_BASE` (spec §20). Built and parsed here
+ * for the same reason the ack URL is: the Overlay asks for it and the server
+ * mounts it, and two spellings would be a route nothing answers.
+ */
+export function reportPath(pickId: string): string {
+  return `${PICK_PATH}/${encodeURIComponent(pickId)}/${REPORT_SEGMENT}`
+}
+
+/** The Pick a report path names, or null when the path is not one. */
+export function parseReportPath(path: string): string | null {
+  if (!path.startsWith(`${PICK_PATH}/`)) return null
+  const parts = path.slice(PICK_PATH.length + 1).split('/')
+  if (parts.length !== 2 || parts[1] !== REPORT_SEGMENT || !parts[0]) return null
+  try {
+    return decodeURIComponent(parts[0])
+  } catch {
+    return null
+  }
+}

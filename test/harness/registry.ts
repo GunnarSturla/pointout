@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { FixtureEnv } from './fixture-env.js'
 
@@ -56,4 +56,20 @@ export function writeSession(
 
   writeFileSync(join(fixture.registryDir, `${pid}.json`), JSON.stringify(record, null, 2))
   return record
+}
+
+/**
+ * Rewrite one session's entry in place, the way the harness does when its status
+ * changes: the same file, the same fields, a new `status` (and whatever else the
+ * test names). It is how a test makes the Target go busy, idle or waiting
+ * after a Pick has been written to it.
+ */
+export function updateSession(
+  fixture: Pick<FixtureEnv, 'registryDir'>,
+  pid: number,
+  fields: Record<string, unknown>,
+): void {
+  const file = join(fixture.registryDir, `${pid}.json`)
+  const record = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
+  writeFileSync(file, JSON.stringify({ ...record, ...fields }, null, 2))
 }

@@ -32,6 +32,15 @@ const WAITING_NAME = 'seam 2 waiting session'
 const OTHER_REPO_PID = 400_004
 const OTHER_REPO_NAME = 'seam 2 other repo session'
 
+/**
+ * A session only the report-back journeys address (ticket 14). An idle notice
+ * from a Target offers back every Pick outstanding to it, and seam 2 runs its
+ * specs in parallel against one server, so the journeys that end a turn on
+ * purpose do it where no other spec has a Pick waiting.
+ */
+const REPORT_BACK_PID = 400_005
+const REPORT_BACK_NAME = 'seam 2 report-back session'
+
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
 
 /**
@@ -42,6 +51,7 @@ const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
  */
 const FRAMES_LOG_ENV = 'SEAM2_FRAMES_LOG'
 const SECOND_FRAMES_LOG_ENV = 'SEAM2_SECOND_FRAMES_LOG'
+const REPORT_BACK_FRAMES_LOG_ENV = 'SEAM2_REPORT_BACK_FRAMES_LOG'
 
 export default async function serveForSeam2(): Promise<() => Promise<void>> {
   let server
@@ -60,9 +70,13 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
 
   const framesLog = join(server.fixture.dir, 'frames.ndjson')
   const secondFramesLog = join(server.fixture.dir, 'frames-second.ndjson')
-  for (const log of [framesLog, secondFramesLog]) writeFileSync(log, '')
+  const reportBackFramesLog = join(server.fixture.dir, 'frames-report-back.ndjson')
+  for (const log of [framesLog, secondFramesLog, reportBackFramesLog]) {
+    writeFileSync(log, '')
+  }
   process.env[FRAMES_LOG_ENV] = framesLog
   process.env[SECOND_FRAMES_LOG_ENV] = secondFramesLog
+  process.env[REPORT_BACK_FRAMES_LOG_ENV] = reportBackFramesLog
 
   // Each session's cwd is this checkout, which is the root the example app's dev
   // server discovers, so each is a Candidate — except the last, which works
@@ -92,6 +106,12 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
       cwd: server.fixture.dir,
       pid: OTHER_REPO_PID,
       name: OTHER_REPO_NAME,
+    }),
+    listeningSession(server.fixture, {
+      cwd: repoRoot,
+      pid: REPORT_BACK_PID,
+      name: REPORT_BACK_NAME,
+      logFile: reportBackFramesLog,
     }),
   ])
 

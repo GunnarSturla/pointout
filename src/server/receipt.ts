@@ -1,8 +1,11 @@
 import type { Logger } from 'vite'
 import { FAILED, HELD, SENT } from '../wire.js'
 import type { Target } from '../wire.js'
+import { now } from './clock.js'
 import type { DeliveryRoute } from './delivery.js'
+import { targetName } from './ledger.js'
 import type { Ledger } from './ledger.js'
+import type { ReportBackClock } from './report-back.js'
 
 // What comes back at the reply address, and the one rule that separates the two
 // things that arrive there (spec §16, §17).
@@ -97,6 +100,8 @@ export function createIdleLog(): IdleLog {
 export interface ReplyEvidence {
   ledger: Ledger
   idle: IdleLog
+  /** The one reader of idle notices that may reach a Pick, through its own clock. */
+  clock: ReportBackClock
   logger: Logger
 }
 
@@ -114,6 +119,7 @@ export function recordReplies(route: DeliveryRoute, evidence: ReplyEvidence): vo
         `vite-agent-inspect: session ${notice.target.sessionId} finished a turn ` +
           `at ${notice.finishedAt}, after pick ${notice.pickId}.`,
       )
+      evidence.clock.idle(notice.target, notice.finishedAt, now())
     },
   })
 }
@@ -130,7 +136,7 @@ function applyReceipt(receipt: Receipt, { ledger, logger }: ReplyEvidence): void
 
   // Never a session id in a sentence a developer reads, and never a name this
   // server made up: the Target's name as it stood when the Pick was addressed.
-  const name = record.pick.target?.name ?? 'the session you picked'
+  const name = targetName(record.pick)
 
   if (receipt.status === 'held') {
     // §17 gives `held` fixed words — the chip and the imperative under it are

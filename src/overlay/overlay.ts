@@ -128,6 +128,16 @@ export function startOverlay(document: Document): OverlayHandle {
     if (openPickId === pickId) off()
     else render()
   }
+  // A Pick sent on to another session from its report-back offer is a new Pick
+  // on the same element: the chip and the resting Highlight stay where they
+  // are, under the new id (spec §17).
+  const onReplaced = (pickId: string, replacement: string, targetName: string) => {
+    submitted = submitted.map((pick) =>
+      pick.pickId === pickId ? { ...pick, pickId: replacement, targetName } : pick,
+    )
+    if (openPickId === pickId) openPickId = replacement
+    render()
+  }
   const pointer = (): PointerInputs => {
     if (!picked) throw new Error('vite-agent-inspect: no Pick is open to send')
     return pointerOf(view, picked, highlight.lastBox())
@@ -171,7 +181,7 @@ export function startOverlay(document: Document): OverlayHandle {
             },
           }
         : null,
-      stack: { view, reflow, picks: submitted, onDismiss },
+      stack: { view, reflow, picks: submitted, onDismiss, onReplaced },
     })
   }
 
