@@ -27,6 +27,14 @@ Highlight is imperative (ADR-0004). The Panel's placement is arithmetic in
 next action come from one `say(state, reason, name)` in `stack.tsx`; `held` and
 `failed` Receipts reach the chip (ticket 27).
 
+The Panel footer has the camera toggle, and a pick closes the Shutter for the
+capture frame whatever the toggle says (ticket 18, `src/overlay/capture.ts`). A Pick
+that never lands is offered back (ticket 14): the 60 s report-back clock runs on the
+server (`src/server/report-back.ts`), the 30 s countdown in the page
+(`src/overlay/report-back.tsx`), and `POST /__agent/pick/<id>/report` resolves the
+offer. The offer is not a Pick state; `reportBack.state` on the status row says
+whether a `sent` or `unknown` Pick is offered. Each TTL case has its own sentence.
+
 Seam 3's no-model tier (ticket 20) spawns a real, scrubbed, throwaway session through
 `test/harness/claude-session.ts` and checks the harness shapes v0 pins, at no token
 cost.
@@ -102,6 +110,15 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 - **A seam-2 spec can send real Receipts**: read `from` and `msg_id` off the delivered
   frame in `SEAM2_FRAMES_LOG` and call `replyTo(from)` from
   `test/harness/session-socket.ts`. Nothing fakes `/status`.
+- **An idle notice offers back every Pick outstanding to its Target.** A seam-2 spec
+  that ends a turn on purpose must use a session no other spec addresses — the fifth
+  seam-2 session, `seam 2 report-back session` (`SEAM2_REPORT_BACK_FRAMES_LOG`), exists
+  for that. Ending the default session's turn broke `receipts.spec.ts`'s silence
+  journey in every engine.
+- **A Playwright route that holds an answer must be unrouted before its test ends**
+  (`page.unrouteAll({ behavior: 'ignoreErrors' })`), or it throws into the next test on
+  that worker, which never runs; Playwright exits 1 with *1 error was not a part of any
+  test*. Read Playwright's own exit code, not a pipe's.
 
 ## The gates, and how to run them fast
 
@@ -138,12 +155,14 @@ it before committing. Your ticket names which files are yours.
   releases a `held` Pick. The definition needs that clause.
 - **"reply" is on Ack's _Avoid_ list**, yet the code says "reply address" and the
   harness has `replyTo()`. Settle the word.
-
-- The TTL sentence *"nobody prompted Claude in this repo within 30 minutes"* is a
-  stretch for a Pick written to a socket, **false** for a drained one, and false twice
-  over for a `held` one — somebody was asked, and it was delivered. Ticket 14 owns the
-  fix. The whole of the TTL rule is now one predicate in `ledger.ts`'s `expire()`:
-  which states expire, and with which sentence.
+- **`CONTEXT.md` has no term for the report-back offer and no definition of
+  `unknown`** (ticket 14), and none for the Shutter (ticket 18), which is now in
+  `data-shutter`, `styles.ts` and `docs/motion.md`.
+- **Ticket 17's posture and 409 sentence says "v0 crops the display"**; *crop* is on
+  `CONTEXT.md`'s _Avoid_ list, and seams 1 and 2 both spell the sentence out.
+- **An over-cap 413 has already kept or deleted the Pick's capture** (ticket 18):
+  `ingestPick` resolves the capture before `fitPayload`, so the resend is told the Pick
+  holds no capture with that id. Ticket 19's audit.
 - **react-dom under Trusted Types is unverified.** The Overlay's surfaces are built by
   react-dom now, and the guarantee that nothing builds DOM from a markup string rests on
   its behaviour under the first consumer's `require-trusted-types-for 'script'`. Check
