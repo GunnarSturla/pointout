@@ -253,9 +253,20 @@ test.describe('with motion allowed', () => {
 test.describe('with reduced motion', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('the line shortens in whole steps, and nothing eases', async ({ page }) => {
+  test('the line shortens in whole steps, never short of the time left', async ({
+    page,
+  }) => {
     await offered(page, probe('steps'))
     const first = await leftOf(page)
+    // It draws the time actually left, not the next step: a line that does not
+    // ease has nothing to catch up with (the review-animations gate).
+    const drawn = await page
+      .locator(COUNTDOWN)
+      .first()
+      .evaluate((line) => new DOMMatrixReadOnly(getComputedStyle(line).transform).a)
+    const next = Number(await page.locator(COUNTDOWN).first().getAttribute('data-next'))
+    expect(drawn).toBeCloseTo(await leftOf(page), 2)
+    expect(drawn).toBeGreaterThan(next)
     await expect.poll(() => leftOf(page), { timeout: 5000 }).toBeLessThan(first)
     await expect(page.locator(COUNTDOWN)).toHaveCSS('transition-duration', '0s')
   })

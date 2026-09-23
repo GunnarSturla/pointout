@@ -350,7 +350,7 @@ test('the morph animates translate, width and height, and distorts no edge of it
       const animations = box.getAnimations()
       for (const animation of animations) {
         animation.pause()
-        animation.currentTime = 85
+        animation.currentTime = 60
       }
 
       const midway = getComputedStyle(box)
@@ -415,7 +415,7 @@ test('a picked element that unmounts fades, says so, and is still sent', async (
 test.describe('with reduced motion asked for', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('the Highlight jumps between elements and the Panel opens without motion', async ({
+  test('the Highlight jumps between elements and the Panel opens without movement', async ({
     page,
   }) => {
     await open(page, probe('reduce'))
@@ -435,11 +435,16 @@ test.describe('with reduced motion asked for', () => {
     await page.mouse.click(at.x, at.y)
     await expect(page.locator(PANEL)).toBeVisible()
 
-    expect(await motionSeen(page)).toEqual([])
-    expect(await runningInOverlay(page)).toBe(0)
+    // The pick closes and reopens the Screen Capture shutter, and its reopening
+    // is a fade: the one thing that eases under reduce (the review-animations
+    // gate). Nothing travelled or changed size.
+    expect((await motionSeen(page)).filter((name) => name !== 'opacity')).toEqual([])
+    await expect.poll(() => runningInOverlay(page)).toBe(0)
   })
 
-  test('an unmounted element takes its Highlight with it at once', async ({ page }) => {
+  test('an unmounted element fades its Highlight where it stood, and nothing moves', async ({
+    page,
+  }) => {
     await open(page, probe('reduce-unmount'))
     await page.locator(PICKER).click()
     await pick(page, UNMOUNT_TARGET)
@@ -449,7 +454,9 @@ test.describe('with reduced motion asked for', () => {
 
     await expect(page.locator(GONE)).toHaveText(ELEMENT_GONE)
     await expect(page.locator(HIGHLIGHT)).toHaveCSS('opacity', '0')
-    expect(await motionSeen(page)).toEqual([])
-    expect(await runningInOverlay(page)).toBe(0)
+    // A fade is not movement, so it is kept for a developer who asked for less
+    // of it; nothing else runs.
+    expect((await motionSeen(page)).filter((name) => name !== 'opacity')).toEqual([])
+    await expect.poll(() => runningInOverlay(page)).toBe(0)
   })
 })

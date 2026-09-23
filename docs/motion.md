@@ -6,14 +6,22 @@ running the `review-animations` gate.
 
 ## The rule
 
-**There is no motion by default.** Everything that moves is opted into under
-`@media (prefers-reduced-motion: no-preference)`, and there is exactly one such block
-in the whole project — at the bottom of `src/overlay/styles.ts`. A developer who has
-asked their system for less motion is not opted *out* of anything here; they were
-never opted in.
+**There is no movement by default.** Everything that moves — travels, changes size, or
+shortens — is opted into under `@media (prefers-reduced-motion: no-preference)`, and
+there is exactly one such block in the whole project, at the bottom of
+`src/overlay/styles.ts`. A developer who has asked their system for less motion is not
+opted *out* of any movement here; they were never opted in.
 
-Under reduce the Highlight jumps, surfaces appear and disappear where they belong, and
-every tuck is instant. Nothing is merely slower: the same states are reached, at once.
+**A fade is not movement.** Since the `review-animations` gate (below), the Overlay's
+three opacity changes — the Highlight of an element that left, and the shutter
+reopening — ease for every developer, just above that block. Only `opacity` may ease
+there, and `transition: none` may stop it. That is the gate's reading of reduced motion
+as *gentler, not zero*, and it is what spec §9 already said: under reduce, panels
+cross-fade.
+
+Under reduce the Highlight jumps, the Picker's tuck is instant, the countdown shortens
+in whole steps, and what appears or leaves fades where it stands. Nothing is merely
+slower: the same states are reached, and only a fade is eased on the way.
 
 Only CSS transitions and the Web Animations API are used. The Panel's placement is
 arithmetic in `src/overlay/placement.ts` and never animates; the React surfaces
@@ -24,17 +32,26 @@ that did.
 
 | | |
 | --- | --- |
-| the Highlight travelling between two hovered elements | 170 ms, `translate` + `width` + `height` |
-| the Highlight of an element that has left the page | 120 ms, `opacity` to 0, where it stood |
-| the Picker's reveal out of its peek | 220 ms, `translate` |
-| the Screen Capture shutter reopening — Highlights, Stack, Picker | 120 ms, `opacity` from 0 |
-| the report-back countdown line, each one-second step | 1000 ms, `transform` (`scaleX`), linear |
+| | | |
+| --- | --- | --- |
+| the Highlight travelling between two hovered elements | 120 ms, `translate` + `width` + `height`, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
+| the Highlight of an element that has left the page | 120 ms, `opacity` to 0, where it stood, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
+| the Picker's reveal out of its peek | 180 ms, `translate`, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
+| the Screen Capture shutter reopening — Highlights, Stack, Picker | 120 ms, `opacity` from 0, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
+| the report-back countdown line, each one-second step | 1000 ms, `transform` (`scaleX`), linear | no-preference only |
 
-The durations and curves are the prototype's own, not new numbers: 170 ms on
-`cubic-bezier(0.77, 0, 0.175, 1)` for the morph and 220 ms on
-`cubic-bezier(0.23, 1, 0.32, 1)` for the reveal are what was built and reacted to in
-`spike-17-overlay-shape/`. Astro's 350 ms overshoot curve was built beside them and
-rejected.
+The prototype's numbers were 170 ms on `cubic-bezier(0.77, 0, 0.175, 1)` for the morph
+and 220 ms for the reveal, built and reacted to in `spike-17-overlay-shape/`, where
+Astro's 350 ms overshoot curve was built beside them and rejected. The
+`review-animations` gate retuned both (see *The outcome*): a box that follows the
+pointer has to start moving at once, and the reveal is seen tens of times a day. One
+strong ease-out, `cubic-bezier(0.23, 1, 0.32, 1)`, is now the only curve the Overlay
+eases on, apart from the countdown's linear clock.
+
+The Picker comes out on `:hover` only where there is a pointer that hovers
+(`@media (hover: hover) and (pointer: fine)`): a tap on a touch screen leaves a hover
+behind, and the Picker would come out and stay out for it. Focus and an unresolved
+Pick still bring it out everywhere.
 
 Two things never move, and the rule for both is the same one:
 
@@ -63,43 +80,44 @@ its edge.
 
 - **Closing is instant in every mode.** A close that eased could be caught half-done by
   the capture, so the opt-in block turns easing off while the shutter is closed.
-- **Opening eases, and only under no-preference** — 120 ms of `opacity`, the same span
-  the Highlight fades by when its element leaves. Under reduce everything is simply
-  back, at once, and the Overlay was still absent while the capture was asked for.
+- **Opening fades, for every developer** — 120 ms of `opacity`, the same span the
+  Highlight fades by when its element leaves. A fade is not movement, so it is kept
+  under reduce too; the Overlay is still absent while the capture is asked for.
 - **It reads the same whether a capture is taken, skipped, or unavailable.** The span is
   fixed, not tied to the capture's answer, because the dev server answers the id at once
   and runs the tool behind it. 250 ms is the real `screencapture` run (75–110 ms for a
   200 px region, process start included, measured on the build machine) more than
   twice over.
 
-It is one more thing for the `review-animations` gate to see: a blink on every Pick,
-which is a frequent action. It is not pre-registered as a deviation, because the hide
-is the feature and only the 120 ms opening is motion; the gate may shorten or remove
-that opening without touching the hide.
+The gate saw it as a blink on every Pick, which is a frequent action. The hide is the
+feature and stays; the gate kept the 120 ms opening because it softens the pop back
+in, and moved it to the strong ease-out. It is the next thing to remove if the Overlay
+ever feels busy.
 
 ## The report-back countdown
 
 A Pick offered back to the developer (spec §8, §17, story 47) counts down thirty
-seconds as a thin line under the offer. Script sets the line's length once a second,
-as the custom property `--left`, and it sets it **one step ahead**: at any moment the
-line is aimed at where it will be a second from now. The line is 2 px high with no
+seconds as a thin line under the offer. Script sets two lengths once a second: `--left`,
+the time actually left, and `--next`, where the line will be **one step ahead**. The line is 2 px high with no
 radius, so it is scaled (`transform: scaleX`) rather than resized: there is no border
 or corner for scaling to distort, and nothing around it is laid out again.
 
-- **Under no-preference** the opt-in block eases each step across its second, linearly,
-  so the line reads as one steady shortening that reaches empty exactly when the thirty
-  seconds do. Linear because it is a clock, not an object arriving somewhere.
-- **Under reduce** the same states are reached at once: the line shortens in
-  one-second steps of one thirtieth, with nothing between them. Being a step ahead, it
-  shows empty for the last second. The default fires on its own timer either way, at
-  the thirtieth second, whatever the line shows.
+- **Under no-preference** the opt-in block draws `--next` and eases each step across
+  its second, linearly, so the line reads as one steady shortening that reaches empty
+  exactly when the thirty seconds do. Linear because it is a clock, not an object
+  arriving somewhere.
+- **Under reduce** the line draws `--left`: it shortens in one-second steps of one
+  thirtieth, with nothing between them, and never shows less time than there is. It
+  used to draw the step ahead in both modes, which under reduce showed a thirtieth too
+  little and empty for the whole last second; the gate called that wrong information
+  with nothing to catch up to it. The default fires on its own timer either way, at the
+  thirtieth second, whatever the line shows.
 - **Touching the offer removes the line** — hover, press or focus — and it never comes
   back (story 48). Nothing eases it away.
 
-It is one more target for the `review-animations` gate, and it is **not** pre-registered
-as a deviation. By the frequency rule it is rare — an offer is a Pick that failed to
-land — and it carries information, so the rule's likely reading is that it may move;
-the gate may still change the step, the curve or the reduce-mode behaviour.
+The gate kept it: it is rare — an offer is a Pick that failed to land — it carries
+information, it animates `transform` alone, and linear is the right curve for a clock.
+It changed only the reduce-mode drawing, above.
 
 ## Why the morph animates `width` and `height`
 
@@ -134,8 +152,9 @@ that gate's frequency rule.**
   the morph is the gate's first target, and closing this out without running it would
   leave the spec saying *the Highlight morphs* against a known finding that it should
   not.
-- **Status**: the gate has **not** run. Nothing here records its outcome, and nothing
-  may claim one until ticket 22 does.
+- **Status**: the gate **has run** (2026-09-23, *The outcome* below). It did not
+  silently reverse the morph: it raised the frequency finding, and the human kept the
+  morph as an accepted deviation, retuned to 120 ms on the strong ease-out.
 
 The second, smaller deviation is the `width`/`height` animation above: a performance
 finding under the same standards, accepted for the reason given there. It is the gate's
@@ -143,8 +162,9 @@ second target.
 
 ## Running the gate
 
-This section is for the human who runs `review-animations`. Ticket 22 prepared it and
-did not run the gate.
+This section is for the human who runs `review-animations`. Ticket 22 prepared it; the
+human ran the gate on 2026-09-23, and *The outcome* records it. The table is what the
+gate reviewed, at that build — the values it changed are the ones in *What moves* above.
 
 ### What the gate reviews
 
@@ -206,28 +226,58 @@ Stack to appear with a real Pick in it, start Claude Code at the repository root
 
 ### The outcome
 
-The gate has **not** run. Nothing in this section records an outcome. Whoever runs it
-fills in the lines below.
+The gate **has run**.
 
-- **Run by, and when**:
-- **Skill version, or the commit of `~/.claude/skills/review-animations/`**:
-- **Build reviewed (commit)**:
-- **Row 1, the armed-hover morph**: kept as a deviation / changed / withdrawn, and
-  why:
-- **Row 2, `width`/`height`**: kept as a deviation / changed / withdrawn, and why:
+- **Run by, and when**: the human invoked `/review-animations` by name in a Claude Code
+  session, which ran the review and put each decision to them; 2026-09-23.
+- **Skill version**: `~/.claude/skills/review-animations/` as installed on the build
+  machine that day (it is not under version control).
+- **Build reviewed (commit)**: `2640572`, the emitted `dist/overlay/styles.js`. The
+  review read the built stylesheet; it was not watched frame by frame, which is still
+  worth doing once in the DevTools Animations panel.
+- **The gate's decision on the build as reviewed**: **Block**, on row 1 alone.
+- **Row 1, the armed-hover morph**: **changed, and kept as a deviation.** The gate
+  found it the highest-frequency motion in the design (the frequency rule), and its
+  `cubic-bezier(0.77, 0, 0.175, 1)` starts almost still, so the box trailed the pointer
+  for most of its 170 ms. The human kept the morph and retuned it to 120 ms on
+  `cubic-bezier(0.23, 1, 0.32, 1)`. The frequency deviation is accepted on the
+  original warrant, the human's reaction to the built prototype; it was raised, not
+  silently reversed. Spec §9 records it.
+- **Row 2, `width`/`height`**: **kept as a deviation.** The gate found no finding
+  beyond the one pre-registered: one fixed element outside the page's layout flow lays
+  out only itself, and `scale` would distort the 1.5 px outline and the chip that rides
+  inside the box.
 - **Rows 3–6, the gate's findings, and what was changed**:
+  - Row 3, the gone fade: `linear` became `cubic-bezier(0.23, 1, 0.32, 1)`. An exit
+    eases out.
+  - Row 4, the Picker's reveal: 220 ms became 180 ms (it is seen tens of times a day),
+    and its `:hover` rule is gated behind `@media (hover: hover) and (pointer: fine)`.
+  - Row 5, the shutter's opening: kept, and `linear` became
+    `cubic-bezier(0.23, 1, 0.32, 1)`. The instant close was affirmed.
+  - Row 6, the countdown: kept under no-preference. Under reduce it now draws the time
+    actually left instead of the step ahead, which had shown a thirtieth too little and
+    empty for the last second.
+  - **Reduced motion**: the gate's standard is *gentler, not zero*. The human chose to
+    let fades run under reduce: the three opacity changes now ease for every developer,
+    and only movement stays inside the one opt-in block. That matches spec §9's own
+    *under reduce, panels cross-fade*.
 - **Deviations accepted**, each with its warrant:
+  1. The armed-hover morph animates on a high-frequency action (frequency rule) — the
+     human's reaction to the built prototype, spike 17 and map ticket 15, retuned by
+     this gate.
+  2. The morph animates `width` and `height` (performance rule) — a morph may not
+     distort its own edges, and the box is one fixed element outside the page's flow.
 
-If the gate reverses either pre-registered decision, say so here in so many words,
-and change spec §5 and §9 to match. A reversal must not be silent.
+Neither pre-registered decision was reversed.
 
 ## How the rule is held
 
 `test/seam1/overlay-build.test.ts` reads the **built** Overlay — what the consumer's
-browser actually runs — and asserts three things: motion is declared in the stylesheet
-and in no other module, every moving declaration sits inside the one
-`prefers-reduced-motion: no-preference` block, and the query is `no-preference` rather
-than `reduce`, because `reduce` would be motion by default undone afterwards.
+browser actually runs — and asserts four things: motion is declared in the stylesheet
+and in no other module; outside the one `prefers-reduced-motion: no-preference` block
+there is no animation, no keyframes, and no transition of anything but `opacity` (or
+`none`); no movement is timed outside it; and the query is `no-preference` rather than
+`reduce`, because `reduce` would be movement by default undone afterwards.
 
 Anything that animates through the Web Animations API instead has to name
 `prefers-reduced-motion` in its own file: a script call carries no media query of its
@@ -236,7 +286,7 @@ own, so the file that makes one has to ask first.
 `test/seam2/highlight.spec.ts` is the other half, in a real browser: what runs on a
 first appearance (nothing), what runs on a hover move (`translate`, `width`, `height`,
 never `scale`), that the box's border and radius are unchanged in a mid-morph frame,
-and that under emulated reduced motion nothing animates at all while every position
+and that under emulated reduced motion nothing but a fade runs while every position
 still updates.
 
 The test bed holds still on purpose: `examples/react-app/` animates nothing, so those

@@ -520,7 +520,7 @@ test.describe('the shutter', () => {
 test.describe('the shutter under reduced motion', () => {
   test.use({ reducedMotion: 'reduce' })
 
-  test('hides and shows at once, and is still closed for the capture', async ({
+  test('hides at once, only fades back in, and is still closed for the capture', async ({
     page,
   }) => {
     let closedAtRequest: boolean | null = null
@@ -540,11 +540,18 @@ test.describe('the shutter under reduced motion', () => {
     await expect.poll(async () => (await shutterSeen(page)).length).toBeGreaterThan(1)
     await page.waitForTimeout(300)
 
-    // Nothing eased: the Overlay left and came back, and that is all.
-    expect(sequenceOf(await shutterSeen(page))).toEqual([
+    // Closed at once, opened, and faded back in — a fade is not movement, so it
+    // is the one thing that eases for a developer who asked for less motion
+    // (the review-animations gate). Nothing else did.
+    const sequence = sequenceOf(await shutterSeen(page))
+    expect(sequence.slice(0, 2)).toEqual([
       'closed, highlight hidden',
       'opened, highlight visible',
     ])
+    expect(sequence).toContain('eased highlight opacity')
+    for (const entry of sequence.filter((line) => line.startsWith('eased'))) {
+      expect(entry).toMatch(/ opacity$/)
+    }
     const opacity = await page.evaluate((tag) => {
       const box = document
         .querySelector(tag)

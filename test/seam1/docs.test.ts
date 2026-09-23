@@ -290,7 +290,11 @@ describe('the motion record', () => {
   it('states the opt-in rule and the one place motion may live', () => {
     expect(doc).toContain('@media (prefers-reduced-motion: no-preference)')
     expect(doc).toContain('src/overlay/styles.ts')
-    expect(doc).toMatch(/no motion by default/i)
+    expect(doc).toMatch(/no movement by default/i)
+    // The review-animations gate's one change to the rule: a fade is kept for a
+    // developer who asked for less motion, and only a fade.
+    expect(flowed).toMatch(/a fade is not movement/i)
+    expect(flowed).toMatch(/Only `opacity` may ease/)
   })
 
   it('records the morph deviation as pre-registered against the gate', () => {
@@ -305,8 +309,19 @@ describe('the motion record', () => {
     expect(flowed).toMatch(/may not skip the gate/)
   })
 
-  it('says the gate has not run, rather than implying an outcome', () => {
-    expect(flowed).toMatch(/the gate has \*\*not\*\* run/i)
+  it('records the gate as run, with its outcome and the deviations it accepted', () => {
+    // Ticket 22: the human ran review-animations by name, and the outcome is
+    // written down rather than implied. Neither pre-registered decision may have
+    // been reversed in silence, so each is named with what became of it.
+    expect(flowed).toMatch(/the gate \*\*has run\*\*/i)
+    expect(flowed).not.toMatch(/the gate has \*\*not\*\* run/i)
+    expect(flowed).toMatch(/Build reviewed \(commit\)\*\*: `[0-9a-f]{7,}`/)
+    expect(flowed).toMatch(
+      /Row 1, the armed-hover morph\*\*: \*\*changed, and kept as a deviation/,
+    )
+    expect(flowed).toMatch(/Row 2, `width`\/`height`\*\*: \*\*kept as a deviation/)
+    expect(flowed).toMatch(/Deviations accepted/)
+    expect(flowed).toMatch(/Neither pre-registered decision was reversed/)
   })
 
   it('is reachable from CLAUDE.md, which every ticket reads', () => {

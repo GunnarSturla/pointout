@@ -1,10 +1,11 @@
 // The Overlay's whole stylesheet, as one string set with `textContent` on a
 // `<style>` inside the shadow root (spec §3).
 //
-// It is also the only file in the Overlay that may declare motion, and it may
-// declare it in only one place: the single opt-in block at the bottom, which
-// nothing outside `prefers-reduced-motion: no-preference` may leave. A seam-1
-// test reads the built Overlay and holds both halves of that rule — see
+// It is also the only file in the Overlay that may declare motion. Anything
+// that moves is declared in one place, the single opt-in block at the bottom,
+// which nothing outside `prefers-reduced-motion: no-preference` may leave; a
+// fade is not movement, and is declared just above that block for every
+// developer. A seam-1 test reads the built Overlay and holds the rule — see
 // `docs/motion.md` before adding any.
 
 /** The host itself, as an inline style: page CSS does not get a vote on it. */
@@ -57,7 +58,7 @@ export const OVERLAY_STYLESHEET = `
    and its chip, the resting Highlights, the Stack and the Picker — and the
    Panel stays, because its entrance is never gated on a capture. Closing is
    always instant, so no capture ever catches the Overlay halfway out; only
-   the opening is eased, and only inside the opt-in block below. */
+   the opening is eased, and it is a fade (see the fades, below). */
 :host([data-shutter]) .highlight,
 :host([data-shutter]) .stack,
 :host([data-shutter]) .picker-peek {
@@ -117,11 +118,16 @@ export const OVERLAY_STYLESHEET = `
   translate: 0 13px;
 }
 
-/* Out, and staying out: hovered, focused, or holding something unresolved. */
+/* Out, and staying out: focused, or holding something unresolved — and
+   hovered, where there is a pointer that hovers. A tap on a touch screen
+   leaves a hover behind, and the Picker would come out and stay out for it. */
 .picker-peek[data-out],
-.picker-peek:hover,
 .picker-peek:focus-within {
   translate: 0 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .picker-peek:hover { translate: 0 0 }
 }
 
 .picker,
@@ -223,8 +229,9 @@ export const OVERLAY_STYLESHEET = `
 
 /* The countdown: a thin line whose length is the time left, set once a second
    from script as --left. Under reduce it shortens in those whole steps; the
-   opt-in block below eases between them. Scaled rather than resized: a 2px
-   line has no border or radius for scaling to distort. */
+   movement block below draws --next instead and eases between them. Scaled
+   rather than resized: a 2px line has no border or radius for scaling to
+   distort. */
 .countdown {
   height: 2px;
   border-radius: 0;
@@ -454,64 +461,84 @@ export const OVERLAY_STYLESHEET = `
 }
 
 /* ------------------------------------------------------------------------
-   Motion, and the only place in the Overlay there is any (spec §9).
+   Fades, for every developer (spec §9: "under reduce ... panels cross-fade").
+
+   A fade is not movement: nothing travels, nothing changes size, and what
+   appears or leaves does so where it already is. So the three opacity changes
+   the Overlay makes ease for a developer who asked their system for less
+   motion too — the review-animations gate's reading of reduced motion as
+   gentler, not zero. Only \`opacity\` may ease out here, and \`transition: none\`
+   may stop it; a seam-1 test reads the built file to hold both.
+
+   The curve is the strong ease-out: a fade is something leaving or arriving.
+   ------------------------------------------------------------------------ */
+.highlight,
+.picker-peek,
+.stack {
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* The box is being placed rather than moved — a first appearance, or the
+   element it is already on measured again after a scroll, a resize or a hot
+   update. Neither is travel, and neither may animate. */
+.highlight[data-placing] { transition: none }
+
+/* The shutter (spec §10). Closing is never eased: no capture may catch the
+   Overlay halfway out, and an opening that started from a half-finished close
+   would not read the same twice. The opening is the fade above.
+
+   This rule and the placing one outrank the plain selectors in the movement
+   block below by specificity, so they hold under no-preference too. */
+:host([data-shutter]) .highlight,
+:host([data-shutter]) .stack,
+:host([data-shutter]) .picker-peek { transition: none }
+
+/* ------------------------------------------------------------------------
+   Movement, and the only place in the Overlay there is any (spec §9).
 
    Everything that moves lives inside this block, so a developer who has asked
    their system for less motion is not opted out of anything — they were never
-   opted in. Nothing outside it may declare a transition, an animation or a set
-   of keyframes, and a seam-1 test reads the built file to say so.
+   opted in. Nothing outside it may declare an animation, a set of keyframes,
+   or a transition of anything but \`opacity\`, and a seam-1 test reads the
+   built file to say so.
 
    The Highlight's morph animates \`translate\`, \`width\` and \`height\` on a box
    that is one fixed element outside the host's layout flow. \`scale\` is
    rejected: it distorts the box's own border and its radius while it travels,
    and a morph may not distort its own edges. Animating \`width\` and \`height\`
    knowingly spends a performance rule, and the record of what that buys is in
-   \`docs/motion.md\`.
+   \`docs/motion.md\`. It is 120 ms on the strong ease-out since the
+   review-animations gate: a box that follows the pointer has to start moving
+   at once, and the ease-in-out it had spent most of its time catching up.
 
    Rules added here by other tickets go inside this block and nowhere else.
    ------------------------------------------------------------------------ */
 @media (prefers-reduced-motion: no-preference) {
   .highlight {
     transition:
-      translate 170ms cubic-bezier(0.77, 0, 0.175, 1),
-      width 170ms cubic-bezier(0.77, 0, 0.175, 1),
-      height 170ms cubic-bezier(0.77, 0, 0.175, 1),
-      opacity 120ms linear;
+      translate 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      width 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      height 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
   }
 
-  /* The box is being placed rather than moved — a first appearance, or the
-     element it is already on measured again after a scroll, a resize or a hot
-     update. Neither is travel, and neither may animate. */
-  .highlight[data-placing] { transition: none }
-
-  /* The Picker's reveal (spec §8): 220 ms, out of the peek and back into it.
+  /* The Picker's reveal (spec §8): 180 ms, out of the peek and back into it.
      Under reduce it still moves between exactly these two positions — it
      arrives at once, which is the whole difference. */
   .picker-peek {
     transition:
-      translate 220ms cubic-bezier(0.23, 1, 0.32, 1),
-      opacity 120ms linear;
+      translate 180ms cubic-bezier(0.23, 1, 0.32, 1),
+      opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
   }
 
-  /* The shutter opening (spec §10): what closed at once comes back over the
-     same 120 ms the Highlight fades by when its element leaves. The Highlight
-     already eases its opacity above and the Picker beside its reveal; the
-     Stack has nothing else that moves. Under reduce it is all there again at
-     once, which is the whole difference. */
-  .stack { transition: opacity 120ms linear }
-
-  /* Closing is never eased: no capture may catch the Overlay halfway out, and
-     an opening that started from a half-finished close would not read the
-     same twice. */
-  :host([data-shutter]) .highlight,
-  :host([data-shutter]) .stack,
-  :host([data-shutter]) .picker-peek { transition: none }
-
-  /* The report-back countdown (spec §8, story 47): script sets the line one
-     step ahead each second, and it eases linearly across that second, so it
-     reads as one steady shortening that empties when the thirty seconds do.
-     Under reduce it shortens in one-second steps, which is the whole
-     difference. */
-  .countdown { transition: transform 1000ms linear }
+  /* The report-back countdown (spec §8, story 47): script sets where the line
+     will be one step from now as --next, and it eases linearly across that
+     second, so it reads as one steady shortening that empties when the thirty
+     seconds do. Under reduce it draws --left, the time actually left, in
+     one-second steps — never less than there is. */
+  .countdown {
+    transform: scaleX(var(--next, 1));
+    transition: transform 1000ms linear;
+  }
 }
 `

@@ -10,9 +10,11 @@ import { repoRoot } from '../harness/paths.js'
 // `require-trusted-types-for 'script'` throws on `innerHTML`, and never writing
 // it costs nothing. The second was permanent until ticket 09, which is the
 // ticket that got to add motion — so it is now a check on the *shape* of the
-// motion rather than on its absence: all of it in one stylesheet, all of it
-// inside one `prefers-reduced-motion: no-preference` block, and nothing anywhere
-// that a developer who asked for less motion has to opt out of (spec §9).
+// motion rather than on its absence: all of it in one stylesheet, everything
+// that moves inside one `prefers-reduced-motion: no-preference` block, and
+// nothing anywhere that a developer who asked for less motion has to opt out of
+// (spec §9). A fade is not movement: since the review-animations gate, opacity
+// alone may ease outside that block, for everyone.
 
 const overlayDir = join(repoRoot, 'dist', 'overlay')
 
@@ -24,6 +26,9 @@ const OPT_IN = '@media (prefers-reduced-motion: no-preference)'
 
 /** What a stylesheet says when it moves. */
 const MOVING = ['transition', 'animation', '@keyframes']
+
+/** What may never appear outside the opt-in block, not even as a fade. */
+const NEVER_OUTSIDE = ['animation', '@keyframes']
 
 /**
  * A frame callback is not motion. It is how the Overlay coalesces a burst of
@@ -119,18 +124,41 @@ describe('the built Overlay moves only where it said it would', () => {
     expect(sheet).not.toContain('prefers-reduced-motion: reduce')
   })
 
-  it('keeps every moving declaration inside that one block', () => {
+  it('keeps everything that moves inside that one block', () => {
     const sheet = stylesheet()
     const block = optIn(sheet)
+    const outside = (at: number) => at < block.start || at > block.end
 
-    for (const token of MOVING) {
-      const outside = positions(sheet, token).filter(
-        (at) => at < block.start || at > block.end,
-      )
-      expect(`${token} outside the opt-in: ${outside.length}`).toBe(
+    for (const token of NEVER_OUTSIDE) {
+      const found = positions(sheet, token).filter(outside)
+      expect(`${token} outside the opt-in: ${found.length}`).toBe(
         `${token} outside the opt-in: 0`,
       )
     }
+
+    // Outside it, a transition may only fade, or stop one.
+    const declarations = [...sheet.matchAll(/transition\s*:\s*([^;}]+)/g)]
+      .filter((match) => outside(match.index))
+      .map((match) => (match[1] ?? '').trim())
+    expect(declarations.length).toBeGreaterThan(0)
+    for (const value of declarations) {
+      const fades =
+        value === 'none' ||
+        value.split(/,(?![^(]*\))/).every((entry) => entry.trim().startsWith('opacity '))
+      expect(`${value}: ${fades}`).toBe(`${value}: true`)
+    }
+  })
+
+  it('moves nothing but opacity for a developer who asked for less motion', () => {
+    // Every property the block transitions that is not opacity is movement, and
+    // it is declared there and nowhere else.
+    const sheet = stylesheet()
+    const block = optIn(sheet)
+    const inside = sheet.slice(block.start, block.end)
+    expect(inside).toMatch(/translate \d+ms/)
+    expect(sheet.slice(0, block.start)).not.toMatch(
+      /(translate|width|height|transform) \d+ms/,
+    )
   })
 
   it('makes a module that animates in script ask first', () => {

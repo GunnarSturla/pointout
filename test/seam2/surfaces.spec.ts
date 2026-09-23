@@ -437,7 +437,7 @@ test.describe('the reveal', () => {
         easing: easings[at] ?? '',
       }
     })
-    expect(moving.duration).toBe('0.22s')
+    expect(moving.duration).toBe('0.18s')
     expect(moving.easing.replaceAll(' ', '')).toBe('cubic-bezier(0.23,1,0.32,1)')
   })
 
@@ -445,10 +445,11 @@ test.describe('the reveal', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await open(page, probe('reduce'))
 
-    const duration = await page
+    // Only its fade is eased, which is the shutter reopening; the reveal is not.
+    const properties = await page
       .locator(PEEK)
-      .evaluate((peeked: HTMLElement) => getComputedStyle(peeked).transitionDuration)
-    expect(duration).toBe('0s')
+      .evaluate((peeked: HTMLElement) => getComputedStyle(peeked).transitionProperty)
+    expect(properties).toBe('opacity')
 
     // Still the two positions, still reached: the Picker comes out, at once.
     const seen = await viewport(page)

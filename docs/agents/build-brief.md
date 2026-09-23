@@ -71,12 +71,14 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 - **`CONTEXT.md` is binding on identifiers as well as prose**, including its `_Avoid_`
   lists. Pick, Pointer, Note, Fence, Guard, Candidate, Target, Receipt, Ack, Overlay,
   Picker, Highlight, Panel, Stack, Confidence, Screen Capture.
-- **Motion is opt-in, and lives in one place.** Every moving declaration sits inside
-  the single `@media (prefers-reduced-motion: no-preference)` block at the bottom of
-  `src/overlay/styles.ts`; nothing outside it may move, and a module that animates in
-  script has to name `prefers-reduced-motion` itself. A seam-1 test reads the built
-  Overlay for both. See `docs/motion.md`, which also holds the deviation
-  pre-registered against the `review-animations` gate.
+- **Movement is opt-in, and lives in one place.** Everything that travels, resizes or
+  shortens sits inside the single `@media (prefers-reduced-motion: no-preference)`
+  block at the bottom of `src/overlay/styles.ts`. A fade is not movement: just above
+  that block, `opacity` alone may ease, for every developer, and `transition: none` may
+  stop it. A module that animates in script has to name `prefers-reduced-motion`
+  itself. A seam-1 test reads the built Overlay for all of it. See `docs/motion.md`,
+  which also records the `review-animations` gate's outcome and the deviations it
+  accepted.
 - **Borrowed code is credited**: a provenance header, an end-of-borrow marker, and a
   `LICENSE-THIRDPARTY` entry. A test checks the header and the entry agree.
 - **A wire shape is written once**, in `src/wire.ts`. The Overlay and the server import
@@ -196,6 +198,3 @@ it before committing. Your ticket names which files are yours.
   react-dom now, and the guarantee that nothing builds DOM from a markup string rests on
   its behaviour under the first consumer's `require-trusted-types-for 'script'`. Check
   it against that app before v0 is called done (ADR-0004).
-- **The `review-animations` gate has not run.** It is human-run, and ticket 22 is
-  `ready-for-human`: `docs/motion.md` › *Running the gate* lists what it reviews and
-  holds the blank outcome record.

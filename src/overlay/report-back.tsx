@@ -121,11 +121,12 @@ function ChooseSession({
 }
 
 /**
- * The line. It is drawn a step ahead of the time — at mount it already shows
- * where it will be one second from now — so that where the stylesheet eases
- * between steps, the line reaches empty at the moment the time is up rather
- * than one second after it. Where it does not ease, it shortens in whole steps.
- * The default fires on its own timer, at the exact moment, whatever the line.
+ * The line. It carries two lengths: `--left`, the time actually left, and
+ * `--next`, where it will be one second from now. Where the stylesheet eases
+ * between steps it draws `--next`, so the line reaches empty at the moment the
+ * time is up rather than one second after it. Where it does not ease it draws
+ * `--left`, in whole steps, and never shows less time than there is. The
+ * default fires on its own timer, at the exact moment, whatever the line.
  */
 function Countdown({
   view,
@@ -136,7 +137,7 @@ function Countdown({
   startedAt: number
   onZero(): void
 }) {
-  const [left, setLeft] = useState(() => ahead(startedAt))
+  const [now, setNow] = useState(() => Date.now())
   // The latest handler, read when the time is up: a re-render must not restart
   // the countdown, and the Stack hands a fresh handler on every poll.
   const zero = useRef(onZero)
@@ -149,7 +150,7 @@ function Countdown({
     const deadline = view.setTimeout(() => zero.current(), due)
     let step = 0
     const redraw = () => {
-      setLeft(ahead(startedAt))
+      setNow(Date.now())
       step = view.setTimeout(redraw, STEP_MS)
     }
     step = view.setTimeout(redraw, STEP_MS)
@@ -159,16 +160,19 @@ function Countdown({
     }
   }, [view, startedAt])
 
+  const left = leftAt(startedAt, now)
+  const next = leftAt(startedAt, now + STEP_MS)
   return (
     <div
       {...partProps('countdown')}
       data-left={left.toFixed(3)}
-      style={{ '--left': String(left) } as CSSProperties}
+      data-next={next.toFixed(3)}
+      style={{ '--left': String(left), '--next': String(next) } as CSSProperties}
     />
   )
 }
 
-/** How much of the line is left one step from now, as a fraction of the whole. */
-function ahead(startedAt: number): number {
-  return Math.max(0, startedAt + OFFER_MS - Date.now() - STEP_MS) / OFFER_MS
+/** How much of the line is left at `at`, as a fraction of the whole. */
+function leftAt(startedAt: number, at: number): number {
+  return Math.max(0, startedAt + OFFER_MS - at) / OFFER_MS
 }
