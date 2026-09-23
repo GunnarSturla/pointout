@@ -56,7 +56,7 @@ afterEach(async () => {
 })
 
 /** A dev server whose registry and socket directories this test owns. */
-async function startPickServer(): Promise<{
+async function startPickServer(host?: string): Promise<{
   app: TempApp
   server: HarnessServer
   env: FixtureEnv
@@ -64,7 +64,7 @@ async function startPickServer(): Promise<{
   const env = createFixtureEnv({ claudePid: 0 })
   fixture = env
   const app = apps.create({ git: true })
-  const server = await apps.serve(app, { env: env.env })
+  const server = await apps.serve(app, { env: env.env, ...(host ? { host } : {}) })
   return { app, server, env }
 }
 
@@ -134,12 +134,12 @@ async function post(
 }
 
 /** One delivered Pick, and everything a test needs to talk about it. */
-async function deliveredPick(): Promise<{
+async function deliveredPick(host?: string): Promise<{
   server: HarnessServer
   session: FakeSession
   pickId: string
 }> {
-  const { app, server, env } = await startPickServer()
+  const { app, server, env } = await startPickServer(host)
   const session = await sessions.open(env, {
     cwd: app.checkout,
     name: 'the one in the terminal',
@@ -168,6 +168,18 @@ describe('GET /__agent/status, and the ack and done a Pick carries', () => {
 
     const finished = await post(actionUrl(session, 'done'))
     expect(finished.status).toBe(200)
+    expect(rowFor(await getStatus(server), pickId).state).toBe('done')
+  })
+
+  it('prints ack and done at the address the server is bound to', async () => {
+    // Vite's default host is `localhost`, and on a machine whose resolver puts
+    // `::1` first the server listens there and nowhere else. The preamble's URLs
+    // are followed exactly as printed, the way an agent's shell follows them.
+    const { server, session, pickId } = await deliveredPick('::1')
+
+    expect(actionUrl(session, 'ack').startsWith('http://[::1]:')).toBe(true)
+    expect((await post(actionUrl(session, 'ack'))).status).toBe(200)
+    expect((await post(actionUrl(session, 'done'))).status).toBe(200)
     expect(rowFor(await getStatus(server), pickId).state).toBe('done')
   })
 

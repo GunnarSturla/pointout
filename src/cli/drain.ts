@@ -73,7 +73,7 @@ async function drainOne(
   event: string,
   budget: number,
 ): Promise<string> {
-  const url = `http://127.0.0.1:${server.port}${API_BASE}${DRAIN_PATH}`
+  const url = `http://${server.host}:${server.port}${API_BASE}${DRAIN_PATH}`
   try {
     const response = await fetch(url, {
       method: 'POST',

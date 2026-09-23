@@ -41,6 +41,8 @@ const POSTURE_LABEL = 'discovery entry'
 /** One discovery entry, as the CLI and this test both read it off disk. */
 interface DiscoveryEntry {
   root: string
+  /** The loopback address the server is bound to, spelled for a URL. */
+  host: string
   port: number
   secret: string
   pid: number
@@ -65,11 +67,12 @@ afterEach(async () => {
 /** A dev server on a checkout of its own, with a registry nothing else shares. */
 async function startDrainServer(
   app?: TempApp,
+  host?: string,
 ): Promise<{ app: TempApp; server: HarnessServer; env: FixtureEnv }> {
   const env = createFixtureEnv({ claudePid: 0 })
   fixtures.push(env)
   const checkout = app ?? apps.create({ git: true })
-  const server = await apps.serve(checkout, { env: env.env })
+  const server = await apps.serve(checkout, { env: env.env, ...(host ? { host } : {}) })
   return { app: checkout, server, env }
 }
 
@@ -194,6 +197,7 @@ describe('the discovery entry', () => {
     const entry = readEntry(server)
     expect(entry.root).toBe(app.checkout)
     expect(entry.port).toBe(server.port)
+    expect(entry.host).toBe('127.0.0.1')
     expect(entry.secret).toMatch(/^[0-9a-f]{32,}$/)
     expect(entry.pid).toBe(process.pid)
   })
@@ -347,6 +351,19 @@ describe('the drain CLI', () => {
     expect(output.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit')
     expect(output.hookSpecificOutput.additionalContext).toContain(pickId)
     expect(output.hookSpecificOutput.additionalContext).toContain('the label is cut off')
+    expect(await stateOf(server, pickId)).toBe('sent')
+  })
+
+  it('reaches a dev server bound to IPv6 loopback only, by the host its entry names', async () => {
+    // Vite's default `localhost` is `::1` alone on a machine whose resolver lists
+    // it first; a drain that dialled 127.0.0.1 would never reach it.
+    const { server, app } = await startDrainServer(undefined, '::1')
+    expect(readEntry(server).host).toBe('[::1]')
+    const pickId = await postPick(server, 'the label is cut off')
+
+    const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
+
+    expect(hookOutput(run).hookSpecificOutput.additionalContext).toContain(pickId)
     expect(await stateOf(server, pickId)).toBe('sent')
   })
 

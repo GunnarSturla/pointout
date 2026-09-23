@@ -80,7 +80,10 @@ export async function startServer({
   }
 
   return {
-    url: `http://127.0.0.1:${address.port}`,
+    // The address it is bound to, spelled for a URL: a server told `::1` does
+    // not answer on 127.0.0.1. One bound to every interface is dialled on
+    // loopback, in the family it was bound in.
+    url: `http://${dialled(address.address, address.family)}:${address.port}`,
     port: address.port,
     fixture,
     log: () => recorder.text(),
@@ -111,4 +114,11 @@ export async function startExampleServer(
     configFile: exampleAppRoot + '/vite.config.ts',
     ...options,
   })
+}
+
+/** Where a test on this machine reaches a server bound to `address`. */
+function dialled(address: string, family: string): string {
+  if (address === '0.0.0.0') return '127.0.0.1'
+  if (address === '::') return '[::1]'
+  return family === 'IPv6' ? `[${address}]` : address
 }

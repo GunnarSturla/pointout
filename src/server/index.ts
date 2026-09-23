@@ -101,12 +101,6 @@ export function announcePosture(
   else server.config.logger.info(block)
 }
 
-/** The port Vite ended up on, or 0 in middleware mode, where there is none. */
-export function listeningPort(server: ViteDevServer): number {
-  const address = server.httpServer?.address()
-  return address && typeof address === 'object' ? address.port : 0
-}
-
 function parsePid(value: string | undefined): number | null {
   const pid = Number.parseInt(value ?? '', 10)
   return Number.isNaN(pid) ? null : pid

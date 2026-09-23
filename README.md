@@ -227,7 +227,7 @@ server running they print nothing.
 | writes | the Target session's inbox socket | once per Pick sent |
 | binds | `/tmp/cc-socks/<pid>.sock` | from startup to shutdown |
 | writes | `$TMPDIR/vite-agent-inspect-captures/<pid>-<6 hex>/`, mode `0700`: Screen Captures | see [Screen Capture](#screen-capture) |
-| writes | `$TMPDIR/vite-agent-inspect-servers-<uid>/`, user-only: the discovery entry, holding the port and a per-server secret the drain must present | written at startup, removed at shutdown. Entries left by dead dev servers are swept |
+| writes | `$TMPDIR/vite-agent-inspect-servers-<uid>/`, user-only: the discovery entry, holding the address the server is bound to, its port, and a per-server secret the drain must present | written at startup, removed at shutdown. Entries left by dead dev servers are swept |
 | runs | macOS `screencapture -x -R …` | once at startup as a probe, and at each Pick |
 | writes | `.claude/settings.json`, `.claude/skills/vite-agent-inspect/SKILL.md` | only when you run `init` |
 | writes, in the page | `localStorage` on your app's origin: the last Target you sent to, and the camera toggle | when you send, and when you flip the toggle |
@@ -237,6 +237,11 @@ server running they print nothing.
 Every `/__agent` endpoint refuses a connection that does not come from `127.0.0.1` or
 `::1`, and says why. A Pick must also carry an `Origin` equal to one this dev server
 is serving on. An absent `Origin` is refused.
+
+The ack and done URLs a Pick carries, and the address the hooks dial, are the address
+Vite is actually bound to. Vite's default `localhost` is IPv6 `[::1]` alone on a
+machine whose resolver lists it first, as macOS does, and IPv4 `127.0.0.1` on many
+others; a server bound to every interface is dialled on loopback.
 
 - Run with `vite --host` and the page still loads from other machines, but no Pick
   can be made from them. The startup block says so.

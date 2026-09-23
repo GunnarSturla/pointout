@@ -9,6 +9,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { BoundAddress } from './bound-host.js'
 import { says, warns } from './posture.js'
 import type { PostureLine } from './posture.js'
 import { alive, randomSuffix, sweepDead, sweptClause } from './temp-files.js'
@@ -43,6 +44,12 @@ const OWNED = /^[0-9a-f]{16}-(\d+)-[0-9a-f]{6}\.json$/
 export interface DiscoveryEntry {
   /** The normalized repo root this dev server is serving (spec §2). */
   root: string
+  /**
+   * The address it is bound to, spelled for a URL (`bound-host.ts`): the drain
+   * dials this rather than assuming 127.0.0.1, which an IPv6-only server does
+   * not answer on.
+   */
+  host: string
   /** The loopback port `POST /__agent/drain` answers on. */
   port: number
   /** The per-server secret, and the drain endpoint's only credential. */
@@ -64,7 +71,7 @@ export interface Discovery {
    */
   readonly postureLine: PostureLine
   /** Write the entry. Called once the port exists, which is at `listening`. */
-  publish(port: number): void
+  publish(address: BoundAddress): void
   /** Remove it. Idempotent: a dev server may be closed twice. */
   close(): void
 }
@@ -91,7 +98,7 @@ export function createDiscovery({ root }: DiscoveryOptions): Discovery {
       return line
     },
 
-    publish(port) {
+    publish({ host, port }) {
       if (path) return
       if (!Number.isInteger(port) || port <= 0) {
         line = warns(
@@ -109,7 +116,7 @@ export function createDiscovery({ root }: DiscoveryOptions): Discovery {
         chmodSync(directory, 0o700)
         const swept = sweepDead(directory, OWNED)
 
-        const entry: DiscoveryEntry = { root, port, secret, pid: process.pid }
+        const entry: DiscoveryEntry = { root, host, port, secret, pid: process.pid }
         const written = join(
           directory,
           `${rootKey(root)}-${process.pid}-${randomSuffix()}.json`,
@@ -167,10 +174,18 @@ function read(path: string): DiscoveryEntry | null {
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'))
     if (typeof parsed !== 'object' || parsed === null) return null
-    const { root, port, secret, pid } = parsed as Record<string, unknown>
+    const { root, host, port, secret, pid } = parsed as Record<string, unknown>
     if (typeof root !== 'string' || typeof secret !== 'string') return null
     if (typeof port !== 'number' || typeof pid !== 'number') return null
-    return { root, port, secret, pid }
+    // An entry written before the field existed was written by a server that
+    // printed 127.0.0.1 everywhere, so that is where it is dialled.
+    return {
+      root,
+      host: typeof host === 'string' ? host : '127.0.0.1',
+      port,
+      secret,
+      pid,
+    }
   } catch {
     // A file being written as we read it, or one this version does not
     // recognise. Either way it names no dev server we can reach.

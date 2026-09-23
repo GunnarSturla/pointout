@@ -36,6 +36,7 @@ import type {
   SessionsResponse,
   StatusResponse,
 } from '../wire.js'
+import { boundAddress } from './bound-host.js'
 import type { CaptureService } from './capture/index.js'
 import { parseCaptureBody } from './capture/region.js'
 import { now } from './clock.js'
@@ -680,19 +681,19 @@ function onceOwnOrigins(server: ViteDevServer): () => Set<string> {
 }
 
 /**
- * The origin the ack and done URLs are printed with. Loopback by address, not
- * by name: the caller is the agent's shell on this machine, and a hostname it
- * would have to resolve is one more thing that can be wrong.
+ * The origin the ack and done URLs are printed with: the address this server is
+ * bound to, not a name (`bound-host.ts`). The caller is the agent's shell on
+ * this machine, and a hostname it would have to resolve is one more thing that
+ * can be wrong.
  *
  * In middleware mode there is no `httpServer` and no port to print — but there
  * are also no `resolvedUrls`, so `onceOwnOrigins` is empty and every Pick is
  * already refused at the Origin check before a body is ever rendered.
  */
 function loopbackOrigin(server: ViteDevServer): string {
-  const address = server.httpServer?.address()
-  const port = address && typeof address === 'object' ? address.port : 0
+  const { host, port } = boundAddress(server)
   const scheme = server.config.server.https ? 'https' : 'http'
-  return `${scheme}://127.0.0.1:${port}`
+  return `${scheme}://${host}:${port}`
 }
 
 function sendRefusal(logger: Logger, response: ServerResponse, refusal: Refusal): void {

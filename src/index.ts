@@ -6,7 +6,8 @@ import { createCaptureService } from './server/capture/index.js'
 import { createClaudeRoute } from './server/claude/route.js'
 import { createDiscovery } from './server/discovery.js'
 import { installAgentEndpoints } from './server/http.js'
-import { announcePosture, createServerFacts, listeningPort } from './server/index.js'
+import { boundAddress } from './server/bound-host.js'
+import { announcePosture, createServerFacts } from './server/index.js'
 import type { AgentInspectOptions, ServerFacts, Services } from './server/index.js'
 
 export type { AgentInspectOptions, ServerFacts }
@@ -111,7 +112,7 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
       // two happen together and cannot disagree about whether it happened
       // (spec §18, §21).
       const listening = () => {
-        discovery.publish(listeningPort(server))
+        discovery.publish(boundAddress(server))
         announcePosture(server, resolved, services!)
       }
       if (server.httpServer) server.httpServer.once('listening', listening)
