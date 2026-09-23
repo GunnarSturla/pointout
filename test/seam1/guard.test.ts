@@ -104,9 +104,14 @@ describe('the Guard', () => {
   })
 
   it('logs every refusal it makes', async () => {
-    await post(PICK, { origin: 'http://evil.example:5173' })
+    const response = await post(PICK, { origin: 'http://evil.example:5173' })
+    const { reason } = (await response.json()) as { reason: string }
 
-    expect(server.log()).toMatch(/origin/i)
+    // The reason itself, word for word: the posture block's guard line says
+    // "Origin" on every start, so matching the word alone proved nothing
+    // (ticket 19's audit).
+    expect(reason).toContain('evil.example')
+    expect(server.log()).toContain(reason)
   })
 })
 

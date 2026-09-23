@@ -46,7 +46,7 @@ const SENT = 'Sent'
 
 /** What a disabled capture endpoint answers (ticket 17), written out. */
 const DISABLED_REASON =
-  "this dev server is not running on macOS (platform: linux), and v0 crops the display with macOS's own screencapture tool"
+  "this dev server is not running on macOS (platform: linux), and v0 takes a Screen Capture with macOS's own screencapture tool"
 
 /** The toggle's standing choice, by origin, as the Overlay keeps it. */
 const TOGGLE_KEY = 'vite-agent-inspect:screen-capture:'

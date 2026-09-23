@@ -38,6 +38,11 @@ export interface SessionEntry {
   statusUpdatedAt?: string | null
   /** Read by §14's idle row, never published. Not a heartbeat. */
   updatedAt?: string | null
+  /**
+   * The Claude Code version the session is running. Not pinned: the posture
+   * block prints it beside the verified one, and a missing one is said.
+   */
+  version?: string | null
 }
 
 /** What the registry directory turned out to be, and what was in it. */

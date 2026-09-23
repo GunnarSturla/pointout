@@ -16,10 +16,12 @@ $TMPDIR/vite-agent-inspect-captures/<pid>-<6 hex>/<capture id>.png
 ```
 
 One directory per dev server, named after its process, mode `0700`. The startup
-posture block prints the path every time the server starts:
+posture block prints the path every time the server starts, on its own line after
+the capture line (`docs/posture.md` lists every line):
 
 ```
-  screen capture  available — captures are written to /var/folders/…/vite-agent-inspect-captures/54321-9f0ab1 and swept at startup and shutdown
+  screen capture   available
+  temp directory   /var/folders/…/vite-agent-inspect-captures/54321-9f0ab1 (user-only; removed at shutdown, and what dead dev servers left beside it is swept at startup)
 ```
 
 ## When they go
@@ -47,7 +49,7 @@ Pick itself if one was meant to travel:
 
 | reason | what happened |
 | --- | --- |
-| not macOS | v0 crops with macOS's `screencapture`; nothing equivalent is shipped for Linux or Windows |
+| not macOS | v0 takes a Screen Capture with macOS's `screencapture`; nothing equivalent is shipped for Linux or Windows |
 | no Screen Recording permission | `screencapture` exits successfully and writes nothing when the process that started the dev server has not been granted Screen Recording. Grant it to your **terminal** (System Settings → Privacy & Security → Screen Recording) and restart the dev server — the permission is the parent process's, not the browser's |
 | the probe failed | the startup capture could not be taken at all, with the tool's own words |
 | the capture took too long | a capture that has not landed in five seconds is killed |
@@ -65,4 +67,4 @@ One line in the Pointer, holding the absolute path. **No image bytes are sent**,
 the agent session or anywhere else, and nothing is uploaded. If the browser window
 is wider than its viewport by more than a few pixels, the line says the capture may
 be offset: the server is told where the window is, not where its chrome is, and it
-crops as though all of that chrome were on top.
+places the capture as though all of that chrome were on top.

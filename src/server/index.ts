@@ -5,6 +5,7 @@ import type { DeliveryRoute } from './delivery.js'
 import type { Discovery } from './discovery.js'
 import { discoverRepoRoot } from './paths.js'
 import type { RootMethod } from './paths.js'
+import { harnessVersionLine } from './claude/harness-version.js'
 import {
   GUARD_LINE,
   createPosture,
@@ -69,7 +70,11 @@ export function createServerFacts({
   }
 }
 
-/** One block, once, when the server is actually listening (spec §2, §21). */
+/**
+ * One block, once, when the server is actually listening, in the order spec §2
+ * lists it (spec §21). A block carrying any warning is logged as a warning, so it
+ * survives `logLevel: 'warn'`; otherwise it is information.
+ */
 export function announcePosture(
   server: ViteDevServer,
   facts: ServerFacts,
@@ -81,15 +86,19 @@ export function announcePosture(
     .add('root', rootLine(facts.root, facts.rootMethod))
     .add('guard', GUARD_LINE)
     .add('registry', registryLine(registry, candidates.length))
+    .add('harness version', harnessVersionLine(registry.entries))
     .add('reply socket', route.postureLine)
     .add('screen capture', captures.postureLine)
+    .add('temp directory', captures.directoryLine)
     .add('discovery entry', discovery.postureLine)
 
   const address = server.httpServer?.address()
   const host = address && typeof address === 'object' ? address.address : null
   if (host && !isLoopbackHost(host)) posture.add('host', lanLine(host))
 
-  server.config.logger.info('\n' + posture.render() + '\n')
+  const block = '\n' + posture.render() + '\n'
+  if (posture.warns()) server.config.logger.warn(block)
+  else server.config.logger.info(block)
 }
 
 /** The port Vite ended up on, or 0 in middleware mode, where there is none. */

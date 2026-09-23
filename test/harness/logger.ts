@@ -1,9 +1,20 @@
 import type { Logger } from 'vite'
 
+/** Which of the logger's methods a message went through. */
+export type LogLevel = 'info' | 'warn' | 'error'
+
+/** One call to the logger, as it was made. */
+export interface LogEntry {
+  level: LogLevel
+  message: string
+}
+
 /** A recorder and the `Logger` it records through. */
 export interface RecordingLogger {
   /** Everything logged so far, one line per call, oldest first. */
   text(): string
+  /** The same calls, with the level each was made at. */
+  entries(): LogEntry[]
   logger: Logger
 }
 
@@ -14,27 +25,34 @@ export interface RecordingLogger {
  * conventions ask for.
  */
 export function createRecordingLogger(): RecordingLogger {
-  const lines: string[] = []
+  const lines: LogEntry[] = []
 
-  const record = (message: string) => {
-    lines.push(typeof message === 'string' ? message : String(message))
+  const at = (level: LogLevel) => (message: string) => {
+    lines.push({
+      level,
+      message: typeof message === 'string' ? message : String(message),
+    })
   }
+  const info = at('info')
+  const warn = at('warn')
+  const error = at('error')
 
   return {
-    text: () => lines.join('\n'),
+    text: () => lines.map(({ message }) => message).join('\n'),
+    entries: () => [...lines],
     logger: {
       hasWarned: false,
-      info: record,
+      info,
       warn(message) {
         this.hasWarned = true
-        record(message)
+        warn(message)
       },
       warnOnce(message) {
         this.hasWarned = true
-        record(message)
+        warn(message)
       },
       error(message) {
-        record(message)
+        error(message)
       },
       clearScreen() {},
       hasErrorLogged: () => false,

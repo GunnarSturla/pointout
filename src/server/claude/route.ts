@@ -74,7 +74,7 @@ export async function createClaudeRoute(
       }
     },
   })
-  if (!reply.address) logger.warn(`vite-agent-inspect: reply socket ${reply.postureLine}`)
+  // An unbound reply address is said once, in the posture block, and not again here.
 
   /**
    * One line off the reply address. The Pick's id is the whole credential here

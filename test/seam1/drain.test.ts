@@ -272,6 +272,34 @@ describe('POST /__agent/drain', () => {
     expect(second.text).toBe('')
   })
 
+  // Never a silent truncation (spec §21), on the floor too: a Pick bigger than
+  // what the hook has left is named and kept, not cut to fit (ticket 19). The
+  // CLI states the budget, so a small one is how a test makes it happen.
+  it('keeps a pick too big for the budget it was handed, and says so', async () => {
+    const { server, app } = await startDrainServer()
+    const pickId = await postPick(
+      server,
+      'this one is longer than two hundred characters',
+    )
+
+    const small = await drain(server, { ...drainBody(server, app), budget: 200 })
+
+    expect(small.status).toBe(200)
+    expect(small.drained).toBe(0)
+    expect(small.remaining).toBe(1)
+    expect(small.reason).toBe(
+      `vite-agent-inspect — pick ${pickId} is larger than the 200 characters this ` +
+        'hook had left to carry, so it was not delivered. It stays queued for a later ' +
+        'prompt, and fails if nothing carries it within its 30 minutes.',
+    )
+    expect(server.log()).toContain(small.reason)
+    expect(await stateOf(server, pickId)).toBe('queued-unaddressed')
+
+    const whole = await drain(server, drainBody(server, app))
+    expect(whole.drained).toBe(1)
+    expect(whole.text).toContain(pickId)
+  })
+
   it('never hands out a pick the TTL has already taken', async () => {
     // Ticket 11 put the sweep ahead of every route so this would hold for
     // routes that did not exist yet. This is the first one that re-reads the

@@ -1,4 +1,5 @@
 import type { Target } from '../wire.js'
+import type { PostureLine } from './posture.js'
 import type { ReplyListener } from './receipt.js'
 import type { SessionEntry } from './registry.js'
 
@@ -28,7 +29,7 @@ export type DeliveryOutcome = { written: true } | { written: false; reason: stri
 
 export interface DeliveryRoute {
   /** The one line this route contributes to the startup posture block. */
-  postureLine: string
+  postureLine: PostureLine
   deliver(delivery: Delivery): Promise<DeliveryOutcome>
   /**
    * Where what the route hears back goes (spec §16). A route correlates what

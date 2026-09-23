@@ -596,18 +596,24 @@ async function ingestPick(
     : null
 
   // The capture the Overlay started at pick time becomes one prose line, or
-  // nothing at all — and the file is deleted here when the toggle was off. A
-  // capture that failed never stops the Pick: it says so and travels (spec §10).
-  const captureLine = await captures.resolve(input.capture ?? null)
+  // nothing at all. A capture that failed never stops the Pick: it says so and
+  // travels (spec §10). Nothing is kept or deleted yet — see below.
+  const capture = await captures.resolve(input.capture ?? null)
 
   // The 32 KiB cap, before the write and before the ledger: a Pick too big to
   // send is one the developer is asked to shorten, not one that waits around to
   // fail later. Excerpts are all it may trim, and it says what it took (§13).
-  const fitted = fitPayload(mintPick(input, { ownerChain, target, captureLine }), {
-    origin: context.origin(),
-  })
+  const fitted = fitPayload(
+    mintPick(input, { ownerChain, target, captureLine: capture.line }),
+    { origin: context.origin() },
+  )
+  // A refusal leaves the capture exactly as it was: the page still holds its id
+  // and sends it again with the shortened Pick (spec §21).
   if (!fitted.ok) return sendRefusal(logger, response, fitted.refusal)
   const { pick, body: rendered } = fitted.value
+  // Accepted, so the capture is this Pick's now: kept for the agent, or deleted
+  // when the toggle was off. Nothing was awaited since `resolve`.
+  capture.take()
 
   const unwritten = await deliverRendered(context, registry, pick, rendered)
   const written = pick.target !== null && unwritten === undefined

@@ -3,6 +3,7 @@ import { HOOK_OUTPUT_LIMIT, encodedLength } from '../api.js'
 import { SENT } from '../wire.js'
 import type { DrainRequest, DrainResult } from '../wire.js'
 import type { Refusal } from './guard.js'
+import { TTL_MS } from './ledger.js'
 import type { Ledger, LedgerRecord } from './ledger.js'
 import { refuse } from './parse.js'
 import type { Parsed } from './parse.js'
@@ -153,7 +154,7 @@ export function drainQueue({ ledger, origin, budget }: DrainOptions): DrainResul
   if (fitted === 0) {
     // Fail closed and say so (spec §21): the Pick stays queued rather than
     // being silently shortened, and the developer is told which one it is.
-    const line = tooLargeLine(waiting[0]!)
+    const line = tooLargeLine(waiting[0]!, budget)
     return {
       text: encodedLength(line) <= budget ? line : '',
       drained: 0,
@@ -183,11 +184,17 @@ function remainderLine(remaining: number): string {
   return `\n${remaining} ${picks} still queued in this dev server; ${arrive} at your next prompt.\n`
 }
 
-function tooLargeLine(record: LedgerRecord): string {
+/**
+ * The budget named is the one this drain was handed, which is less than a hook's
+ * whole output when another dev server on this root spoke first. So a later
+ * prompt may still carry the Pick, and the line says that rather than promising
+ * an expiry that may not come.
+ */
+function tooLargeLine(record: LedgerRecord, budget: number): string {
   return (
-    `vite-agent-inspect — pick ${record.pick.id} is larger than the ` +
-    `${HOOK_OUTPUT_LIMIT}-character budget a hook can carry, so it was not ` +
-    'delivered. It stays queued until it expires.\n'
+    `vite-agent-inspect — pick ${record.pick.id} is larger than the ${budget} ` +
+    'characters this hook had left to carry, so it was not delivered. It stays ' +
+    `queued for a later prompt, and fails if nothing carries it within its ${TTL_MS / 60_000} minutes.\n`
   )
 }
 

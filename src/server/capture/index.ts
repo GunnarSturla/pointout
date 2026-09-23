@@ -2,8 +2,11 @@ import { randomUUID } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Logger } from 'vite'
+import { says, warns } from '../posture.js'
+import type { PostureLine } from '../posture.js'
 import { NO_CAPTURE } from '../../wire.js'
 import type { CaptureCoordinates, CaptureRequest } from '../../wire.js'
+import { sweptClause } from '../temp-files.js'
 import { regionFor } from './region.js'
 import { openCaptureDirectory } from './directory.js'
 import type { CaptureDirectory } from './directory.js'
@@ -29,21 +32,39 @@ const MACOS = 'darwin'
 export interface CaptureService {
   /** Null when Screen Capture is available; otherwise why it is not. */
   disabledReason: string | null
-  /** This server's line in the startup posture block. */
-  postureLine: string
+  /** Available, or disabled with its reason: a line in the posture block. */
+  postureLine: PostureLine
+  /** Where the captures go and that the shared root was swept: the next line. */
+  directoryLine: PostureLine
   /** Start one capture and answer its id at once; the tool runs behind it. */
   start(coordinates: CaptureCoordinates): string
   /** Abort and delete. False when this server minted no such capture. */
   abort(id: string): boolean
   /**
-   * What the Pointer says about the capture a Pick asked for, and null when it
-   * says nothing. Waits for a capture still running, deletes the file when the
-   * toggle was off, and keeps it for the agent when it was on.
+   * What the Pointer says about the capture a Pick asked for, once a capture
+   * still running has finished. Nothing is kept or deleted until the claim is
+   * taken: a Pick refused after this (too large, say) leaves the capture where
+   * it was, for the resend the developer makes (spec §21).
    */
-  resolve(request: CaptureRequest | null): Promise<string | null>
+  resolve(request: CaptureRequest | null): Promise<CaptureClaim>
   /** Kill anything still running and take the directory with it. */
   close(): void
 }
+
+/**
+ * The Pointer's line for one capture, and the act of letting it go. `take` is
+ * called once the Pick is accepted, with nothing awaited between `resolve` and
+ * it: it deletes the file when the toggle was off, keeps it for the agent when it
+ * was on, and either way this server no longer holds it under that id.
+ */
+export interface CaptureClaim {
+  /** Null when the Pointer says nothing about a capture. */
+  line: string | null
+  take(): void
+}
+
+/** A claim on nothing: there is no capture to keep or to delete. */
+const claimOn = (line: string | null): CaptureClaim => ({ line, take: () => {} })
 
 interface Capture {
   file: string
@@ -72,9 +93,10 @@ export async function createCaptureService({
   try {
     directory = openCaptureDirectory()
   } catch (error) {
+    const why = (error as Error).message
     return disabled(
-      `its temp directory could not be opened (${(error as Error).message})`,
-      null,
+      `its temp directory could not be opened (${why})`,
+      warns(`not opened — ${why}`),
     )
   }
 
@@ -82,22 +104,26 @@ export async function createCaptureService({
   if (platform !== MACOS) {
     return disabled(
       `this dev server is not running on macOS (platform: ${platform}), and v0 ` +
-        "crops the display with macOS's own screencapture tool",
+        "takes a Screen Capture with macOS's own screencapture tool",
+      directoryLine(directory),
       directory,
     )
   }
 
   const probeFailed = await probeScreencapture(directory.path)
   if (probeFailed) {
-    return disabled(`the startup probe found that ${probeFailed}`, directory)
+    return disabled(
+      `the startup probe found that ${probeFailed}`,
+      directoryLine(directory),
+      directory,
+    )
   }
 
   const open = directory
   return {
     disabledReason: null,
-    postureLine:
-      `available — captures are written to ${open.path} and swept at startup ` +
-      `and shutdown${sweptClause(open)}`,
+    postureLine: says('available'),
+    directoryLine: directoryLine(open),
 
     start(coordinates) {
       const id = randomUUID()
@@ -133,33 +159,42 @@ export async function createCaptureService({
     },
 
     async resolve(request) {
-      if (!request) return null
+      if (!request) return claimOn(null)
       // The toggle was on and the page holds nothing to name: the capture it
       // asked for at pick time never started. Said, not left out (spec §21).
       if (request.id === NO_CAPTURE) {
-        return request.keep
-          ? intended('the page asked for one at pick time and none was started')
-          : null
-      }
-      const capture = captures.get(request.id)
-      captures.delete(request.id)
-
-      if (!capture) {
-        if (!request.keep) return null
-        return intended(
-          'this dev server holds no capture with that id — it was aborted, or ' +
-            'the dev server restarted under the pick',
+        return claimOn(
+          request.keep
+            ? intended('the page asked for one at pick time and none was started')
+            : null,
         )
       }
 
-      const result = await capture.settled
-      if (!request.keep) {
-        rmSync(capture.file, { force: true })
-        return null
+      const pending = captures.get(request.id)
+      const result = pending ? await pending.settled : null
+      // Read again after the wait: a DELETE that arrived meanwhile has aborted
+      // it, and the line must not name a file that is gone.
+      const capture = captures.get(request.id)
+
+      if (!capture || !result) {
+        if (!request.keep) return claimOn(null)
+        return claimOn(
+          intended(
+            'this dev server holds no capture with that id — it was aborted, or ' +
+              'the dev server restarted under the pick',
+          ),
+        )
       }
-      if (!result.ok) return intended(result.reason)
-      // Kept until the shutdown sweep, so the agent can open it (spec §10).
-      return capture.file + offsetClause(capture.offsetBy)
+
+      const take = () => {
+        if (captures.get(request.id) !== capture) return
+        captures.delete(request.id)
+        // Kept until the shutdown sweep, so the agent can open it (spec §10).
+        if (!request.keep) rmSync(capture.file, { force: true })
+      }
+      if (!request.keep) return { line: null, take }
+      if (!result.ok) return { line: intended(result.reason), take }
+      return { line: capture.file + offsetClause(capture.offsetBy), take }
     },
 
     close() {
@@ -173,20 +208,23 @@ export async function createCaptureService({
 }
 
 /** Available or not, the directory is still swept and still stated (spec §21). */
-function disabled(reason: string, directory: CaptureDirectory | null): CaptureService {
-  const where = directory
-    ? ` Nothing is captured; ${directory.path} was swept anyway${sweptClause(directory)}.`
-    : ''
+function disabled(
+  reason: string,
+  where: PostureLine,
+  directory?: CaptureDirectory,
+): CaptureService {
   return {
     disabledReason: reason,
-    postureLine: `disabled — ${reason}.${where}`,
+    postureLine: warns(`disabled — ${reason}`),
+    directoryLine: where,
     start() {
       // Unreachable: the endpoint refuses with the reason before it gets here,
       // and this is what keeps that from being a comment nobody enforces.
       throw new Error(`vite-agent-inspect: Screen Capture is disabled — ${reason}`)
     },
     abort: () => false,
-    resolve: (request) => Promise.resolve(request?.keep ? intended(reason) : null),
+    resolve: (request) =>
+      Promise.resolve(claimOn(request?.keep ? intended(reason) : null)),
     close: () => directory?.close(),
   }
 }
@@ -200,11 +238,17 @@ function offsetClause(offsetBy: number | null): string {
   if (offsetBy === null) return ''
   return (
     ` (this capture may be offset: the browser window is ${offsetBy} px wider ` +
-    'than its viewport, and this server crops as though all of that chrome were on top)'
+    'than its viewport, and this server places the capture as though all of that chrome were on top)'
   )
 }
 
-function sweptClause({ swept }: CaptureDirectory): string {
-  if (swept === 0) return ''
-  return ` (${swept} left by an earlier dev server ${swept === 1 ? 'was' : 'were'} swept)`
+/**
+ * The temp directory, where it is and what was swept (spec §2). Named in full on
+ * purpose: a Screen Capture of somebody's display must never be found by accident.
+ */
+function directoryLine({ path, swept }: CaptureDirectory): PostureLine {
+  return says(
+    `${path} (user-only; removed at shutdown, and what dead dev servers left ` +
+      `beside it is swept at startup${sweptClause(swept)})`,
+  )
 }

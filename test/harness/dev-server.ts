@@ -3,6 +3,7 @@ import type { ViteDevServer } from 'vite'
 import { applyEnv, createFixtureEnv } from './fixture-env.js'
 import type { FixtureEnv } from './fixture-env.js'
 import { createRecordingLogger } from './logger.js'
+import type { LogEntry } from './logger.js'
 import { exampleAppRoot } from './paths.js'
 
 export interface StartServerOptions {
@@ -29,6 +30,8 @@ export interface HarnessServer {
   fixture: FixtureEnv
   /** Everything the server logged, posture block included. */
   log(): string
+  /** The same, one entry per logger call, with the level it was made at. */
+  logEntries(): LogEntry[]
   close(): Promise<void>
 }
 
@@ -81,6 +84,7 @@ export async function startServer({
     port: address.port,
     fixture,
     log: () => recorder.text(),
+    logEntries: () => recorder.entries(),
     async close() {
       // First. A test that asked for a module leaves Vite's dependency
       // optimizer running behind the answer, and `close()` called while it runs

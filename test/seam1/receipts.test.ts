@@ -448,7 +448,7 @@ describe('idle notices', () => {
       'reached held',
     )
     expect(stale.target?.idleAt).toBeNull()
-    expect(server.log()).toMatch(/stale/i)
+    expect(server.log()).toContain(`stale idle notice for pick ${pickId}`)
 
     const finishedAt = Date.now() + 1000
     await reply.send(idleFrame(subscription, finishedAt))
