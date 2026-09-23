@@ -196,5 +196,6 @@ it before committing. Your ticket names which files are yours.
   react-dom now, and the guarantee that nothing builds DOM from a markup string rests on
   its behaviour under the first consumer's `require-trusted-types-for 'script'`. Check
   it against that app before v0 is called done (ADR-0004).
-- Spec §12's "frame directly above the sentinel" sentence is superseded by ADR-0003;
-  ticket 22 corrects the sentence.
+- **The `review-animations` gate has not run.** It is human-run, and ticket 22 is
+  `ready-for-human`: `docs/motion.md` › *Running the gate* lists what it reviews and
+  holds the blank outcome record.
