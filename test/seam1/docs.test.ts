@@ -54,13 +54,15 @@ describe('LICENSE-THIRDPARTY', () => {
       for (const field of ['Source:', 'Version:', 'Used in:', 'Taken:']) {
         expect(entry.text, `${entry.project} has no ${field}`).toContain(field)
       }
-      expect(entry.text, entry.project).toMatch(/^MIT License$/m)
-      expect(entry.text, entry.project).toMatch(/^Copyright \(c\) /m)
-      expect(entry.flowed, entry.project).toContain(
+      expect(entry.text, `${entry.project} has no MIT text`).toMatch(/^MIT License$/m)
+      expect(entry.text, `${entry.project} has no copyright line`).toMatch(
+        /^Copyright \(c\) /m,
+      )
+      expect(entry.flowed, `${entry.project} has no permission notice`).toContain(
         'The above copyright notice and this permission notice shall be included in ' +
           'all copies or substantial portions of the Software.',
       )
-      expect(entry.flowed, entry.project).toContain(
+      expect(entry.flowed, `${entry.project} has no warranty disclaimer`).toContain(
         'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND',
       )
     }
