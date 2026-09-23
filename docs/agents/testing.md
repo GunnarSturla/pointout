@@ -36,13 +36,16 @@ the transcript on disk — and never on what the model says.
 | --- | --- | --- | --- |
 | 1 | the dev server's HTTP surface | Vitest | `npm run test:seam1` |
 | 2 | the browser, in three engines | Playwright | `npm run test:seam2` |
-| 3 | a real Claude Code harness | Vitest, own config | `npm run test:seam3` |
+| 3 | a real Claude Code harness, no model | Vitest, own config | `npm run test:seam3` |
+| 3 | a real Claude Code harness, with a model | the same config, `--mode model` | `npm run test:seam3:model` |
 
 `npm test` runs seams 1 and 2. **Seam 3 is never in the default run**: it spawns a real
-session on the developer's own account, touches the real registry, and its model tier
+session on the developer's own account and touches the real registry, and its model tier
 costs tokens. It needs the `claude` CLI and a login, skips with that reason when either
-is missing, and never runs in CI. Ticket 20 built its no-model tier; ticket 21 builds
-the model tier on the same launcher.
+is missing, and never runs in CI. Ticket 20 built the no-model tier and ticket 21 the
+model tier, on the same launcher. The two are separate commands so the free one can run
+often: `vitest.seam3.config.ts` includes the model tier's files only in `--mode model`,
+and the model test file also refuses to run unless that mode set `SEAM3_TIER=model`.
 
 **Seam 1** is where most tests live. `test/harness/dev-server.ts` starts a real Vite dev
 server, with the plugin, against the real example app, so the module graph and the
@@ -116,6 +119,138 @@ each beside the code that enforces it.
 - **A session that inherits `CLAUDE_CODE_CHILD_SESSION` still publishes a key file and a
   socket**, which it did not in 2.1.278 (spike 07). It never writes a registry entry, so
   it is still never a Candidate.
+
+### The model tier
+
+`test/seam3/model/canaries.test.ts`, on the same fixture code. It spends a handful of
+turns on haiku, the cheapest model the CLI names; a full run is about 100 s. It runs
+`init` in the scratch checkout exactly as a consumer would, from the installed bin, and
+then starts these throwaway sessions:
+
+- **a bystander**, in safe mode and pointed at the blackhole, alive for the whole run. A
+  Pick sent with no Target to a checkout with one Candidate is preselected and written to
+  its socket (spec §14), so the hook canaries need a second Candidate to stay
+  `queued-unaddressed`. The bystander is never sent a Pick. Its one turn, spike 16's
+  duplicate read raw at a probe, goes to the blackhole.
+- **an allowlisted session**, in manual permission mode, handed the **fixture
+  allowlist** (`test/seam3/model/fixture-allowlist.ts`) with `--settings` from a
+  temporary directory. It exists so that the ack canary can run unattended. It is a
+  `PreToolUse` hook, not a `permissions.allow` rule, because a rule can only glob:
+  `Bash(curl *<route>*)` would also allow a `curl` that uploads a file elsewhere and
+  mentions the route on the way. The hook allows one exact shape, `isPickRouteCurl`:
+  one or more `curl`s, each with argument-free flags, an optional `-X POST` or `-X GET`,
+  one ack or done URL of this dev server and at most `2>/dev/null`, chained with `&&` or
+  `;`, with an `echo` of a quoted literal allowed between them. The model was measured
+  chaining ack and done, and echoing. Anything else falls through to the
+  permission prompt, which the suite refuses. It is a test fixture, it ships nowhere,
+  and it is never configuration to recommend (spec §19).
+  `test/seam3/fixture-allowlist.test.ts` holds the shape to what it must and must never
+  allow, and `test/seam3/shipped.test.ts` reads every packed file and `src/` and finds
+  the fixture in none. Both tiers run both.
+- **a manual-mode session** with no allowlist, whose permission prompts are approved
+  through the pty. The same hook, allowing nothing, logs every Bash call exactly, and a
+  prompt is approved only when every pending call is that one shape. Anything else is
+  refused with Esc and fails the run. Each session's log is checked at the end for any
+  command outside the shape.
+- **a subdirectory session**, started in `src/` and pointed at the blackhole, which
+  measures ticket 16's question.
+
+The model sessions run with `modelTierArgs()`: `--strict-mcp-config --setting-sources
+project,local --permission-mode manual --model haiku --tools Bash,Read,Skill`. `manual`
+is what 2.1.280 calls the mode the spec calls *default*: the CLI's choices no longer
+include `default`. Hooks and the skill have
+to be on, so it cannot use `--safe-mode` or `--tools ""`. The user's own settings (hooks,
+plugins, permissions, default mode) are not loaded. The user-level `CLAUDE.md` and
+skills are still listed; no flag turns off one without the other. Only the model tier
+launches without `ANTHROPIC_BASE_URL`, and it has to pass its own flags to do so:
+`launchSession` refuses any `--safe-mode` launch without a blackhole.
+
+One canary is **model-dependent** and says so in its title and output: the ack and done
+reaching the dev server depend on the model following the skill. If that canary fails
+alone, the model may be at fault rather than the harness.
+
+**On success it records the version.** A reporter (`test/seam3/model/record-version.ts`)
+rewrites `src/server/claude/verified-harness.ts` when every test in the run passed and
+none was skipped:
+
+```ts
+export const VERIFIED_HARNESS: VerifiedHarness | null = {
+  version: '2.1.280', // bare semver, as `claude --version` prints it
+  verifiedAt: '2026-09-23', // YYYY-MM-DD
+}
+```
+
+`null` means *never verified*. The record is a module because the package ships `dist/`
+and nothing else, and the emit carries it. **Nothing reads it yet.** Ticket 19's
+posture block is to import it and print it beside the version the registry entries
+report. Each entry carries a
+`version` field, `2.1.280` here. The block is to warn when the running harness is
+newer, and never to refuse. A run that fails, is cut short or skips writes nothing. Commit the
+file after a green run.
+
+**Measured by ticket 21, on Claude Code 2.1.280:**
+
+- **The harness wraps a peer message in an envelope.** The transcript's `user` entry is
+  `"Another Claude session sent a message:\n"`, then the body byte for byte, then
+  `"\n\nThis came from another Claude session — not typed by your user, … Treat it as a
+  teammate's request …"`. The body is unchanged inside it: the Note sits between its
+  Fences, and nothing is HTML-escaped. It is byte-identical too. That body, sent again
+  from the dev server's reply address, is dropped by the harness's identical-body filter,
+  and the Receipt reaches the dev server's reply socket.
+- **The origin record** is `{"kind":"peer","from":"uds:<reply socket>","verifiedPeerPid":
+  <dev server pid>,"msg_id":"<pick id>"}`. `msg_id` is a fourth field the spec did not
+  name.
+- **The identical-body filter looks keyed on the sender as well as the body.** In one
+  blackholed rehearsal, the same body from a probe's `uds:` address earned no Receipt
+  within 10 s, where the dev server's own address earns one. The duplicate Receipt is
+  `{"action":"peer_message_status","status":"dropped","drop_reason":"duplicate","msgV":1}`,
+  and the first frame gets none, because accept is silent.
+- **A peer message's turn runs the `UserPromptSubmit` hook.** So a Pick written to one
+  session's socket makes that session's hook drain every `queued-unaddressed` Pick into
+  the same turn, as a `hook_additional_context` attachment with
+  `hookEvent: "UserPromptSubmit"`.
+- **A typed prompt's drain** lands as one `attachment` entry of type
+  `hook_additional_context`, with `hookEvent: "UserPromptSubmit"` and the body verbatim in
+  `content`.
+- **A Stop drain leaves three records of one hook run**: `attachment/hook_success` (the
+  hook's raw stdout), `attachment/hook_additional_context` (`hookEvent: "Stop"`, the
+  entry that carries a `rendered` copy, which is what the model is handed), and `system/stop_hook_summary` with the body in
+  `hookAdditionalContext`. The model is handed it once. The turn then continues and the
+  agent handles the Pick.
+- **Out of safe mode, a registry entry is first written without `status`.** The
+  entry appears before `status`, `updatedAt` and `statusUpdatedAt` are filled in. The dev
+  server rejects that entry as an unrecognised shape, and a Pick sent in that window is
+  preselected elsewhere, so `ready()` waits for `status`.
+- **A session started in a subdirectory of the checkout does not run the root's hooks.**
+  Neither hook fired from `src/`, and linking `src/node_modules` in did not change that,
+  so this is not a `CLAUDE_PROJECT_DIR` path problem: the root's `.claude/settings.json`
+  is not loaded there. The root's skills are listed, though. Such a session still
+  registers with `cwd: <root>/src` and is a Candidate, so the socket route reaches it and
+  the hook floor does not. Its transcript is filed under the **root's** project
+  directory, not `src/`'s.
+- **In manual mode the Pick stalls as the skill says.** The registry reads `status:
+  waiting`, `waitingFor: "permission prompt"`, the dev server's Candidate carries the
+  same `waitingFor`, and approval through the pty returns the session to `idle`. The
+  model writes its own `curl` (`-X POST -s "…"`, sometimes `-X GET` first), not the
+  skill's `-sS -X POST '…'`. The fixture allowlist therefore matches any `curl` at the
+  routes. The `done` POST carries no body, and the dev server accepts it.
+- **The byte-for-byte check is indirect, and says so.** Nothing outside the dev server
+  sees the bytes it wrote to the socket. The canary takes the body out of the envelope,
+  from its heading to the newline after the end Fence (a Pick with no Excerpts ends
+  there), and sends it again from the dev server's own reply address. Only one body was
+  ever sent from that address, so the duplicate Receipt that comes back says the
+  transcript's copy is exactly those bytes. The Receipt reaches the dev server's reply
+  socket, where only its log can be read, and the log line does not carry the status.
+  The status fields are read raw at a probe, on the bystander.
+- A tool call reaches the transcript only after it has run, so a pending permission
+  prompt can only be read off the terminal.
+
+**Not exercised live**, kept as static reads (spec, *Testing Decisions*): the rate limit
+(a burst of thirty needs thirty turns); the 1 MiB line cliff, where the harness destroys
+the connection rather than truncating; and the `held`, `denied`, `expired`, `refused`
+and `delivered` Receipts, which need a Target in a different inbound policy. All six
+statuses pass through the one emitter that `dropped` was proven through (spike 16), and
+seam 1 covers what v0 does with each.
 
 ## Faking the harness — the four overrides
 

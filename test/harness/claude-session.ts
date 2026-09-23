@@ -16,7 +16,7 @@ import {
 import { createServer as createNetServer, connect } from 'node:net'
 import type { Server } from 'node:net'
 import { homedir, tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { createServer } from 'vite'
 import type { ViteDevServer } from 'vite'
 import { createRecordingLogger } from './logger.js'
@@ -54,6 +54,9 @@ import { exampleAppRoot, repoRoot } from './paths.js'
 // And one rule of its own: the throwaway session is pointed at a loopback port
 // this file holds and that answers nothing (`ANTHROPIC_BASE_URL`), so a turn it
 // is made to take in the no-model tier reaches no model and spends nothing.
+// Only the model tier (ticket 21) launches without it, and it has to pass its
+// own flags (`modelTierArgs`) to do so: a safe-mode launch refuses to start
+// unpointed.
 
 /** Where the harness keeps its session entries and key files. */
 export const REGISTRY_DIR = join(homedir(), '.claude', 'sessions')
@@ -323,10 +326,59 @@ sys.stderr.write("claude exited %s\n" % p.returncode)
 
 export interface LaunchOptions {
   cwd: string
-  /** Where a model turn would go. The blackhole's url. */
-  modelUrl: string
+  /**
+   * Where a model turn would go: the blackhole's url. Omitted only by the model
+   * tier, which is the one place a turn is meant to reach a real model; the
+   * harness then uses its own endpoint, and nothing here names it.
+   */
+  modelUrl?: string
+  /**
+   * The flags `claude` runs with. The no-model tier's (`NO_MODEL_ARGS`) switch
+   * every customization off; the model tier needs hooks, the skill and a shell,
+   * so it passes its own.
+   */
+  args?: string[]
   /** Put back variables the scrub removed — only to prove what the scrub is for. */
   env?: Record<string, string>
+}
+
+/**
+ * The no-model tier's flags. Everything that is not the harness itself is
+ * switched off: no hooks, plugins, MCP servers, CLAUDE.md or tools, and the
+ * cheapest model in case a turn ever did get past the blackhole.
+ */
+export const NO_MODEL_ARGS = [
+  '--safe-mode',
+  '--strict-mcp-config',
+  '--tools',
+  '',
+  '--model',
+  'haiku',
+]
+
+/**
+ * The model tier's flags (ticket 21), with `extra` after them. Hooks, the
+ * project's skill and a shell have to be on, which is what `--safe-mode` and
+ * `--tools ""` switch off, so both are gone. What is kept off instead: every
+ * MCP server; the user's own settings — their hooks, plugins, permissions and
+ * default permission mode — so only the scratch project's `.claude/` and what
+ * `extra` hands over apply; and every tool but the three a Pick needs. The
+ * permission mode is stated: `manual` is what 2.1.280 calls the mode the spec
+ * calls *default*. And the model is the cheapest.
+ */
+export function modelTierArgs(...extra: string[]): string[] {
+  return [
+    '--strict-mcp-config',
+    '--setting-sources',
+    'project,local',
+    '--permission-mode',
+    'manual',
+    '--model',
+    'haiku',
+    '--tools',
+    'Bash,Read,Skill',
+    ...extra,
+  ]
 }
 
 /** A registry entry, as the harness writes it. Fields are read, not typed away. */
@@ -350,6 +402,8 @@ export interface ThrowawaySession {
   envNames: string[]
   /** The terminal's output so far, escapes stripped and whitespace removed. */
   screen(): string
+  /** The end of the terminal, readable, for a failure message or a measurement. */
+  lastShown(chars?: number): string
   /** Type into the terminal. */
   press(keys: string): void
   /** This session's registry entry, or null while there is none. */
@@ -357,10 +411,17 @@ export interface ThrowawaySession {
   keyFile(): KeyFileShape | null
   socketExists(): boolean
   /**
-   * Wait until the session is past its first-run prompts and showing its
-   * banner, answering the folder-trust prompt with *Yes* on the way.
+   * Wait until the session is past its first-run prompts and up, answering the
+   * folder-trust prompt with *Yes* on the way. Up is the safe-mode banner when
+   * the session runs in safe mode, and otherwise a registry entry carrying its
+   * `status`, which the harness writes only once the folder is trusted.
    */
   ready(timeoutMs?: number): Promise<void>
+  /**
+   * Every line of this session's transcript on disk, parsed, oldest first. An
+   * empty list while there is none.
+   */
+  transcript(): Array<Record<string, unknown>>
   /**
    * Write frames to this session's own socket, the auth line first. The token
    * is read here and goes nowhere else.
@@ -410,28 +471,32 @@ const ESCAPES = new RegExp(
 export async function launchSession({
   cwd,
   modelUrl,
+  args = NO_MODEL_ARGS,
   env = {},
 }: LaunchOptions): Promise<ThrowawaySession> {
-  const sessionEnv = scrubbedEnv({ ANTHROPIC_BASE_URL: modelUrl, ...env })
-  const transcriptDir = join(PROJECTS_DIR, cwd.replace(/[^a-zA-Z0-9]/g, '-'))
-  const transcriptExisted = existsSync(transcriptDir)
+  const sessionEnv = scrubbedEnv({
+    ...(modelUrl === undefined ? {} : { ANTHROPIC_BASE_URL: modelUrl }),
+    ...env,
+  })
+  // A turn meant for the blackhole may not run without one: a safe-mode launch
+  // — the no-model tier's — with no blackhole would be a no-model tier that
+  // spends.
+  const safeMode = args.includes('--safe-mode')
+  if (safeMode && modelUrl === undefined) {
+    throw new Error('a safe-mode session launches only with a blackhole to point at')
+  }
+  // Transcripts live in a directory named for a cwd, but not always this one:
+  // a session started in a subdirectory of a repository may file its
+  // transcript under the root's. So the directories there now are noted, and
+  // the transcript is found by this session's id wherever it lands.
+  const transcriptDir = join(PROJECTS_DIR, mangle(cwd))
+  const projectDirsBefore = new Set(
+    existsSync(PROJECTS_DIR) ? readdirSync(PROJECTS_DIR) : [],
+  )
 
   const launcher: ChildProcessWithoutNullStreams = spawn(
     'python3',
-    [
-      '-c',
-      PTY_LAUNCHER,
-      cwd,
-      // Everything that is not the harness itself is switched off: no hooks,
-      // plugins, MCP servers, CLAUDE.md or tools, and the cheapest model in case
-      // a turn ever did get past the blackhole.
-      '--safe-mode',
-      '--strict-mcp-config',
-      '--tools',
-      '',
-      '--model',
-      'haiku',
-    ],
+    ['-c', PTY_LAUNCHER, cwd, ...args],
     { env: sessionEnv, stdio: ['pipe', 'pipe', 'pipe'] },
   )
 
@@ -482,18 +547,23 @@ export async function launchSession({
     }
   }
   const screen = () => raw.replace(ESCAPES, '').replace(/\s+/g, '')
+  /** Kept once seen, so the transcript can still be read after the entry has gone. */
+  let knownSessionId: unknown
 
   const session: ThrowawaySession = {
     pid,
     envNames: Object.keys(sessionEnv),
     screen,
+    lastShown: (chars) => lastShown(chars),
     press(keys) {
       if (!exited) launcher.stdin.write(keys)
     },
 
     entry() {
       try {
-        return JSON.parse(readFileSync(entryPath, 'utf8')) as RegistryEntry
+        const entry = JSON.parse(readFileSync(entryPath, 'utf8')) as RegistryEntry
+        if (typeof entry.sessionId === 'string') knownSessionId = entry.sessionId
+        return entry
       } catch {
         return null
       }
@@ -510,6 +580,30 @@ export async function launchSession({
     },
 
     socketExists: () => existsSync(socketPath),
+
+    transcript() {
+      // The entry names the transcript; once it has gone, the last id it named.
+      const sessionId = session.entry()?.sessionId ?? knownSessionId
+      if (typeof sessionId !== 'string') return []
+      const path = transcriptPath(sessionId)
+      if (path === null) return []
+      let text: string
+      try {
+        text = readFileSync(path, 'utf8')
+      } catch {
+        return []
+      }
+      const lines: Array<Record<string, unknown>> = []
+      for (const line of text.split('\n')) {
+        if (line.trim() === '') continue
+        try {
+          lines.push(JSON.parse(line) as Record<string, unknown>)
+        } catch {
+          // The last line, half-written as it is read. The next read has it.
+        }
+      }
+      return lines
+    },
 
     async ready(timeoutMs = 20_000) {
       const deadline = Date.now() + timeoutMs
@@ -530,7 +624,9 @@ export async function launchSession({
           )
         }
         const shown = screen()
-        if (shown.includes(READY_BANNER)) return
+        // Out of safe mode the entry is the marker, and only a whole one: the
+        // harness writes it first without `status`, and fills that in after.
+        if (safeMode ? shown.includes(READY_BANNER) : hasStatus(session.entry())) return
         const cursor = trustCursor(shown)
         const now = Date.now()
         if (cursor !== null && !entered) {
@@ -553,8 +649,10 @@ export async function launchSession({
       }
       throw new Error(
         `the throwaway session did not come up within ${timeoutMs}ms: either the ` +
-          'folder-trust prompt no longer reads "Yes, I trust this folder", or the ' +
-          'safe-mode banner no longer reads "Safe mode: all customizations are disabled"; ' +
+          'folder-trust prompt no longer reads "Yes, I trust this folder", or ' +
+          (safeMode
+            ? 'the safe-mode banner no longer reads "Safe mode: all customizations are disabled"; '
+            : 'the trusted session never wrote a registry entry carrying `status`; ') +
           `its terminal last showed: ${lastShown()}`,
       )
     },
@@ -627,14 +725,37 @@ export async function launchSession({
         left = leftovers()
       }
       removeLeftovers()
-      if (!transcriptExisted) rmSync(transcriptDir, { recursive: true, force: true })
+      // Only a directory this launch created, and only one named for a
+      // scratch repository: a transcript directory that was there before is
+      // somebody else's, and is left alone.
+      const path =
+        typeof knownSessionId === 'string' ? transcriptPath(knownSessionId) : null
+      for (const dir of new Set([transcriptDir, ...(path ? [dirname(path)] : [])])) {
+        const name = basename(dir)
+        if (!projectDirsBefore.has(name) && name.includes(SCRATCH_PREFIX)) {
+          rmSync(dir, { recursive: true, force: true })
+        }
+      }
       return left
     },
   }
 
   /** The end of the terminal, readable, for a failure message. */
-  function lastShown(): string {
-    return raw.replace(ESCAPES, ' ').replace(/\s+/g, ' ').slice(-600)
+  function lastShown(chars = 600): string {
+    return raw.replace(ESCAPES, ' ').replace(/\s+/g, ' ').slice(-chars)
+  }
+
+  /** Where this session's transcript is, looked for by its own id only. */
+  function transcriptPath(sessionId: string): string | null {
+    const own = join(transcriptDir, `${sessionId}.jsonl`)
+    if (existsSync(own)) return own
+    if (!existsSync(PROJECTS_DIR)) return null
+    for (const dir of readdirSync(PROJECTS_DIR)) {
+      if (!dir.includes(SCRATCH_PREFIX)) continue
+      const candidate = join(PROJECTS_DIR, dir, `${sessionId}.jsonl`)
+      if (existsSync(candidate)) return candidate
+    }
+    return null
   }
 
   function leftovers(): Leftovers {
@@ -809,6 +930,15 @@ export async function startRealDevServer(root: string): Promise<RealDevServer> {
       restore()
     },
   }
+}
+
+function hasStatus(entry: RegistryEntry | null): boolean {
+  return typeof entry?.status === 'string'
+}
+
+/** The harness's name for a cwd's transcript directory. */
+function mangle(cwd: string): string {
+  return cwd.replace(/[^a-zA-Z0-9]/g, '-')
 }
 
 export function sleep(ms: number): Promise<void> {
