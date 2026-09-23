@@ -195,11 +195,13 @@ real dev server to the in-repo example app. It should not review `src/`.
    ```
 
    `--debug` opens the Playwright inspector. The journey ends a few seconds after the
-   line starts to shorten, so step through it there to hold the page open. `npx playwright` skips the `pretest` build, which is why `npm run build` comes
+   line starts to shorten, so step through it there to hold the page open.
+   `npx playwright` skips the `pretest:seam2` build, which is why `npm run build` comes
    first.
 
 Without a Claude Code session running in this checkout, the Panel shows its
-zero-Candidate state and no Pick can be sent. Rows 1–5 can still be reviewed. For the
+zero-Candidate state and no Pick can be sent. On a machine with no
+`~/.claude/sessions/` at all it shows the hook-floor state instead. Rows 1–5 can still be reviewed. For the
 Stack to appear with a real Pick in it, start Claude Code at the repository root first.
 
 ### The outcome

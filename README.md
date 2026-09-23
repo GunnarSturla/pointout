@@ -56,8 +56,9 @@ v0 is better than the third group on four axes:
 
 **There is a way to choose the session.** Click the Target row in the Panel's footer
 and it expands to every Candidate: each session's name, status, what it is waiting
-for, how long it has been idle, and a *started this dev server* badge. You will rarely
-need it, because the session that started the dev server is preselected.
+for, *idle for Nd* once a session has been idle a day or more, and a *started this
+dev server* badge. You will rarely need it, because a session is usually
+preselected: the one you last chose, or the one that started the dev server.
 
 ## Requirements
 
@@ -174,8 +175,8 @@ Panel refuses it and says which part is too large.
 ## How a Pick reaches the session
 
 **The dev server reads the session registry.** Claude Code keeps one JSON file per
-running session in `~/.claude/sessions/`. The dev server reads it whenever the Panel
-is open or a Pick is outstanding, and not otherwise. A session is a Candidate only if
+running session in `~/.claude/sessions/`. The dev server reads it at startup, and
+afterwards only while the Panel is open or a Pick is outstanding. A session is a Candidate only if
 its working directory is in this same checkout: the same git worktree root, compared
 exactly. Sessions in other repositories or worktrees are never offered.
 
@@ -183,13 +184,14 @@ exactly. Sessions in other repositories or worktrees are never offered.
 peer token from the `<pid>.<hash>.key` file beside its registry entry. It connects to
 the socket the entry names and writes three NDJSON lines: the token, the Pick, and a
 one-time request to be told when the session is next idle. Then it closes the
-connection. A Pick is written once and never resent with the same body.
+connection. With no key file it writes the last two only, and logs that it did. A
+Pick is written once and never resent with the same body.
 
 **The dev server binds a socket of its own**, `/tmp/cc-socks/<its pid>.sock`, where the
 harness sends Receipts about what became of each Pick. It never binds over a path a
 registered session already owns.
 
-What the Stack says comes from those Receipts, from the agent's acknowledgement, from
+What the Stack says comes from those Receipts, from the agent's Ack, from
 the session's status in the registry, and from a clock:
 
 - If the Target stays idle for 60 s after the write, or ends a turn without
@@ -243,8 +245,8 @@ is serving on. An absent `Origin` is refused.
   loopback, and the browser's `Origin` then names a port the dev server serves on.
 - **In a container**, the dev server and the Claude Code session must both run inside
   it. Forwarding that connects from inside the container, as an editor's port
-  forwarding does, arrives on loopback. A Docker `-p` port mapping arrives from the
-  bridge address and is refused.
+  forwarding does, arrives on loopback, and it has to keep the port number, as over
+  SSH. A Docker `-p` port mapping arrives from the bridge address and is refused.
 - Screen Capture runs on the machine the dev server runs on. It does not run where
   your browser is.
 
@@ -386,7 +388,7 @@ v0 imports from them, and a test enforces it.
 | [`docs/owner-chain-confidence.md`](docs/owner-chain-confidence.md) | every Confidence mode, the Safari limitation and the ceiling |
 | [`docs/motion.md`](docs/motion.md) | what moves, and the `review-animations` gate |
 | [`docs/adr/`](docs/adr/) | decisions that deviate from, or refine, the spec |
-| [`LICENSE-THIRDPARTY`](LICENSE-THIRDPARTY) | the five borrows, their licences and the files that carry them |
+| [`LICENSE-THIRDPARTY`](LICENSE-THIRDPARTY) | the five projects borrowed from, their licences and the files that carry each borrow |
 
 ## Prior art
 

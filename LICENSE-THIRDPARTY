@@ -25,10 +25,11 @@ SPDX identifier alone, or a link is not a licence.
 
 ## Index
 
-The five borrows, and the files that carry each one's provenance header. Nothing
-else in this repository is borrowed. `test/seam1/docs.test.ts` checks that every
-provenance header has an entry here and that every file an entry names carries
-that entry's header.
+The five projects borrowed from, one row per borrow, and the file that carries each
+borrow's provenance header. vite-plugin-herdr lends two, in two files. Nothing else
+in this repository is borrowed. `test/seam1/docs.test.ts` checks that every
+provenance header has an entry here, that every file an entry names carries
+that entry's header, and that this index agrees with the entries.
 
 | borrow | from | licence | files |
 | --- | --- | --- | --- |

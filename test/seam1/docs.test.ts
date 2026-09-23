@@ -37,7 +37,7 @@ describe('LICENSE-THIRDPARTY', () => {
     }
   })
 
-  it('enters the five borrows the spec plans, and no other', () => {
+  it('enters the five projects the spec plans to borrow from, and no other', () => {
     // Spec §1 names five, and nothing else is vendored. Written out rather than
     // read off the provenance doc: the list is the contract.
     expect(thirdPartyEntries().map((entry) => entry.project)).toEqual([
@@ -78,6 +78,34 @@ describe('LICENSE-THIRDPARTY', () => {
         const borrow = borrows.find((candidate) => candidate.file === file)
         expect(borrow, `${file} carries no provenance header`).toBeDefined()
         expect(borrow?.project).toBe(entry.project)
+      }
+    }
+  })
+
+  it('keeps its index in step with the entries', () => {
+    // The index is a second copy of what the entries say, for a reader. A copy
+    // nothing checks drifts, so every row must name a file its project's entry
+    // names, and every file an entry names must have a row.
+    const [head = ''] = read('LICENSE-THIRDPARTY').split(/^## Entries$/m)
+    const [, index = ''] = head.split(/^## Index$/m)
+    const rows = index
+      .split('\n')
+      .filter((line) => line.startsWith('|') && !/^\|\s*(borrow|---)/.test(line))
+      .map((line) => line.split('|').map((cell) => cell.trim()))
+      .map(([, , project = '', , file = '']) => ({ project, file }))
+
+    const entries = thirdPartyEntries()
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      const entry = entries.find((candidate) => candidate.project === row.project)
+      expect(entry?.usedIn, `index row for ${row.file}`).toContain(row.file)
+    }
+    for (const entry of entries) {
+      for (const file of entry.usedIn) {
+        expect(rows, `${file} has no index row`).toContainEqual({
+          project: entry.project,
+          file,
+        })
       }
     }
   })
