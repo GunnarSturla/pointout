@@ -5,7 +5,14 @@
 // Every refusal this reads is shown at the point it happens (spec §21); nothing
 // here swallows one.
 
-import { API_BASE, CAPTURE_PATH, PICK_PATH, SESSIONS_PATH, STATUS_PATH } from '../api.js'
+import {
+  API_BASE,
+  CAPTURE_PATH,
+  PICK_PATH,
+  SESSIONS_PATH,
+  STATUS_PATH,
+  reportPath,
+} from '../api.js'
 import { CAPTURE_DISABLED, UNKNOWN_CAPTURE } from '../wire.js'
 import type {
   CaptureCoordinates,
@@ -17,6 +24,8 @@ import type {
   PickBody,
   PickStatus,
   RefusalBody,
+  ReportAnswer,
+  ReportBody,
   SessionsResponse,
   StatusResponse,
 } from '../wire.js'
@@ -130,6 +139,34 @@ export async function sendPick(body: PickBody): Promise<Sent> {
     ...(reason ? { reason } : {}),
     ...(trimmed ? { trimmed } : {}),
   }
+}
+
+/**
+ * Resolve a report-back offer (spec §17, §20): leave the Pick for the next
+ * prompt, or send it to another session. A retarget answers with the new Pick's
+ * id; a refusal — the agent acked in the meantime, or the session chosen has
+ * gone — comes back with its reason, and the replacement when there is one.
+ */
+export async function resolveOffer(
+  pickId: string,
+  body: ReportBody,
+): Promise<
+  | { ok: true; answer: ReportAnswer }
+  | { ok: false; reason: string; replacement?: NamedTarget }
+> {
+  const answer = await request<ReportAnswer>(reportPath(pickId), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!answer.ok) {
+    const replacement = named(answer.refusal.replacement)
+    return { ok: false, reason: answer.reason, ...(replacement ? { replacement } : {}) }
+  }
+  if (typeof answer.body.pickId !== 'string') {
+    return { ok: false, reason: 'the dev server resolved the offer and named no pick.' }
+  }
+  return { ok: true, answer: answer.body }
 }
 
 /**

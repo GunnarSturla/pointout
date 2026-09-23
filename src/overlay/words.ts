@@ -98,6 +98,41 @@ export function doneReportedBy(name: string): string {
 }
 
 /**
+ * Spec §17's `unknown`: written, and a minute has passed with no ack and nothing
+ * else to go on. It claims nothing either way, and says where to look.
+ */
+export const NO_ACK_YET = 'No acknowledgement yet'
+
+/** The next action under an `unknown` chip. */
+export const CHECK_TERMINAL = 'check your terminal'
+
+/**
+ * The report-back offer (spec §17, story 46): the chip expands in place with
+ * this, the question under it, and the two answers to it as buttons.
+ */
+export function neverPickedUp(name: string): string {
+  return `${name} never picked this up.`
+}
+
+export const SEND_OR_LEAVE =
+  'Send it to another session, or leave it for whoever you prompt next?'
+
+/** The offer's first answer: the in-Stack list of sessions opens. */
+export const SEND_ELSEWHERE = 'Send it to another session'
+
+/** The offer's second answer, and what happens when its countdown runs out. */
+export const LEAVE_FOR_NEXT = 'Leave it for whoever you prompt next'
+
+/**
+ * The Stack's footer while a Pick's report-back clock is paused: the Target is
+ * blocked on a permission prompt, and the ack is waiting behind it (spec §17).
+ * The imperative under it is `APPROVE_IN_TERMINAL`, the Target row's own.
+ */
+export function pausedFor(name: string): string {
+  return `${blockedOnPermission(name)}, so its pick is waiting`
+}
+
+/**
  * The Stack's summary line (spec §17, story 49). It counts the Picks that are
  * still only *sent* and attributes nothing to any one of them: session status
  * never reaches a chip, and silence is never promoted to *delivered*.

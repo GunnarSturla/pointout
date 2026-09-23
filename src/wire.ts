@@ -206,8 +206,7 @@ export interface SessionsResponse {
 
 /**
  * Spec §17's states for a Pick, plus the queue's own word for one nobody is
- * addressed to. `unknown` is not here yet: it arrives with the report-back
- * clock.
+ * addressed to.
  */
 export const QUEUED_UNADDRESSED = 'queued-unaddressed'
 export const SENT = 'sent'
@@ -216,6 +215,12 @@ export const HELD = 'held'
 export const WORKING = 'working'
 export const DONE = 'done'
 export const FAILED = 'failed'
+/**
+ * Written, and sixty seconds of the report-back clock have passed with no ack
+ * and nothing else to go on: the Target stayed busy, or the registry went
+ * blind (spec §17). Still in the claim-once queue, so the TTL still governs it.
+ */
+export const UNKNOWN = 'unknown'
 
 export type PickState =
   | typeof QUEUED_UNADDRESSED
@@ -224,6 +229,7 @@ export type PickState =
   | typeof WORKING
   | typeof DONE
   | typeof FAILED
+  | typeof UNKNOWN
 
 /** One state change, with the moment it happened. */
 export interface Transition {
@@ -267,11 +273,66 @@ export interface PickStatus {
   expiresAt: number
   history: Transition[]
   target: TargetRow | null
+  /**
+   * The report-back clock for a Pick written to a socket, or null when none
+   * runs: nothing was written, or the Pick has left the clock's hands (spec §17).
+   */
+  reportBack: ReportBack | null
 }
 
 export interface StatusResponse {
   picks: PickStatus[]
 }
+
+// ---------------------------------------------------------------------------
+// The report-back clock, and POST /__agent/pick/<id>/report
+// ---------------------------------------------------------------------------
+
+/** Counting towards the 60 s report. */
+export const CLOCK_RUNNING = 'running'
+/** Stopped while the Target waits on a permission prompt, or the Pick is held. */
+export const CLOCK_PAUSED = 'paused'
+/** The clock ran out: the Target never picked it up, and the Overlay offers it back. */
+export const CLOCK_OFFERED = 'offered'
+
+export type ReportBackState =
+  | typeof CLOCK_RUNNING
+  | typeof CLOCK_PAUSED
+  | typeof CLOCK_OFFERED
+
+/** Where one Pick's report-back clock stands, and since when (this server's clock). */
+export interface ReportBack {
+  state: ReportBackState
+  at: number
+}
+
+/** Leave it for whoever the developer prompts next: the hook floor's again. */
+export const REQUEUE = 'requeue'
+/** Send it to another session, as a new Pick with a fresh body. */
+export const RETARGET = 'retarget'
+
+/** How the Overlay resolves an offer. */
+export type ReportBody =
+  | { resolve: typeof REQUEUE }
+  | { resolve: typeof RETARGET; target: Target }
+
+/**
+ * What resolving an offer answers. A retarget is a new Pick, so `pickId` is the
+ * new one and `replaces` the one it took the place of, which is gone.
+ */
+export interface ReportAnswer {
+  pickId: string
+  state: PickState
+  replaces?: string
+  /** Why the retargeted write did not happen, when it did not (spec §21). */
+  reason?: string
+}
+
+/**
+ * The states an offer stands in: written, and not acknowledged since. Once the
+ * agent acks, or a Receipt arrives, the offer is moot, whatever the clock said.
+ */
+export const OFFERABLE: readonly PickState[] = [SENT, UNKNOWN]
 
 /** What `POST /__agent/pick/<id>/ack` and its twin answer. */
 export interface PickActionAnswer {

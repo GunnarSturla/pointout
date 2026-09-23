@@ -28,6 +28,7 @@ that did.
 | the Highlight of an element that has left the page | 120 ms, `opacity` to 0, where it stood |
 | the Picker's reveal out of its peek | 220 ms, `translate` |
 | the Screen Capture shutter reopening — Highlights, Stack, Picker | 120 ms, `opacity` from 0 |
+| the report-back countdown line, each one-second step | 1000 ms, `transform` (`scaleX`), linear |
 
 The durations and curves are the prototype's own, not new numbers: 170 ms on
 `cubic-bezier(0.77, 0, 0.175, 1)` for the morph and 220 ms on
@@ -75,6 +76,30 @@ It is one more thing for the `review-animations` gate to see: a blink on every P
 which is a frequent action. It is not pre-registered as a deviation, because the hide
 is the feature and only the 120 ms opening is motion; the gate may shorten or remove
 that opening without touching the hide.
+
+## The report-back countdown
+
+A Pick offered back to the developer (spec §8, §17, story 47) counts down thirty
+seconds as a thin line under the offer. Script sets the line's length once a second,
+as the custom property `--left`, and it sets it **one step ahead**: at any moment the
+line is aimed at where it will be a second from now. The line is 2 px high with no
+radius, so it is scaled (`transform: scaleX`) rather than resized: there is no border
+or corner for scaling to distort, and nothing around it is laid out again.
+
+- **Under no-preference** the opt-in block eases each step across its second, linearly,
+  so the line reads as one steady shortening that reaches empty exactly when the thirty
+  seconds do. Linear because it is a clock, not an object arriving somewhere.
+- **Under reduce** the same states are reached at once: the line shortens in
+  one-second steps of one thirtieth, with nothing between them. Being a step ahead, it
+  shows empty for the last second. The default fires on its own timer either way, at
+  the thirtieth second, whatever the line shows.
+- **Touching the offer removes the line** — hover, press or focus — and it never comes
+  back (story 48). Nothing eases it away.
+
+It is one more target for the `review-animations` gate, and it is **not** pre-registered
+as a deviation. By the frequency rule it is rare — an offer is a Pick that failed to
+land — and it carries information, so the rule's likely reading is that it may move;
+the gate may still change the step, the curve or the reduce-mode behaviour.
 
 ## Why the morph animates `width` and `height`
 

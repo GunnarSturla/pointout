@@ -189,6 +189,59 @@ export const OVERLAY_STYLESHEET = `
   opacity: 0.8;
 }
 
+/* The report-back offer (spec §8, §17): the chip expanded in place. */
+.offer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.offer-question { font-size: 11px }
+
+.offer-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.offer-elsewhere,
+.offer-leave {
+  padding: 3px 8px;
+  border: 1px solid rgb(127 127 127 / 45%);
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: ${FONT};
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.offer-refusal {
+  font-size: 11px;
+  color: #b3261e;
+}
+
+/* The countdown: a thin line whose length is the time left, set once a second
+   from script as --left. Under reduce it shortens in those whole steps; the
+   opt-in block below eases between them. Scaled rather than resized: a 2px
+   line has no border or radius for scaling to distort. */
+.countdown {
+  height: 2px;
+  border-radius: 0;
+  background: #4f7cff;
+  transform-origin: 0 50%;
+  transform: scaleX(var(--left, 1));
+}
+
+/* The paused report-back clock's footer: the Target is blocked on a prompt. */
+.stack-waiting {
+  display: flex;
+  flex-direction: column;
+  padding-inline: 4px;
+  font-size: 11px;
+  text-align: end;
+}
+
 .panel {
   position: fixed;
   inset-block-start: 0;
@@ -453,5 +506,12 @@ export const OVERLAY_STYLESHEET = `
   :host([data-shutter]) .highlight,
   :host([data-shutter]) .stack,
   :host([data-shutter]) .picker-peek { transition: none }
+
+  /* The report-back countdown (spec §8, story 47): script sets the line one
+     step ahead each second, and it eases linearly across that second, so it
+     reads as one steady shortening that empties when the thirty seconds do.
+     Under reduce it shortens in one-second steps, which is the whole
+     difference. */
+  .countdown { transition: transform 1000ms linear }
 }
 `

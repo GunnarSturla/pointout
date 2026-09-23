@@ -110,6 +110,23 @@ export function mintPick(body: PickBody, resolved: Resolved): Pick {
 }
 
 /**
+ * The same Pick, sent again to another Target (spec §17's retarget). A fresh
+ * body — new id, new nonce, new age — because the harness refuses a
+ * byte-identical one as a duplicate, and because the old id's ack and done URLs
+ * must never be able to answer for the new delivery. The Pointer, the Note and
+ * the Screen Capture line are what the developer made, and travel unchanged.
+ */
+export function reissuePick(pick: Pick, target: NamedTarget): Pick {
+  return {
+    ...pick,
+    id: randomUUID(),
+    nonce: randomBytes(6).toString('hex'),
+    createdAt: now(),
+    target,
+  }
+}
+
+/**
  * The ingest check on the body itself (spec §11). Every refusal names the part
  * it refused. What comes out is the body in its normal form: every optional
  * field present, as a value or as null.

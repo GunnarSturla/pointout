@@ -10,13 +10,17 @@ import {
   STATUS_PATH,
   parseCaptureId,
   parsePickAction,
+  parseReportPath,
 } from '../api.js'
 import type { PickAction } from '../api.js'
 import {
   CAPTURE_DISABLED,
+  CLOCK_OFFERED,
   UNKNOWN_CAPTURE,
   DONE,
+  OFFERABLE,
   QUEUED_UNADDRESSED,
+  REQUEUE,
   SENT,
   SENT_AWAITING_ACK,
   WORKING,
@@ -27,6 +31,8 @@ import type {
   NamedTarget,
   PickAccepted,
   PickActionAnswer,
+  PickState,
+  ReportAnswer,
   SessionsResponse,
   StatusResponse,
 } from '../wire.js'
@@ -43,10 +49,14 @@ import type { Ledger } from './ledger.js'
 import { resolveOwnerChain } from './owner-chain.js'
 import { readRequestBody } from './parse.js'
 import { fitPayload } from './payload.js'
-import { mintPick, parsePickBody } from './pick.js'
+import { mintPick, parsePickBody, reissuePick } from './pick.js'
+import type { Pick } from './pick.js'
 import { createIdleLog, recordReplies } from './receipt.js'
 import type { IdleLog } from './receipt.js'
-import { readCandidates, sessionOf } from './registry.js'
+import { addresses, readCandidates, sessionOf } from './registry.js'
+import type { Registry } from './registry.js'
+import { createReportBackClock, parseReportBody } from './report-back.js'
+import type { ReportBackClock } from './report-back.js'
 import { pickStatuses } from './status.js'
 import { resolveTarget } from './targeting.js'
 import type { ServerFacts, Services } from './index.js'
@@ -74,6 +84,8 @@ interface RequestContext {
   ledger: Ledger
   /** When each Target last finished a turn. Never moves a Pick (spec §17). */
   idle: IdleLog
+  /** Each written Pick's report-back clock (spec §17). */
+  clock: ReportBackClock
   route: DeliveryRoute
   /** Screen Capture, available or disabled with its reason (spec §10). */
   captures: CaptureService
@@ -126,6 +138,13 @@ const ENDPOINTS: Endpoint[] = [
   },
   pickActionEndpoint('ack'),
   pickActionEndpoint('done'),
+  {
+    method: 'POST',
+    path: `${PICK_PATH}/<id>/report`,
+    matches: (path) => parseReportPath(path) !== null,
+    policy: 'ingress',
+    handle: resolveReport,
+  },
   { method: 'POST', path: DRAIN_PATH, policy: 'credential', handle: drainPicks },
 ]
 
@@ -136,6 +155,7 @@ export function installAgentEndpoints(
 ): void {
   const { logger } = server.config
   const ownOrigins = onceOwnOrigins(server)
+  const ledger = createLedger(now)
   const context: RequestContext = {
     facts,
     server,
@@ -143,8 +163,9 @@ export function installAgentEndpoints(
     captures,
     discovery,
     logger,
-    ledger: createLedger(now),
+    ledger,
     idle: createIdleLog(),
+    clock: createReportBackClock({ ledger, logger }),
     origin: () => loopbackOrigin(server),
   }
 
@@ -163,8 +184,10 @@ export function installAgentEndpoints(
     const offMachine = refuseNonLoopback(request)
     if (offMachine) return sendRefusal(logger, response, offMachine)
 
-    // Before anything is matched, let alone handled: a Pick past its TTL has
-    // left the queue by the time any route could reach it (spec §15).
+    // Before anything is matched, let alone handled: the report-back clock has
+    // read the registry, and a Pick past its TTL has left the queue by the time
+    // any route could reach it (spec §15, §17).
+    tickReportBack(context)
     expireStale(context)
 
     const atPath = ENDPOINTS.filter((endpoint) =>
@@ -244,9 +267,9 @@ function sessions(
 function reportStatus(
   request: Connect.IncomingMessage,
   response: ServerResponse,
-  { facts, ledger, idle }: RequestContext,
+  { facts, ledger, idle, clock }: RequestContext,
 ): void {
-  const answer: StatusResponse = { picks: pickStatuses(facts, ledger, idle) }
+  const answer: StatusResponse = { picks: pickStatuses(facts, ledger, idle, clock) }
   sendJson(response, 200, answer)
 }
 
@@ -336,6 +359,150 @@ function expireStale({ ledger, logger }: RequestContext): void {
 }
 
 /**
+ * One registry sample for every report-back clock still running (spec §17).
+ * Blind is null: a registry that cannot be read, or a Target no longer in it,
+ * leaves the clock with no signal, and only the TTL governs from there.
+ */
+function tickReportBack({ facts, clock }: RequestContext): void {
+  if (!clock.running()) return
+  const { registry } = readCandidates(facts)
+  clock.observe(now(), (target) => {
+    if (registry.hookFloor) return null
+    return registry.entries.find((entry) => addresses(entry, target))?.status ?? null
+  })
+}
+
+/**
+ * Resolve a report-back offer (spec §17, §20): leave the Pick for whoever the
+ * developer prompts next, or send it to another session as a new Pick. Only an
+ * offer is resolved: a Pick the agent acked in the meantime, or one never
+ * offered back, is refused with what it is instead, and nothing moves.
+ */
+async function resolveReport(
+  request: Connect.IncomingMessage,
+  response: ServerResponse,
+  context: RequestContext,
+): Promise<void> {
+  const { facts, ledger, clock, logger } = context
+  const path = (request.url ?? '/').split('?')[0] ?? '/'
+  const pickId = parseReportPath(path)
+  const record = pickId ? ledger.get(pickId) : undefined
+  if (!record) {
+    return sendRefusal(logger, response, {
+      status: 404,
+      body: {
+        error: 'unknown-pick',
+        reason: 'refused a report for a pick this dev server never accepted.',
+      },
+    })
+  }
+
+  const body = await readRequestBody(request)
+  if (!body.ok) return sendRefusal(logger, response, body.refusal)
+  const parsed = parseReportBody(body.value)
+  if (!parsed.ok) return sendRefusal(logger, response, parsed.refusal)
+
+  const oldId = record.pick.id
+  const offered =
+    clock.stateOf(oldId)?.state === CLOCK_OFFERED && OFFERABLE.includes(record.state)
+  if (!offered) {
+    return sendRefusal(logger, response, {
+      status: 409,
+      body: {
+        error: 'no-offer',
+        reason:
+          `refused to resolve pick ${oldId}: it was not offered back, ` +
+          `and it is ${record.state} now.`,
+      },
+    })
+  }
+
+  // From the check above to the moment the offer is taken, nothing here awaits:
+  // a second resolution arriving meanwhile — a double click, or the countdown
+  // running out under a retarget — finds no offer and is refused.
+  if (parsed.value.resolve === REQUEUE) {
+    ledger.requeue(oldId, now())
+    clock.forget(oldId)
+    logger.info(
+      `vite-agent-inspect: pick ${oldId} is left for the next prompt in ` +
+        'this repo, with a fresh 30 minutes.',
+    )
+    const answer: ReportAnswer = { pickId: oldId, state: QUEUED_UNADDRESSED }
+    return sendJson(response, 200, answer)
+  }
+
+  // A retarget is re-checked like any named Target: never silently exchanged
+  // for another, and a 409 names the replacement when there is one (spec §14).
+  const { registry, candidates } = readCandidates(facts)
+  const choice = resolveTarget(parsed.value.target, candidates)
+  if (!choice.ok) return sendRefusal(logger, response, choice.refusal)
+  // A named Target that resolves is always a Candidate; this only narrows it.
+  const chosen = choice.target
+  if (!chosen) throw new Error(`a retarget of pick ${oldId} resolved to no session`)
+  const target: NamedTarget = {
+    sessionId: chosen.sessionId,
+    pid: chosen.pid,
+    name: chosen.name,
+  }
+
+  const fitted = fitPayload(reissuePick(record.pick, target), {
+    origin: context.origin(),
+  })
+  if (!fitted.ok) return sendRefusal(logger, response, fitted.refusal)
+  const { pick, body: rendered } = fitted.value
+
+  // The old entry goes before the write: its id's ack and done URLs answer for
+  // nothing now, and the Pick lives on under the new one.
+  ledger.remove(oldId)
+  clock.forget(oldId)
+
+  const unwritten = await deliverRendered(context, registry, pick, rendered)
+  const state: PickState = unwritten === undefined ? SENT : QUEUED_UNADDRESSED
+  ledger.open(pick, state, unwritten)
+  if (unwritten === undefined) clock.watch(pick.id, target, now(), chosen.status)
+  logger.info(
+    `vite-agent-inspect: pick ${oldId} was sent again to ${target.name} as pick ${pick.id}.`,
+  )
+
+  const answer: ReportAnswer = {
+    pickId: pick.id,
+    state,
+    replaces: oldId,
+    ...(unwritten ? { reason: unwritten } : {}),
+  }
+  sendJson(response, 200, answer)
+}
+
+/**
+ * Write one rendered Pick to its Target's socket. Undefined when it was
+ * written; otherwise the reason it was not, which is logged here and carried by
+ * the caller — a Pick that went nowhere is never silent about it (spec §21).
+ */
+async function deliverRendered(
+  { route, logger }: RequestContext,
+  registry: Registry,
+  pick: Pick,
+  rendered: string,
+): Promise<string | undefined> {
+  if (!pick.target) return undefined
+  const session = sessionOf(registry, pick.target)
+  const outcome: DeliveryOutcome = session
+    ? await route.deliver({
+        pickId: pick.id,
+        body: rendered,
+        target: pick.target,
+        session,
+      })
+    : {
+        written: false,
+        reason: `session ${pick.target.sessionId} is no longer in the registry`,
+      }
+  if (outcome.written) return undefined
+  logger.warn(`vite-agent-inspect: pick ${pick.id} was not delivered: ${outcome.reason}`)
+  return outcome.reason
+}
+
+/**
  * Start a Screen Capture (spec §10, §20). The id is answered at once and the
  * tool runs behind it: the Panel's entrance is never gated on a capture. One
  * that is disabled answers the reason it is disabled, at the point of use as
@@ -401,7 +568,7 @@ async function ingestPick(
   response: ServerResponse,
   context: RequestContext,
 ): Promise<void> {
-  const { facts, ledger, route, captures, logger } = context
+  const { facts, ledger, clock, captures, logger } = context
 
   const body = await readRequestBody(request)
   if (!body.ok) return sendRefusal(logger, response, body.refusal)
@@ -442,25 +609,7 @@ async function ingestPick(
   if (!fitted.ok) return sendRefusal(logger, response, fitted.refusal)
   const { pick, body: rendered } = fitted.value
 
-  let unwritten: string | undefined
-  if (pick.target) {
-    const session = sessionOf(registry, pick.target)
-    const outcome: DeliveryOutcome = session
-      ? await route.deliver({
-          pickId: pick.id,
-          body: rendered,
-          target: pick.target,
-          session,
-        })
-      : {
-          written: false,
-          reason: `session ${pick.target.sessionId} is no longer in the registry`,
-        }
-    if (!outcome.written) {
-      unwritten = outcome.reason
-      logger.warn(`vite-agent-inspect: pick ${pick.id} was not delivered: ${unwritten}`)
-    }
-  }
+  const unwritten = await deliverRendered(context, registry, pick, rendered)
   const written = pick.target !== null && unwritten === undefined
 
   // A write that failed leaves the Pick `queued-unaddressed` rather than
@@ -469,6 +618,12 @@ async function ingestPick(
   // the write has settled: a Pick the floor could see while its socket write
   // was still in flight would be one it could take twice.
   ledger.open(pick, written ? SENT : QUEUED_UNADDRESSED, unwritten)
+  // A Pick written to a socket is one that may never land, so its report-back
+  // clock starts now (spec §17). One the floor will carry has none.
+  if (written && pick.target) {
+    const status = choice.target?.status ?? null
+    clock.watch(pick.id, pick.target, now(), status)
+  }
 
   // The Pick id, and whether anything was written. The Target row, the chip
   // words and every later state are the status endpoint's; what a 200 must

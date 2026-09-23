@@ -1,4 +1,4 @@
-import { FAILED, HELD, QUEUED_UNADDRESSED, SENT } from '../wire.js'
+import { FAILED, HELD, QUEUED_UNADDRESSED, SENT, UNKNOWN } from '../wire.js'
 import type { PickState, Transition } from '../wire.js'
 import type { Pick } from './pick.js'
 
@@ -19,19 +19,62 @@ import type { Pick } from './pick.js'
 export const TTL_MS = 30 * 60 * 1000
 
 /**
- * Spec §17's sentence for the one failure the clock alone can produce. Written
- * by v0 rather than taken from a harness, because no harness said anything: the
- * only evidence is that the time ran out.
+ * Spec §17's queue-TTL sentence, for the one Pick it is true of: one nobody was
+ * addressed to, waiting for a prompt that never came. Written by v0 rather than
+ * taken from a harness, because no harness said anything: the only evidence is
+ * that the time ran out.
  */
-export const TTL_FAILURE =
+const TTL_FAILURE =
   'Not delivered — nobody prompted Claude in this repo within 30 minutes.'
+
+/**
+ * The TTL sentence for a Pick that is still queued when its time runs out,
+ * chosen by how it got where it is. One sentence for all of them was false for
+ * three: a Pick written to a socket may well have arrived, a drained one went
+ * out with a prompt somebody did type, and a held one was asked about and is
+ * waiting on an approval (tickets 11, 13, 15). Each says only what is known.
+ */
+function ttlSentence(record: LedgerRecord): string {
+  const name = targetName(record.pick)
+  if (record.state === HELD) {
+    return `Not delivered — nobody approved it in ${name} within 30 minutes.`
+  }
+  if (record.state === QUEUED_UNADDRESSED) return TTL_FAILURE
+  if (drained(record)) {
+    return 'It went out with your next prompt, and nothing acknowledged it within 30 minutes.'
+  }
+  // Written to the Target's socket, and never acknowledged. Silence is not
+  // evidence that it did not arrive, so this does not say *not delivered*.
+  return `${name} never acknowledged it within 30 minutes.`
+}
+
+/**
+ * The Target's name as it stood when the Pick was addressed, for a sentence a
+ * developer reads — never a session id, and never a name this server made up.
+ */
+export function targetName(pick: Pick): string {
+  return pick.target?.name ?? 'the session you picked'
+}
+
+/**
+ * Whether the hook floor is what last handed this Pick out. The floor's claim
+ * is the only move from `queued-unaddressed` to `sent`: a socket write opens a
+ * Pick at `sent`, and a release returns it there from `held`.
+ */
+function drained(record: LedgerRecord): boolean {
+  const history = record.history
+  for (let at = history.length - 1; at > 0; at--) {
+    if (history[at]?.state === SENT) return history[at - 1]?.state === QUEUED_UNADDRESSED
+  }
+  return false
+}
 
 /**
  * The states in which a Pick is still in the claim-once queue: waiting for a
  * route to take it, or written and awaiting the agent's word. An entry in any
  * other state has left, whatever became of it.
  */
-const QUEUED: readonly PickState[] = [QUEUED_UNADDRESSED, SENT, HELD]
+const QUEUED: readonly PickState[] = [QUEUED_UNADDRESSED, SENT, HELD, UNKNOWN]
 
 export function isQueued(state: PickState): boolean {
   return QUEUED.includes(state)
@@ -67,7 +110,19 @@ export interface Ledger {
    */
   drainable(): LedgerRecord[]
   /**
-   * Every queued Pick past its TTL at `at`, failed with the sentence above and
+   * Leave it for whoever the developer prompts next (spec §17): back to
+   * `queued-unaddressed`, where the hook floor takes it, with a fresh TTL from
+   * `at`. Undefined for a Pick this server never accepted.
+   */
+  requeue(pickId: string, at: number): LedgerRecord | undefined
+  /**
+   * Forget a Pick entirely. Only a retarget does this: the Pick lives on as a
+   * new one with its own id, and the old id must not be delivered or shown.
+   */
+  remove(pickId: string): void
+  /**
+   * Every queued Pick past its TTL at `at`, failed with the sentence that fits
+   * how it got there, and
    * handed back so the caller can say so out loud (spec §15, §21). Called before
    * any route reads the ledger, so an expired Pick is never delivered by any of
    * them.
@@ -114,11 +169,25 @@ export function createLedger(clock: () => number): Ledger {
     drainable: () =>
       [...records.values()].filter((record) => record.state === QUEUED_UNADDRESSED),
 
+    requeue(pickId, at) {
+      const record = records.get(pickId)
+      if (!record) return undefined
+      move(record, QUEUED_UNADDRESSED, null)
+      record.expiresAt = at + TTL_MS
+      return record
+    },
+
+    remove(pickId) {
+      records.delete(pickId)
+    },
+
+    // The whole of the TTL rule: which states expire — every one still in the
+    // claim-once queue — and with which sentence.
     expire(at) {
       const expired: LedgerRecord[] = []
       for (const record of records.values()) {
         if (!isQueued(record.state) || record.expiresAt > at) continue
-        move(record, FAILED, TTL_FAILURE)
+        move(record, FAILED, ttlSentence(record))
         expired.push(record)
       }
       return expired

@@ -2,6 +2,7 @@ import type { PickStatus } from '../wire.js'
 import { isQueued } from './ledger.js'
 import type { Ledger } from './ledger.js'
 import type { IdleLog } from './receipt.js'
+import type { ReportBackClock } from './report-back.js'
 import { addresses, readCandidates } from './registry.js'
 import type { RegistryQuery } from './registry.js'
 
@@ -18,6 +19,7 @@ export function pickStatuses(
   facts: RegistryQuery,
   ledger: Ledger,
   idle: IdleLog,
+  clock: ReportBackClock,
 ): PickStatus[] {
   // One registry read for the whole poll: two reads could answer two Picks
   // addressed to the same session differently.
@@ -47,6 +49,7 @@ export function pickStatuses(
             idleAt: idle.latest(target),
           }
         : null,
+      reportBack: clock.stateOf(record.pick.id),
     }
   })
 }
