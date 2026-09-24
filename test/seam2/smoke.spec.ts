@@ -26,8 +26,26 @@ test('the app renders its initial fixtures', async ({ page }) => {
   await expect(page.locator('[data-fixture="svg-icon-path"]')).toBeVisible()
 })
 
-test('the fixed full-viewport decoy covers the page and dismisses', async ({ page }) => {
-  const decoy = page.locator('[data-fixture="full-viewport-decoy"]')
+const DECOY = '[data-fixture="full-viewport-decoy"]'
+const SHOW_DECOY = '[data-fixture="full-viewport-decoy-restore"]'
+const HIDE_DECOY = '[data-fixture="full-viewport-decoy-dismiss"]'
+
+test('the full-viewport decoy is off at load, and "Show decoy" turns it on', async ({
+  page,
+}) => {
+  await expect(page.locator(DECOY)).toHaveCount(0)
+  await expect(page.locator(SHOW_DECOY)).toHaveText('Show decoy')
+
+  await page.locator(SHOW_DECOY).click()
+  await expect(page.locator(DECOY)).toBeVisible()
+  await expect(page.locator(SHOW_DECOY)).toHaveCount(0)
+})
+
+test('`/?decoy` loads with the decoy covering the page, and one click hides it', async ({
+  page,
+}) => {
+  await page.goto('/?decoy')
+  const decoy = page.locator(DECOY)
   await expect(decoy).toBeVisible()
 
   const size = await decoy.boundingBox()
@@ -37,9 +55,9 @@ test('the fixed full-viewport decoy covers the page and dismisses', async ({ pag
   expect(size?.width).toBe(viewport?.width)
   expect(size?.height).toBe(viewport?.height)
 
-  await page.locator('[data-fixture="full-viewport-decoy-dismiss"]').click()
+  await page.locator(HIDE_DECOY).click()
   await expect(decoy).toHaveCount(0)
-  await expect(page.locator('[data-fixture="full-viewport-decoy-restore"]')).toBeVisible()
+  await expect(page.locator(SHOW_DECOY)).toBeVisible()
 })
 
 test('the Overlay module is served, evaluated, and mounted on one open shadow root', async ({

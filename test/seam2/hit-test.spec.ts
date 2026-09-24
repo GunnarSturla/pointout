@@ -28,7 +28,6 @@ const SHIELD = '[data-part="shield"]'
 const STATUS = '[data-part="status"]'
 
 const DECOY = '[data-fixture="full-viewport-decoy"]'
-const DISMISS_DECOY = '[data-fixture="full-viewport-decoy-dismiss"]'
 
 interface Box {
   x: number
@@ -42,8 +41,9 @@ function probe(name: string): string {
   return `${name}-${Math.random().toString(16).slice(2)}`
 }
 
-async function open(page: Page, token: string): Promise<void> {
-  await page.goto(`/?probe=${token}`)
+/** The test bed loads without its decoy; `decoy` turns it on at load. */
+async function open(page: Page, token: string, { decoy = false } = {}): Promise<void> {
+  await page.goto(decoy ? `/?decoy&probe=${token}` : `/?probe=${token}`)
   await expect(page.locator(PICKER)).toBeVisible()
 }
 
@@ -150,9 +150,8 @@ test('a pointer-events: none element is pickable while armed and inert while not
   await open(page, probe('decorative'))
   const badge = '[data-fixture="pointer-events-none"]'
 
-  // The decoy is dismissed so that what the page's own hit test answers at this
-  // point is about the badge and nothing else.
-  await page.locator(DISMISS_DECOY).click()
+  // No decoy: what the page's own hit test answers at this point is about the
+  // badge and nothing else.
   await expect(page.locator(DECOY)).toHaveCount(0)
   const at = await centre(page, badge)
 
@@ -227,7 +226,12 @@ test('clicking inside the same-origin iframe picks the element inside it', async
   page,
 }) => {
   const token = probe('iframe')
-  await open(page, token)
+  // Opened with the decoy on, and that is a known gap rather than this test's
+  // subject: without it the pointer lands in the frame's own document, whose
+  // events the Overlay does not listen to, and nothing is highlighted. The
+  // decoy keeps the pointer in the top document, where the hit test's descent
+  // into the frame — what this test is about — is what answers.
+  await open(page, token, { decoy: true })
 
   // The frame itself is brought into view first: scrolling from inside it would
   // move the frame's own document and leave the frame where it was.
@@ -269,7 +273,7 @@ test('the full-viewport decoy is never picked; the element beneath it is', async
   page,
 }) => {
   const token = probe('beneath')
-  await open(page, token)
+  await open(page, token, { decoy: true })
   const beneath = '[data-fixture="card-heading"]'
 
   await expect(page.locator(DECOY)).toBeVisible()
@@ -302,7 +306,6 @@ test('a normal page arms through the stylesheet and a dense one through the shie
 
   // Now make the page dense enough that forcing every element hittable is the
   // cost the shield exists to avoid.
-  await page.locator(DISMISS_DECOY).click()
   await page.locator('[data-fixture="dense-mount"]').click()
   await expect(page.locator('[data-fixture="dense-block"]')).toBeVisible()
 

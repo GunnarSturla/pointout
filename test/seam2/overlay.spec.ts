@@ -69,8 +69,9 @@ function probe(name: string): string {
   return `${name}-${Math.random().toString(16).slice(2)}`
 }
 
-async function open(page: Page, token: string): Promise<void> {
-  await page.goto(`/?probe=${token}`)
+/** The test bed loads without its decoy; `decoy` turns it on at load. */
+async function open(page: Page, token: string, { decoy = false } = {}): Promise<void> {
+  await page.goto(decoy ? `/?decoy&probe=${token}` : `/?probe=${token}`)
   await expect(page.locator(PICKER)).toBeVisible()
 }
 
@@ -347,7 +348,7 @@ test('the fixed full-viewport decoy and the Overlay itself are never picked', as
   page,
 }) => {
   const token = probe('decoy')
-  await open(page, token)
+  await open(page, token, { decoy: true })
 
   // The decoy is on top of the whole page and takes the pointer; the element
   // under it is what gets highlighted.

@@ -4,11 +4,14 @@ import { useState } from 'react'
 // every real app has. `elementFromPoint` returns this and nothing else, which
 // is exactly why the hit test cannot be a single call to it (ticket 08).
 //
-// It is on by default, so ticket 08's rules are exercised without setup, and it
-// dismisses in one click so the app stays usable as the development target. The
-// control sits bottom-left; the Overlay's own surfaces claim the other corners.
+// It is off at load, so the app is usable as the development target; `/?decoy`
+// in the url turns it on at load, which is how ticket 08's tests open it. Either
+// way one click shows or hides it. The control sits bottom-left; the
+// Overlay's own surfaces claim the other corners.
 export function FullViewportDecoy() {
-  const [shown, setShown] = useState(true)
+  const [shown, setShown] = useState(() =>
+    new URLSearchParams(window.location.search).has('decoy'),
+  )
 
   if (!shown) {
     return (

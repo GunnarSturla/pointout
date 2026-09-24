@@ -31,7 +31,9 @@ const WAITING_FOR = 'Bash(rm -rf build)'
 const OTHER_REPO_NAME = 'seam 2 other repo session'
 
 const PICKED = '[data-fixture="card-heading"]'
-const APP_FOCUSABLE = '[data-fixture="full-viewport-decoy-dismiss"]'
+// Any focusable element of the app's own will do. The test bed loads without its
+// decoy, so its "Show decoy" button is on the page from the start.
+const APP_FOCUSABLE = '[data-fixture="full-viewport-decoy-restore"]'
 
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'

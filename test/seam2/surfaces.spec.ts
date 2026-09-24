@@ -26,7 +26,6 @@ const STATUS = '**/__agent/status'
 const PICKED = '[data-fixture="card-heading"]'
 const SECOND_PICKED = '[data-fixture="passed-down-badge"]'
 const HEADING = 'h1'
-const DECOY_DISMISS = '[data-fixture="full-viewport-decoy-dismiss"]'
 const EDGES_TOGGLE = '[data-fixture="viewport-edges-toggle"]'
 const EDGES = ['top', 'right', 'bottom', 'left'] as const
 
@@ -355,7 +354,6 @@ test('the Panel opens on-screen at every edge, rides away with its element, and 
 }) => {
   test.setTimeout(60_000)
   await open(page, probe('edges'))
-  await page.locator(DECOY_DISMISS).click()
   await page.locator(EDGES_TOGGLE).click()
 
   const seen = await viewport(page)

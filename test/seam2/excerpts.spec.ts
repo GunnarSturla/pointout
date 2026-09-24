@@ -208,9 +208,7 @@ test('a field that became hidden carries no value either', async ({ page }) => {
   // `type="hidden"` is `display: none !important` in every engine and can never
   // be pointed at, so the page turns the picked field into one while its Panel
   // is open — which is the only way the rule is reachable through the gesture.
-  // Dispatched rather than clicked: the test bed's full-viewport decoy takes
-  // every pointer on the page, which is exactly what that fixture is for.
-  await page.locator('[data-fixture="excerpt-hide"]').dispatchEvent('click')
+  await page.locator('[data-fixture="excerpt-hide"]').click()
   await expect(page.locator('[data-fixture="excerpt-text"]')).toBeHidden()
   await send(page)
 
