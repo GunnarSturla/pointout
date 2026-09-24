@@ -103,6 +103,13 @@ It reports **bad outcomes only**: a Pick that is simply accepted produces none, 
 a Receipt and never evidences arrival.
 _Avoid_: acknowledgement, confirmation, delivery report, response
 
+**Withdraw**:
+The developer taking back a submitted Pick that went wrong. It undoes whatever the dev server
+still holds — the queued Pick, its report-back, its Screen Capture — and nothing it does not: a
+Pick already written to a session cannot be recalled, and withdrawing it says so rather than
+implying otherwise.
+_Avoid_: dismiss (that is only the Panel leaving the page), cancel, delete, recall
+
 **Ack**:
 The Target agent's own signal that it has a particular Pick, and later that it has finished with
 it. Voluntary, and about the work rather than the message — which is the whole of its difference
@@ -132,13 +139,25 @@ _Avoid_: outline, box, selection (the last means the element itself)
 
 **Panel**:
 The surface a Pick opens — where the Note is written, the Target is shown, and the Pick's
-status is read afterwards. One Panel per Pick, and at most one Pick unsubmitted at a time.
-_Avoid_: popup, modal, dialog (none of it is modal), tooltip (that is the Highlight's chip)
+status is read afterwards. One Panel per Pick, for the Pick's whole life, and it is a
+different thing before and after it is sent. **Unsubmitted**, it is where the Note is still
+being written: always open, beside its element, and there is at most one. **Submitted**, it is
+a record to read: minimized in the Stack, or opened above the Stack to show its whole Note
+and its Target — at most one of those at a time, whatever the unsubmitted one is doing.
+Sending a Pick is what turns the one into the other.
+_Avoid_: popup, modal, dialog (none of it is modal), tooltip (that is the Highlight's chip),
+chip (that is the Highlight's label only)
+
+**Session list**:
+The list of Candidates the Panel expands into when the developer chooses a Target, each
+shown with whether it is ready, working, or needs the developer. It belongs to the Panel
+and to one Pick; it is never the Picker.
+_Avoid_: picker (that is the Overlay's persistent affordance), dropdown, menu
 
 **Stack**:
-Where submitted Picks rest while their fate is unsettled — one minimized mark per Pick, and the
-Overlay's second surface. It exists only while something is outstanding, which is what separates
-it from the Picker: the Picker is there before any Pick and after the last one, the Stack only in
-between.
+Where the minimized Panels of submitted Picks rest while their fate is unsettled — one per
+Pick, and the Overlay's second surface. It exists only while something is outstanding, which
+is what separates it from the Picker: the Picker is there before any Pick and after the last
+one, the Stack only in between.
 _Avoid_: dock, tray, list, queue (the last means the claim-once delivery queue, which is a
 different thing and lives on the dev server)
