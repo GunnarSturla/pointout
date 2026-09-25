@@ -57,6 +57,14 @@ const summaryOf = (sent: number) => `${sent} sent, none acknowledged yet`
 /** Spec §8: the `done` chip goes on a plain timer of about eight seconds. */
 const DISMISS_MS = 8000
 
+/** Spec §14: the Overlay's one tick, "about one to two seconds". */
+const TICK_MS = 1500
+
+// The page's clock is moved (`page.clock`) wherever a journey would otherwise
+// sit out the dismiss timer or the tick. Each of those two timers keeps one
+// real-time journey, in Chromium only, so that its wall-clock length is still
+// proved somewhere: see the two `on the wall clock` tests below.
+
 interface Box {
   x: number
   y: number
@@ -213,6 +221,16 @@ async function statusSays(
   )
 }
 
+/**
+ * Stop the page's clock, a moment ahead of where it is, so that from here on
+ * only `runFor` moves it. Just ahead, because a clock cannot be stopped in its
+ * own past, and it has moved on by the time the call reaches the page.
+ */
+async function pause(page: Page): Promise<void> {
+  const now = await page.evaluate(() => Date.now())
+  await page.clock.pauseAt(now + 500)
+}
+
 /** The id the Overlay is tracking one chip by — the Pick the server minted. */
 async function pickIdOf(page: Page, index: number): Promise<string> {
   const id = await chipFor(page, index).getAttribute('data-pick')
@@ -227,6 +245,9 @@ test('a Pick rests as a chip that says only what is known, and clears itself whe
   // things that are true at each end of it.
   test.setTimeout(60_000)
   const token = probe('chip')
+  // The page's clock, so the dismiss timer can be moved past rather than sat
+  // out. It flows on its own until the test stops it.
+  await page.clock.install()
   await open(page, token)
 
   // An idle page: the Picker is there and the Stack is not (`CONTEXT.md`).
@@ -247,14 +268,48 @@ test('a Pick rests as a chip that says only what is known, and clears itself whe
   expect(ack.ok()).toBe(true)
   await expect(chipFor(page, 0).locator(CHIP_WORDS)).toHaveText(working(TARGET_NAME))
 
+  // Stopped, so the tick that reads the done — and the dismiss timer it sets —
+  // happen at a time this test chose, and nothing moves while it waits.
+  await pause(page)
   const done = await page.request.post(actionUrl(content, 'done'))
   expect(done.ok()).toBe(true)
+  await page.clock.runFor(TICK_MS)
   await expect(chipFor(page, 0).locator(CHIP_WORDS)).toHaveText(reported(TARGET_NAME))
   await expect(page.locator(RESTING)).toHaveCount(1)
 
   // A plain timer, and then nothing is outstanding, so there is no Stack either.
-  await expect(page.locator(CHIP)).toHaveCount(0, { timeout: DISMISS_MS + 10_000 })
+  // Short of it the chip is still there; past it, it is gone.
+  await page.clock.runFor(DISMISS_MS - 1000)
+  await expect(page.locator(CHIP)).toHaveCount(1)
+  await page.clock.runFor(2000)
+  await expect(page.locator(CHIP)).toHaveCount(0)
   await expect(page.locator(RESTING)).toHaveCount(0)
+  await expect(page.locator(STACK)).toHaveCount(0)
+})
+
+test('a done chip clears itself on the wall clock, after about eight seconds', async ({
+  page,
+  browserName,
+}) => {
+  // The one real-time journey for the dismiss timer, which every other journey
+  // moves the page's clock past. A timer is the page's, not the engine's, so
+  // one engine proves it.
+  test.skip(browserName !== 'chromium', 'the real-time dismiss runs in Chromium only')
+  test.setTimeout(60_000)
+  const token = probe('wall-dismiss')
+  await open(page, token)
+  await send(page, PICKED, `wall clock ${token}`)
+
+  const content = await delivered(token)
+  const done = await page.request.post(actionUrl(content, 'done'))
+  expect(done.ok()).toBe(true)
+  await expect(chipFor(page, 0).locator(CHIP_WORDS)).toHaveText(reported(TARGET_NAME))
+  // The timer is set on the tick that read the done, before the words are drawn,
+  // so this is no earlier than it started.
+  const reportedAt = Date.now()
+
+  await expect(page.locator(CHIP)).toHaveCount(0, { timeout: DISMISS_MS + 10_000 })
+  expect(Date.now() - reportedAt).toBeGreaterThan(DISMISS_MS - 1000)
   await expect(page.locator(STACK)).toHaveCount(0)
 })
 
@@ -502,6 +557,11 @@ test('one timer reads both endpoints, and only while something is open or outsta
   test.setTimeout(60_000)
   const token = probe('tick')
 
+  // The page's clock, installed before the counting below so that what is
+  // counted is the Overlay's own timer on it. The idle stretches and the ticks
+  // are moved through rather than waited out.
+  await page.clock.install()
+
   // Spec §14 gives the tick "about one to two seconds", so an interval inside
   // that band is the Overlay's. Counting them is how "one timer, not one per
   // watcher" is read from outside.
@@ -529,13 +589,19 @@ test('one timer reads both endpoints, and only while something is open or outsta
     }) as typeof window.clearInterval
   })
 
-  const asked: Array<{ path: string; at: number }> = []
+  // Each read is labelled with the tick the test last moved the clock through,
+  // so "on the same turn" is read off the page's clock rather than guessed from
+  // how close together two requests happened to reach this process.
+  let turn = 0
+  const asked: Array<{ path: string; turn: number }> = []
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname
     if (path === '/__agent/sessions' || path === '/__agent/status') {
-      asked.push({ path, at: Date.now() })
+      asked.push({ path, turn })
     }
   })
+  const pathsOn = (tick: number) =>
+    [...new Set(asked.filter((one) => one.turn === tick).map((one) => one.path))].toSorted()
 
   const timers = () =>
     page.evaluate(
@@ -546,24 +612,38 @@ test('one timer reads both endpoints, and only while something is open or outsta
 
   await open(page, token)
   // An idle page reads nothing at all, and starts no timer to read it with.
-  await page.waitForTimeout(4000)
+  await page.clock.runFor(4000)
   expect(asked).toHaveLength(0)
   expect(await timers()).toEqual({ made: 0, cleared: 0 })
 
   await send(page, PICKED, `ticking ${token}`)
+
+  // Stopped, so the only ticks from here are the ones moved through, one at a
+  // time, each with its own label.
+  await pause(page)
   const settled = asked.length
-  await page.waitForTimeout(5000)
+  for (let tick = 1; tick <= 3; tick++) {
+    turn = tick
+    const read = Promise.all([
+      page.waitForResponse((response) => response.url().includes('/__agent/status')),
+      page.waitForResponse((response) => response.url().includes('/__agent/sessions')),
+    ])
+    await page.clock.runFor(TICK_MS)
+    await read
+  }
   expect(asked.length).toBeGreaterThan(settled)
 
   // One timer, and both endpoints read on the same turn of it.
   const running = await timers()
   expect(running.made - running.cleared).toBe(1)
-  for (const status of asked.filter((one) => one.path === '/__agent/status')) {
-    const together = asked.some(
-      (one) => one.path === '/__agent/sessions' && Math.abs(one.at - status.at) < 250,
+  for (let tick = 1; tick <= 3; tick++) {
+    expect(`tick ${tick} read ${pathsOn(tick).join(' and ')}`).toBe(
+      `tick ${tick} read /__agent/sessions and /__agent/status`,
     )
-    expect(`a sessions read beside the status read: ${together}`).toBe(
-      'a sessions read beside the status read: true',
+  }
+  for (const status of asked.filter((one) => one.path === '/__agent/status')) {
+    expect(`a sessions read beside the status read: ${pathsOn(status.turn)}`).toBe(
+      'a sessions read beside the status read: /__agent/sessions,/__agent/status',
     )
   }
 
@@ -573,11 +653,45 @@ test('one timer reads both endpoints, and only while something is open or outsta
   expect(reply.ok()).toBe(true)
   await page.keyboard.press('Escape')
   await page.keyboard.press('Escape')
-  await expect(page.locator(STACK)).toHaveCount(0, { timeout: DISMISS_MS + 10_000 })
+  await page.clock.runFor(TICK_MS)
+  await expect(chipFor(page, 0).locator(CHIP_WORDS)).toHaveText(reported(TARGET_NAME))
+  await page.clock.runFor(DISMISS_MS)
+  await expect(page.locator(STACK)).toHaveCount(0)
 
   const stopped = await timers()
   expect(stopped.made - stopped.cleared).toBe(0)
   const quiet = asked.length
-  await page.waitForTimeout(4000)
+  await page.clock.runFor(4000)
   expect(asked).toHaveLength(quiet)
+})
+
+test('the tick runs on the wall clock, about every second and a half', async ({
+  page,
+  browserName,
+}) => {
+  // The one real-time journey for the tick, which every other journey moves
+  // the page's clock through. An interval is the page's, not the engine's, so
+  // one engine proves it.
+  test.skip(browserName !== 'chromium', 'the real-time tick runs in Chromium only')
+  test.setTimeout(60_000)
+  const token = probe('wall-tick')
+
+  const statusReads: number[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/__agent/status')
+      statusReads.push(Date.now())
+  })
+
+  await open(page, token)
+  await send(page, PICKED, `wall clock ${token}`)
+
+  const from = statusReads.length
+  await expect
+    .poll(() => statusReads.length - from, { timeout: 15_000 })
+    .toBeGreaterThanOrEqual(4)
+  const ticks = statusReads.slice(from, from + 4)
+  const meanGap = (ticks[3]! - ticks[0]!) / 3
+  // "About one to two seconds", with room above it for a loaded machine.
+  expect(meanGap).toBeGreaterThan(1000)
+  expect(meanGap).toBeLessThan(3000)
 })

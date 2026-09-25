@@ -94,10 +94,23 @@ export async function startServer({
       // never returns — measured against plain Vite with no plugin at all, so it
       // is Vite's own behaviour and not this plugin's. `waitForRequestsIdle` is
       // Vite's own way to say "when you have finished with what I asked for".
-      await server.waitForRequestsIdle()
-      await server.close()
-      restoreEnv()
-      fixture.cleanup()
+      //
+      // Both steps are bounded, so a close that hangs fails as itself, naming the
+      // server, rather than as whichever timeout the runner reaches first. The
+      // environment and the fixture are put back either way.
+      try {
+        await withinDeadline(
+          async () => {
+            await server.waitForRequestsIdle()
+            await server.close()
+          },
+          CLOSE_DEADLINE_MS,
+          `the harness dev server at ${root} (port ${address.port})`,
+        )
+      } finally {
+        restoreEnv()
+        fixture.cleanup()
+      }
     },
   }
 }
@@ -114,6 +127,39 @@ export async function startExampleServer(
     configFile: exampleAppRoot + '/vite.config.ts',
     ...options,
   })
+}
+
+/**
+ * How long `close()` may take. A healthy close takes a fraction of this; it is
+ * below seam 1's 30 s hook timeout, so the named error is the one a hung close
+ * reports, rather than the runner's anonymous timeout.
+ */
+const CLOSE_DEADLINE_MS = 20_000
+
+/** Run `work`, or fail with an error naming `what` once `ms` have passed. */
+async function withinDeadline(
+  work: () => Promise<void>,
+  ms: number,
+  what: string,
+): Promise<void> {
+  let timer: NodeJS.Timeout | undefined
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new Error(
+            `${what} did not close within ${ms / 1000} s: waitForRequestsIdle() ` +
+              'or close() never returned',
+          ),
+        ),
+      ms,
+    )
+  })
+  try {
+    await Promise.race([work(), deadline])
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /** Where a test on this machine reaches a server bound to `address`. */

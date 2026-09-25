@@ -21,12 +21,15 @@ describe('the test commands', () => {
     expect(packageJson.scripts['test:seam1']).not.toContain('seam3')
   })
 
+  // A whole `vitest list`, beside the rest of seam 1.
   it('leaves seam 3 out of the default run', async () => {
     const { stdout } = await run('npx', ['vitest', 'list'], { cwd: repoRoot })
     expect(stdout).toContain('test/seam1/')
     expect(stdout).not.toContain('test/seam3/')
-  })
+  }, 60_000)
 
+  // A build and two full tsc passes, beside every other seam-1 file running at
+  // once: longer than the 30 s the rest of seam 1 is held to.
   it('type-checks the package, the tests and the example app', async () => {
     // Ticket 23. A passing typecheck says nothing, so the silence is what is
     // asserted: tsc prints its diagnostics on stdout, and there are none.
@@ -35,7 +38,7 @@ describe('the test commands', () => {
     })
 
     expect(stdout.trim()).toBe('')
-  })
+  }, 180_000)
 
   it('builds before each seam, so no seam runs against a stale dist', () => {
     expect(packageJson.scripts['pretest:seam1']).toContain('build')
@@ -60,6 +63,8 @@ describe('the test commands', () => {
     expect(packageJson.scripts.pretypecheck).toContain('build')
   })
 
+  // A build and a whole seam-3 run, if a skipped one: held to its own timeout,
+  // like the typecheck.
   it('skips seam 3 cleanly, saying why, when the claude CLI is not on PATH', async () => {
     // Ticket 20. Run with every PATH entry that holds a `claude` taken out, so
     // this never starts a real session: seam 3 itself does that, on its own
@@ -83,7 +88,7 @@ describe('the test commands', () => {
     })
     rmSync(bin, { recursive: true, force: true })
     expect(stdout + stderr).toContain('SKIPPED: the `claude` CLI is not on PATH')
-  })
+  }, 120_000)
 })
 
 describe('the Node floor', () => {

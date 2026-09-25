@@ -15,6 +15,9 @@ import type { Page, Route } from '@playwright/test'
 const SESSIONS = '**/__agent/sessions'
 const PICK_URL = '/__agent/pick'
 
+/** Spec §14: the Overlay's one tick, "about one to two seconds". */
+const TICK_MS = 1500
+
 /** Where the second fake session's inbox writes what it received. */
 const SECOND_FRAMES_LOG_ENV = 'SEAM2_SECOND_FRAMES_LOG'
 
@@ -310,6 +313,9 @@ test('cancelling the replacement sends nothing', async ({ page }) => {
     }),
   )
 
+  // The page's clock, so the second after the cancel is moved through rather
+  // than waited out.
+  await page.clock.install()
   await open(page, token)
   await pick(page)
   await page.keyboard.type(`never sent ${token}`)
@@ -321,8 +327,14 @@ test('cancelling the replacement sends nothing', async ({ page }) => {
   await expect(page.locator(SEND)).toHaveText('Send')
   await expect(page.locator(STATUS)).toHaveCount(0)
 
-  // One POST was made and refused; cancelling made no second one.
-  await page.waitForTimeout(1000)
+  // One POST was made and refused; cancelling made no second one. A tick's
+  // worth of the page's time, and then a sessions read answered after it: the
+  // page has had its timers and a round trip to make a second POST in.
+  const answered = page.waitForResponse((response) =>
+    response.url().includes('/__agent/sessions'),
+  )
+  await page.clock.runFor(TICK_MS)
+  await answered
   expect(posts).toBe(1)
 })
 
@@ -438,18 +450,23 @@ test('sessions are read only while the Panel is open', async ({ page }) => {
     if (request.url().includes('/__agent/sessions')) reads += 1
   })
 
+  // The page's clock, so the idle stretches are moved through rather than
+  // waited out. The tick is proved on the wall clock once, in Chromium, by
+  // surfaces.spec.ts's `the tick runs on the wall clock`.
+  await page.clock.install()
   await open(page, probe('polling'))
 
   // An idle page reads nothing at all (spec §14).
-  await page.waitForTimeout(5000)
+  await page.clock.runFor(5000)
   expect(reads).toBe(0)
 
   await pick(page)
+  await page.clock.runFor(2 * TICK_MS)
   await expect.poll(() => reads, { timeout: 10_000 }).toBeGreaterThan(1)
 
   await page.keyboard.press('Escape')
   await expect(page.locator(PANEL)).toHaveCount(0)
   const afterClosing = reads
-  await page.waitForTimeout(3000)
+  await page.clock.runFor(3000)
   expect(reads).toBe(afterClosing)
 })

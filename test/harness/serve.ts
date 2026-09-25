@@ -6,6 +6,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { startExampleServer } from './dev-server.js'
 import { repoRoot } from './paths.js'
+import { takeSeam2Lock } from './seam2-lock.js'
 import { listeningSession } from './session-socket.js'
 
 export const SEAM2_PORT = Number(process.env.SEAM2_PORT ?? 5178)
@@ -54,10 +55,15 @@ const SECOND_FRAMES_LOG_ENV = 'SEAM2_SECOND_FRAMES_LOG'
 const REPORT_BACK_FRAMES_LOG_ENV = 'SEAM2_REPORT_BACK_FRAMES_LOG'
 
 export default async function serveForSeam2(): Promise<() => Promise<void>> {
+  // Before anything is booted: a second full seam 2 on this machine waits for
+  // the first, whatever port it was given (seam2-lock.ts).
+  const releaseLock = await takeSeam2Lock()
+
   let server
   try {
     server = await startExampleServer({ port: SEAM2_PORT, claudePid: SESSION_PID })
   } catch (error) {
+    releaseLock()
     // The port is bound with `strictPort`, so a leftover dev server is a hard
     // failure rather than a silent attach to whatever is already there.
     throw new Error(
@@ -118,7 +124,11 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
   process.stdout.write(`seam 2 dev server listening on ${server.url}\n`)
 
   return async function stopServingSeam2() {
-    for (const session of sessions) await session.close()
-    await server.close()
+    try {
+      for (const session of sessions) await session.close()
+      await server.close()
+    } finally {
+      releaseLock()
+    }
   }
 }

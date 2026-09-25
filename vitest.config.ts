@@ -8,10 +8,16 @@ export default defineConfig({
     name: 'seam1',
     include: ['test/seam1/**/*.test.ts'],
     environment: 'node',
-    // Servers, builds and child processes; and each file owns `process.env`
-    // while it runs, so files do not overlap.
-    testTimeout: 180_000,
-    hookTimeout: 180_000,
-    fileParallelism: false,
+    // Files run side by side, each in a forked process of its own. A file owns
+    // `process.env` while it runs, and `advanceClock` moves the clock through
+    // it, so a file must never share a process with another: `forks`, pinned,
+    // and never `threads`, whose workers share one environment.
+    pool: 'forks',
+    fileParallelism: true,
+    maxWorkers: 4,
+    // A hung test or a hung close fails in half a minute rather than three. A
+    // test that really needs longer says so beside itself.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
 })

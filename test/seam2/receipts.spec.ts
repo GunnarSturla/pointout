@@ -20,6 +20,9 @@ const FRAMES_LOG_ENV = 'SEAM2_FRAMES_LOG'
 /** The fake session seam 2 addresses, as `globalSetup` named it. */
 const TARGET_NAME = 'seam 2 fake session'
 
+/** Spec §14: the Overlay's one tick, "about one to two seconds". */
+const TICK_MS = 1500
+
 const PICKED = '[data-fixture="card-heading"]'
 const SECOND_PICKED = '[data-fixture="passed-down-badge"]'
 
@@ -309,13 +312,21 @@ test('silence says nothing: a Pick no Receipt was sent for never reads as delive
   page,
 }) => {
   const token = probe('silence')
+  // The page's clock, so the ticks are moved through rather than waited out.
+  // The tick itself is proved on the wall clock once, in Chromium, by
+  // surfaces.spec.ts's `the tick runs on the wall clock`.
+  await page.clock.install()
   await open(page, token)
   await send(page, token)
 
   // Accept is silent (spec §16), so ticks answered with nothing new about this
   // Pick must leave it exactly where it was.
   for (let tick = 0; tick < 3; tick++) {
-    await page.waitForResponse((response) => response.url().includes('/__agent/status'))
+    const answered = page.waitForResponse((response) =>
+      response.url().includes('/__agent/status'),
+    )
+    await page.clock.runFor(TICK_MS)
+    await answered
   }
 
   await expect(chip(page).locator(CHIP_WORDS)).toHaveText(SENT)
