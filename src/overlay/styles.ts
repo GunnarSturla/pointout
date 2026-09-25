@@ -35,6 +35,16 @@ export const OVERLAY_STYLESHEET = `
   pointer-events: auto;
 }
 
+/* A frame shield: the same, over one frame the Overlay cannot hear and nothing
+   else, so the pointer above that frame stays in the page the Overlay listens
+   in. Placed with \`translate\`, like the Highlight. */
+.frame-shield {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: auto;
+}
+
 /* Placed with \`translate\` from the page's origin rather than with \`top\` and
    \`left\`, because \`translate\` is what the morph animates and the two ways of
    saying where a box is cannot both be in play. */

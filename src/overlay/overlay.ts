@@ -14,10 +14,11 @@
 import type { CaptureCoordinates, PickBody } from '../wire.js'
 import { createHittability } from './armed.js'
 import { createCamera } from './capture.js'
-import { viewportBox } from './deep-element.js'
-import type { ViewportBox } from './deep-element.js'
+import { topDocumentPoint, viewportBox } from './deep-element.js'
+import type { Point, ViewportBox } from './deep-element.js'
 import { describeElement } from './describe.js'
 import { readOwner, readOwnerChain } from './fiber.js'
+import { createFrames } from './frames.js'
 import { elementAtPoint } from './hit-test.js'
 import { createMarks } from './marks.js'
 import type { PanelCamera, PointerInputs } from './panel.js'
@@ -30,8 +31,6 @@ import { mountSurfaces } from './surfaces.js'
 /** What arms the Overlay. Alt is held; the Picker is a toggle. */
 type ArmedBy = 'alt' | 'picker'
 type Mode = 'off' | 'armed' | 'picked'
-/** A point in the top document's viewport, as a pointer event gives it. */
-type Point = { x: number; y: number }
 
 /**
  * How long the shutter stays closed around a Screen Capture (spec §10). A fixed
@@ -60,7 +59,10 @@ export function startOverlay(document: Document): OverlayHandle {
   const layer = part(document, 'div', 'marks')
   shadow.append(layer)
   const marks = createMarks(document, layer)
-  const hittability = createHittability(document, shadow)
+  // The page is heard in every same-origin frame's document as well as its own
+  // (`listenIn`, below), and covered while armed where a frame cannot be.
+  const frames = createFrames(document)
+  const hittability = createHittability(document, shadow, frames)
   const reflow = createReflow()
   const surfaces = mountSurfaces(document, shadow)
 
@@ -305,16 +307,17 @@ export function startOverlay(document: Document): OverlayHandle {
   }
 
   const onPointerMove = (event: PointerEvent) => {
+    const at = pointOf(view, event)
     // Over the Overlay's own chrome an Alt-click means nothing to the page, so
     // there is nothing to preview there.
-    lastPointer = ours(event) ? null : { x: event.clientX, y: event.clientY }
+    lastPointer = ours(event) ? null : at
     if (mode === 'picked') {
       if (event.altKey && lastPointer) previewAt(lastPointer)
-      else marks.release()
+      else release()
       return
     }
     if (mode !== 'armed') return
-    const element = elementAtPoint(document, event.clientX, event.clientY)
+    const element = elementAtPoint(document, at.x, at.y)
     if (!element) {
       hovered = null
       marks.hide()
@@ -322,6 +325,15 @@ export function startOverlay(document: Document): OverlayHandle {
     }
     hovered = element
     marks.show(element, readOwner(element))
+  }
+
+  /**
+   * Alt is let go over an open Panel: the live mark fades, and the frame
+   * shields laid so it could follow the pointer over a frame are taken up.
+   */
+  const release = () => {
+    marks.release()
+    hittability.uncover()
   }
 
   /**
@@ -347,7 +359,8 @@ export function startOverlay(document: Document): OverlayHandle {
     event.preventDefault()
     event.stopPropagation()
 
-    const element = elementAtPoint(document, event.clientX, event.clientY) ?? hovered
+    const at = pointOf(view, event)
+    const element = elementAtPoint(document, at.x, at.y) ?? hovered
     if (!element) return
 
     // Spec §7's two meanings. An unsubmitted Panel *moves* — the Note the
@@ -369,6 +382,8 @@ export function startOverlay(document: Document): OverlayHandle {
     }
 
     pickOn(element)
+    // Still held: the next Alt-click is a move, and it has to be heard.
+    if (event.altKey) hittability.cover()
   }
 
   /**
@@ -392,23 +407,27 @@ export function startOverlay(document: Document): OverlayHandle {
       return
     }
     if (event.altKey && mode === 'off') arm('alt')
-    if (event.altKey && mode === 'picked' && lastPointer) previewAt(lastPointer)
+    if (event.altKey && mode === 'picked') {
+      hittability.cover()
+      if (lastPointer) previewAt(lastPointer)
+    }
   }
 
   const onKeyUp = (event: KeyboardEvent) => {
     if (event.altKey) return
-    if (mode === 'picked') marks.release()
+    if (mode === 'picked') release()
     if (mode === 'armed' && armedBy === 'alt') off()
   }
 
   /** A held Alt the window never sees released would leave it armed for ever. */
   const onBlur = () => {
-    if (mode === 'picked') marks.release()
+    if (mode === 'picked') release()
     if (mode === 'armed' && armedBy === 'alt') off()
   }
 
   const onReflow = () => {
     marks.remeasure()
+    hittability.remeasure()
     reflow.emit()
     // Whether the Panel has ridden off-screen is a question about where the page
     // is, so it is answered where the page moves (spec §7, story 16) — and only
@@ -416,14 +435,24 @@ export function startOverlay(document: Document): OverlayHandle {
     if (panelOffScreen() !== offeredWayBack) render()
   }
 
-  view.addEventListener('pointermove', onPointerMove, true)
-  view.addEventListener('click', onClick, true)
-  view.addEventListener('pointerdown', onPress, true)
-  view.addEventListener('mousedown', onPress, true)
-  view.addEventListener('keydown', onKeyDown, true)
-  view.addEventListener('keyup', onKeyUp, true)
+  /** Every listener that hears the page, on the top window or a frame's document. */
+  const listenIn = (target: Pick<Document, 'addEventListener'>) => {
+    target.addEventListener('pointermove', onPointerMove, true)
+    target.addEventListener('click', onClick, true)
+    target.addEventListener('pointerdown', onPress, true)
+    target.addEventListener('mousedown', onPress, true)
+    target.addEventListener('keydown', onKeyDown, true)
+    target.addEventListener('keyup', onKeyUp, true)
+    target.addEventListener('scroll', onReflow, true)
+  }
+  // A pointer over a same-origin frame is in the frame's document, and the top
+  // one hears nothing of it (spec §4). Its keys are too, once focus is in there,
+  // and its scrolls move whatever a Highlight is on — so each frame document
+  // `frames` finds gets every one of these. `blur`, `resize` and `pagehide`
+  // stay the top window's: they are about the page as a whole.
+  listenIn(view)
+  frames.listen(listenIn)
   view.addEventListener('blur', onBlur)
-  view.addEventListener('scroll', onReflow, true)
   view.addEventListener('resize', onReflow)
   // A reload or a navigation with an unsubmitted Pick open is a discard too
   // (story 72), and the page will not be here to wait for the answer.
@@ -435,6 +464,23 @@ export function startOverlay(document: Document): OverlayHandle {
   // Pick made on it. A `close()` nothing calls would be an escape hatch pretending
   // to be a lifecycle.
   return { host, shadow }
+}
+
+/**
+ * Where a pointer event happened, in the top document's viewport — the one
+ * `viewportBox` measures in. An event from inside a frame gives its point in
+ * the frame's own coordinates; the frame's window, which the event names, is
+ * how it is walked back out. The page's own events are taken as they are.
+ *
+ * Known gap, shared with `viewportBox`: the walk goes to the outermost
+ * same-origin window, not to this page's. On a page that is itself framed by a
+ * same-origin parent, a point from one of its own frames comes back in the
+ * parent's coordinates. Nothing in v0 frames the Overlay's page.
+ */
+function pointOf(view: Window, event: MouseEvent): Point {
+  const from = event.view
+  if (!from || from === view) return { x: event.clientX, y: event.clientY }
+  return topDocumentPoint(from, event.clientX, event.clientY)
 }
 
 /**

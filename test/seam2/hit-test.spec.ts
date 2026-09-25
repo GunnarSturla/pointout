@@ -226,12 +226,8 @@ test('clicking inside the same-origin iframe picks the element inside it', async
   page,
 }) => {
   const token = probe('iframe')
-  // Opened with the decoy on, and that is a known gap rather than this test's
-  // subject: without it the pointer lands in the frame's own document, whose
-  // events the Overlay does not listen to, and nothing is highlighted. The
-  // decoy keeps the pointer in the top document, where the hit test's descent
-  // into the frame — what this test is about — is what answers.
-  await open(page, token, { decoy: true })
+  await open(page, token)
+  await expect(page.locator(DECOY)).toHaveCount(0)
 
   // The frame itself is brought into view first: scrolling from inside it would
   // move the frame's own document and leave the frame where it was.
@@ -267,6 +263,57 @@ test('clicking inside the same-origin iframe picks the element inside it', async
       `geometry\\s+${Math.round(target.width)}×${Math.round(target.height)} at \\(${Math.round(target.x)},${Math.round(target.y)}\\)`,
     ),
   )
+  // React owns what it portalled into the frame, and the chain says so.
+  expect(content).toContain('FrameBody')
+  expect(content).not.toMatch(/owner chain\s+none/)
+})
+
+test('Alt held over an open Panel previews inside the same-origin iframe, and Alt-click moves the Pick there', async ({
+  page,
+}) => {
+  const token = probe('iframe-alt')
+  await open(page, token)
+  await expect(page.locator(DECOY)).toHaveCount(0)
+
+  // A Pick first, on the heading just below the frame, so both are in view and
+  // the Panel opens clear of the frame.
+  const heading = '[data-fixture="same-origin-iframe-section"] + section h2'
+  await boxOf(page, '[data-fixture="same-origin-iframe"]')
+  await arm(page)
+  await pickAt(page, await centre(page, heading))
+
+  const inside = page
+    .frameLocator('[data-fixture="same-origin-iframe"]')
+    .locator('[data-fixture="iframe-target"]')
+  const target = await inside.boundingBox()
+  if (!target) throw new Error('the framed element has no box')
+  const at = { x: target.x + target.width / 2, y: target.y + target.height / 2 }
+
+  await page.keyboard.down('Alt')
+  await page.mouse.move(at.x, at.y, { steps: 4 })
+
+  // The live mark follows the pointer into the frame, drawn where the element
+  // is in the top document.
+  const live = `${HIGHLIGHT}[data-mark="live"]`
+  await expect(page.locator(live)).toBeVisible()
+  await expect
+    .poll(async () => {
+      const box = await boxOf(page, live)
+      return [Math.round(box.x), Math.round(box.y), Math.round(box.width)].join(' ')
+    })
+    .toBe(
+      [Math.round(target.x), Math.round(target.y), Math.round(target.width)].join(' '),
+    )
+
+  // Alt-click moves the unsubmitted Pick onto the framed element.
+  await page.mouse.click(at.x, at.y)
+  await page.keyboard.up('Alt')
+  await expect(page.locator(PANEL)).toHaveCount(1)
+  await send(page, `moved into the frame ${token}`)
+
+  const content = await delivered(token)
+  expect(content).toMatch(/\belement\s+span\b/)
+  expect(content).toContain('FrameBody')
 })
 
 test('the full-viewport decoy is never picked; the element beneath it is', async ({
