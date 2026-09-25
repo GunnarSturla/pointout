@@ -161,15 +161,15 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 | | |
 | --- | --- |
 | `npm run lint` / `format:check` / `typecheck` | **under 2s each** — run them constantly |
-| `npm run test:seam1` | SEAM1_TIME, four files at a time |
-| `npm run test:seam2:fast` | SEAM2_FAST_TIME, Chromium only |
-| `npm run test:seam2` | SEAM2_FULL_TIME, all three engines |
+| `npm run test:seam1` | ~30s, four files at a time |
+| `npm run test:seam2:fast` | ~40s, Chromium only |
+| `npm run test:seam2` | ~2m15s, all three engines — once, at the end |
 
 **Iterate on single files; all three engines once at the end.** Run the file you are
 changing (`npx vitest run test/seam1/<file>` after `npm run build`, or
 `npx playwright test --project=chromium test/seam2/<file>`), and the full
-`caffeinate -i npm test` once, when you are done. Timings are on a loaded 8-core
-laptop, build included.
+`caffeinate -i npm test` once, when you are done. Timings were measured on an 8-core
+laptop at a load average of 13 to 25, build included (September 2026).
 
 **Seam 2 binds a fixed port (5178).** Agents running in parallel worktrees must each
 set `SEAM2_PORT` to their own port, or a bind failure reads as a broken test.
