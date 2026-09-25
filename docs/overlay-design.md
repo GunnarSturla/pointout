@@ -128,7 +128,7 @@ no-preference. Hover rules sit behind `(hover: hover) and (pointer: fine)`.
 
 | state | quiet button (ghost) | Send (ink fill) | Picker (armed) |
 | --- | --- | --- | --- |
-| rest | transparent, `--ink` | `--ink` fill, `--surface` text | `#4f7cff` fill, white text |
+| rest | transparent, `--ink` | `--ink` fill, `--surface` text | `--accent-strong` (`#3a66f0`) fill, white text |
 | hover | `--ink` 6% tint | `--ink` mixed 86% with surface | accent mixed 88% with black |
 | active | `--ink` 12% tint | `--ink` mixed 76% with surface | accent mixed 78% with black |
 | focus-visible | `outline: 2px solid var(--accent); outline-offset: 2px`, plus `box-shadow: 0 0 0 2px var(--surface)` filling the offset gap. The ring then always sits on the surface (3.71 / 5.75), even over the host page or the blue fill | same | same |
@@ -157,7 +157,7 @@ move. Its width change eases with `interpolate-size` where supported.
                          ┏━━━━━━━━━━━━━━━┓   ↑ 2 px
                          ┃ ⌖  Picking…   ┃ ╭────────────────────╮
 ═════════════════════════┻━━━━━━━━━━━━━━━┻═╧ Back to your pick  ╧═════
-                          (#4f7cff, white)   (surface, ink, 6 px gap)
+                          (#3a66f0, white)   (surface, ink, 6 px gap)
 ```
 
 **Open unsubmitted Panel.** The Note grows from 3 lines to 12, then scrolls. The footer
@@ -283,18 +283,14 @@ Template tells in the current UI, and what replaces them:
 - There are no all-caps eyebrows, no `→` on buttons and no monospace labels today. Keep it
   so.
 
-## Open questions for the developer
+## Decisions (approved by the developer, 2026-09-25)
 
-1. **The armed label fails AA.** White on `#4f7cff` is 3.71:1, and "Picking…" is 12 px, so
-   it needs 4.5:1. **Recommendation:** keep `#4f7cff` for the Highlight, its chip outline
-   and the focus ring, but fill the armed Picker with `#3a66f0` (4.84:1). It reads as the
-   same blue, one step deeper. The alternative is to accept 3.71 as a pre-registered
-   deviation, like the Highlight morph.
-2. **Send in ink rather than blue.** This makes the armed Picker the Overlay's only solid
-   blue control, and keeps blue meaning "the pick". **Recommendation:** yes. The cost is
-   that Send looks less like a typical primary button, and the footer's layout already
-   marks it as the primary action.
-3. **The expanded submitted Panel's slot.** When a minimized Panel grows above the Stack,
-   its slot can close up, or stay as the minimized row with an accent edge.
-   **Recommendation:** keep the slot, marked. The developer sees which row they opened,
-   and closing it again shrinks it back into a place that is still there.
+The plan is approved. Its three open questions were settled as recommended:
+
+1. **The armed Picker is filled `#3a66f0`** (white on it is 4.84:1, passing AA for 12 px
+   text). `#4f7cff` stays the Highlight, its chip outline and the focus ring. Add
+   `--accent-strong: #3a66f0` for the armed fill, in both schemes.
+2. **Send is ink**, not blue: the armed Picker is the Overlay's only solid blue control, and
+   blue keeps meaning the pick.
+3. **An opened submitted Panel keeps its slot in the Stack**, marked with an accent edge, and
+   shrinks back into it when closed.
