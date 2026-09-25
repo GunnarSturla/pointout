@@ -49,6 +49,8 @@ that did.
 | those controls pressed | 120 ms, `scale` to 0.97, from the centre, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
 | the Screen Capture shutter reopening — the Highlight's fill and its chip | 120 ms, `background-color` and the chip's `opacity`, from nothing, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
 | the report-back countdown line, each one-second step | 1000 ms, `transform` (`scaleX`), linear | no-preference only |
+| a Working session's dot, in the Target row and the Session list | a 2000 ms loop, `scale` to 0.8 and `opacity` to 0.5 at its midpoint and back, `ease-in-out` | no-preference only; under reduce it holds still |
+| a Needs you session's dot: two rings, one second apart | a 2000 ms loop per ring, a 1.5 px `--needs` circle from `scale` 1 at 0.8 opacity to `scale` 2.25 at 0, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only; under reduce there are no rings |
 
 The prototype's numbers were 170 ms on `cubic-bezier(0.77, 0, 0.175, 1)` for the morph
 and 220 ms for the reveal, built and reacted to in `spike-17-overlay-shape/`, where
@@ -56,7 +58,20 @@ Astro's 350 ms overshoot curve was built beside them and rejected. The
 `review-animations` gate retuned both (see *The outcome*): a box that follows the
 pointer has to start moving at once, and the reveal is seen tens of times a day. One
 strong ease-out, `cubic-bezier(0.23, 1, 0.32, 1)`, is now the only curve the Overlay
-eases on, apart from the countdown's linear clock.
+eases on, apart from the countdown's linear clock and the Working dot's pulse.
+
+**The status dots are the only motion nobody started** (overlay-polish ticket 06). A
+session's health is a dot beside its word: Ready green and still, Working amber and
+breathing, Needs you red and sending out rings. It follows the design plan's *quiet by
+default, loud only when it is waiting on you*: the one state that needs the developer
+is the one that asks for attention, and Ready, the usual state, never moves. The pulse
+is a loop with no arrival, so it eases in and out and is kept small. The rings are
+something leaving, so they take the strong ease-out. They are CSS animations on the dot
+and its two pseudo-elements, declared with their keyframes inside the one opt-in block,
+and under reduce the pseudo-elements are never drawn at all. Colour is never the only
+signal, so under reduce, and in forced colours where every dot is `CanvasText`, the word
+beside the dot still says it. The minimized Panel's traffic light (ticket 08) is meant
+to reuse the same dot.
 
 The Picker comes out on `:hover` only where there is a pointer that hovers
 (`@media (hover: hover) and (pointer: fine)`): a tap on a touch screen leaves a hover

@@ -49,9 +49,13 @@ const TARGET = '[data-part="target"]'
 const TARGETS = '[data-part="targets"]'
 const ROW = '[data-part="target-row"]'
 const ROW_NAME = '[data-part="row-name"]'
-const ROW_IDLE = '[data-part="row-idle"]'
+const ROW_STATUS = '[data-part="row-status"]'
+const ROW_AGE = '[data-part="row-age"]'
 const ROW_WAITING = '[data-part="row-waiting"]'
-const BADGE = '[data-part="started-badge"]'
+const STARTED = '[data-part="row-started"]'
+const DOT = '[data-part="dot"]'
+const TARGET_STATUS = '[data-part="target-status"]'
+const TARGET_AGE = '[data-part="target-age"]'
 const STATUS = '[data-part="status"]'
 
 /** What `GET /__agent/sessions` answers, in the shape §20 publishes it. */
@@ -159,7 +163,7 @@ test('the footer shows the preselected Target and the row lists every Candidate'
   await pick(page)
 
   // Step 1 of §14's chain: the session that started this dev server.
-  await expect(page.locator(TARGET)).toHaveText(`${STARTED_NAME} · idle`)
+  await expect(page.locator(TARGET)).toHaveText(`${STARTED_NAME} Ready`)
 
   await page.locator(TARGET).click()
   const rows = page.locator(`${TARGETS} ${ROW}`)
@@ -171,12 +175,14 @@ test('the footer shows the preselected Target and the row lists every Candidate'
     REPORT_BACK_NAME,
   ])
 
-  // The badge is on the one that started this dev server, and nowhere else.
-  await expect(page.locator(`${TARGETS} ${BADGE}`)).toHaveCount(1)
-  await expect(rows.nth(0).locator(BADGE)).toBeVisible()
+  // Said on the one that started this dev server, and nowhere else.
+  await expect(page.locator(`${TARGETS} ${STARTED}`)).toHaveCount(1)
+  await expect(rows.nth(0).locator(STARTED)).toHaveText('started this server')
 
   // `statusUpdatedAt` three days ago, and a permission prompt named.
-  await expect(rows.nth(1).locator(ROW_IDLE)).toHaveText('idle for 3d')
+  await expect(rows.nth(1).locator(ROW_AGE)).toHaveText('3d')
+  await expect(rows.nth(1).locator(ROW_AGE)).toHaveAttribute('title', 'Idle for 3 days')
+  await expect(rows.nth(2).locator(ROW_STATUS)).toHaveText('Needs you')
   await expect(rows.nth(2).locator(ROW_WAITING)).toContainText(WAITING_FOR)
 
   // Another checkout is never offered (spec §14, story 36).
@@ -184,7 +190,7 @@ test('the footer shows the preselected Target and the row lists every Candidate'
 
   await rows.nth(1).click()
   await expect(page.locator(TARGETS)).toHaveCount(0)
-  await expect(page.locator(TARGET)).toHaveText(`${SECOND_NAME} · idle for 3d`)
+  await expect(page.locator(TARGET)).toHaveText(`${SECOND_NAME} Ready 3d`)
 
   // Choosing a Target leaves focus on the row that was clicked: the Panel takes
   // focus on its own opening and never again (spec §7).
@@ -204,12 +210,12 @@ test('the last Target used from this origin is preselected until it stops being 
   await pick(page)
   await page.locator(TARGET).click()
   await page.locator(`${TARGETS} ${ROW}`).nth(1).click()
-  await expect(page.locator(TARGET)).toHaveText(`${SECOND_NAME} · idle for 3d`)
+  await expect(page.locator(TARGET)).toHaveText(`${SECOND_NAME} Ready 3d`)
 
   // Step 3: a reload is a fresh Overlay, and the choice outlives it.
   await page.reload()
   await pick(page)
-  await expect(page.locator(TARGET)).toHaveText(`${SECOND_NAME} · idle for 3d`)
+  await expect(page.locator(TARGET)).toHaveText(`${SECOND_NAME} Ready 3d`)
 
   // Honoured only while still a Candidate: with that session gone from the
   // registry the chain falls back to the one that started this dev server.
@@ -230,7 +236,7 @@ test('the last Target used from this origin is preselected until it stops being 
   )
   await page.reload()
   await pick(page)
-  await expect(page.locator(TARGET)).toHaveText(`${STARTED_NAME} · idle`)
+  await expect(page.locator(TARGET)).toHaveText(`${STARTED_NAME} Ready`)
 })
 
 test('a Target blocked on a permission prompt is flagged and stays selectable', async ({
@@ -373,7 +379,7 @@ test('with no session running the input is replaced by the message, and morphs b
   candidates = [candidate({ name: 'started mid-Pick', startedThisServer: true })]
   await expect(page.locator(NOTE)).toHaveCount(1, { timeout: 10_000 })
   await expect(page.locator(EMPTY)).toHaveCount(0)
-  await expect(page.locator(TARGET)).toHaveText('started mid-Pick · idle')
+  await expect(page.locator(TARGET)).toHaveText('started mid-Pick Ready')
 
   // Focus had not moved into the app, so the late input takes it (spec §7).
   await expect(page.locator(NOTE)).toBeFocused()
@@ -426,7 +432,7 @@ test('with nothing preselected Send is off and the footer says why', async ({ pa
 
   await page.locator(TARGET).click()
   await page.locator(`${TARGETS} ${ROW}`).nth(1).click()
-  await expect(page.locator(TARGET)).toHaveText('two of two · idle')
+  await expect(page.locator(TARGET)).toHaveText('two of two Ready')
   await expect(page.locator(SEND)).toBeEnabled()
 })
 
@@ -481,4 +487,168 @@ test('sessions are read only while the Panel is open', async ({ page }) => {
   await page.clock.runFor(3000)
   await settle(page)
   expect(reads).toBe(afterClosing)
+})
+/** Four Candidates, one in each state the Session list tells apart. */
+function everyState(): CandidatePayload[] {
+  const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000 - 60_000).toISOString()
+  return [
+    candidate({ name: 'ready one', pid: 900_201, sessionId: 'session-900201' }),
+    candidate({
+      name: 'working one',
+      status: 'busy',
+      pid: 900_202,
+      sessionId: 'session-900202',
+    }),
+    candidate({
+      name: 'blocked one',
+      status: 'waiting',
+      waitingFor: WAITING_FOR,
+      pid: 900_203,
+      sessionId: 'session-900203',
+    }),
+    candidate({
+      name: 'old one',
+      statusUpdatedAt: threeDaysAgo,
+      pid: 900_204,
+      sessionId: 'session-900204',
+    }),
+  ]
+}
+
+async function serveEveryState(page: Page): Promise<void> {
+  await page.route(SESSIONS, (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: sessionsBody(everyState()),
+    }),
+  )
+}
+
+/**
+ * The CSS animations running on a dot and on its rings, by name. The rings are
+ * the dot's own pseudo-elements, which `subtree` reaches.
+ */
+async function running(page: Page, dot: string): Promise<string[]> {
+  return page.locator(dot).evaluate((element) =>
+    element
+      .getAnimations({ subtree: true })
+      .filter((animation) => animation.playState === 'running')
+      .map((animation) => (animation as CSSAnimation).animationName),
+  )
+}
+
+/** The dot of the Session list's row at `at`, counted from one. */
+function rowDot(at: number): string {
+  return `${TARGETS} ${ROW}:nth-child(${at}) ${DOT}`
+}
+
+test('the Session list says Ready, Working and Needs you, each beside its dot', async ({
+  page,
+}) => {
+  await serveEveryState(page)
+  await open(page, probe('every-state'))
+  await pick(page)
+  await page.locator(TARGET).click()
+
+  const rows = page.locator(`${TARGETS} ${ROW}`)
+  await expect(rows).toHaveCount(4)
+  await expect(rows.locator(ROW_STATUS)).toHaveText([
+    'Ready',
+    'Working',
+    'Needs you',
+    'Ready',
+  ])
+  const dots = rows.locator(DOT)
+  await expect(dots).toHaveCount(4)
+  for (const [at, status] of ['ready', 'working', 'needs', 'ready'].entries()) {
+    await expect(dots.nth(at)).toHaveAttribute('data-status', status)
+  }
+
+  // Each state is its own colour, and the same state is the same colour.
+  const colours = await dots.evaluateAll((all) =>
+    all.map((dot) => getComputedStyle(dot).backgroundColor),
+  )
+  expect(new Set(colours.slice(0, 3)).size).toBe(3)
+  expect(colours[3]).toBe(colours[0])
+
+  // A waiting one says what it waits for; the others say nothing more.
+  await expect(rows.nth(2).locator(ROW_WAITING)).toHaveText(WAITING_FOR)
+  await expect(page.locator(`${TARGETS} ${ROW_WAITING}`)).toHaveCount(1)
+
+  // Only the long-idle one carries an age, in figures that line up.
+  await expect(page.locator(`${TARGETS} ${ROW_AGE}`)).toHaveCount(1)
+  const age = rows.nth(3).locator(ROW_AGE)
+  await expect(age).toHaveText('3d')
+  await expect(age).toHaveAttribute('title', 'Idle for 3 days')
+  await expect(age).toHaveCSS('font-variant-numeric', 'tabular-nums')
+
+  // With motion allowed, Working pulses and Needs you rings; Ready holds still.
+  expect(await running(page, rowDot(1))).toEqual([])
+  expect((await running(page, rowDot(2))).length).toBeGreaterThan(0)
+  expect((await running(page, rowDot(3))).length).toBeGreaterThan(0)
+  expect(await running(page, rowDot(4))).toEqual([])
+})
+
+test('the Target row says each state in words beside its dot, and a long idle as 3d', async ({
+  page,
+}) => {
+  await serveEveryState(page)
+  await open(page, probe('target-states'))
+  await pick(page)
+  const choose = async (name: string) => {
+    await page.locator(TARGET).click()
+    await page.locator(`${TARGETS} ${ROW}`).filter({ hasText: name }).click()
+    await expect(page.locator(TARGETS)).toHaveCount(0)
+  }
+
+  await choose('ready one')
+  await expect(page.locator(TARGET)).toHaveText('ready one Ready')
+  await expect(page.locator(`${TARGET} ${DOT}`)).toHaveAttribute('data-status', 'ready')
+  await expect(page.locator(TARGET_AGE)).toHaveCount(0)
+
+  await choose('working one')
+  await expect(page.locator(TARGET)).toHaveText('working one Working')
+  await expect(page.locator(TARGET_STATUS)).toHaveText('Working')
+  await expect(page.locator(`${TARGET} ${DOT}`)).toHaveAttribute('data-status', 'working')
+  // With motion allowed the Target row's own dot pulses too.
+  expect((await running(page, `${TARGET} ${DOT}`)).length).toBeGreaterThan(0)
+
+  await choose('blocked one')
+  await expect(page.locator(TARGET)).toContainText(
+    'blocked one is blocked on a permission prompt',
+  )
+  await expect(page.locator(TARGET)).toContainText('approve it in your terminal')
+  await expect(page.locator(`${TARGET} ${DOT}`)).toHaveAttribute('data-status', 'needs')
+
+  await choose('old one')
+  await expect(page.locator(TARGET)).toHaveText('old one Ready 3d')
+  await expect(page.locator(TARGET_AGE)).toHaveAttribute('title', 'Idle for 3 days')
+  await expect(page.locator(TARGET_AGE)).toHaveCSS('font-variant-numeric', 'tabular-nums')
+})
+
+test('under reduced motion no pulse or ring animates', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await serveEveryState(page)
+  await open(page, probe('still'))
+  await pick(page)
+  await page.locator(TARGET).click()
+  await expect(page.locator(`${TARGETS} ${ROW}`)).toHaveCount(4)
+
+  for (const at of [1, 2, 3, 4]) expect(await running(page, rowDot(at))).toEqual([])
+  // The dots are still there, and still say which is which.
+  await expect(page.locator(`${TARGETS} ${DOT}[data-status="working"]`)).toBeVisible()
+  await expect(page.locator(`${TARGETS} ${DOT}[data-status="needs"]`)).toBeVisible()
+
+  // Nor does the Target row's, working or blocked.
+  for (const name of ['working one', 'blocked one']) {
+    await page.locator(`${TARGETS} ${ROW}`).filter({ hasText: name }).click()
+    await expect(page.locator(TARGETS)).toHaveCount(0)
+    await expect(page.locator(`${TARGET} ${DOT}`)).toHaveAttribute(
+      'data-status',
+      name === 'working one' ? 'working' : 'needs',
+    )
+    expect(await running(page, `${TARGET} ${DOT}`)).toEqual([])
+    await page.locator(TARGET).click()
+  }
 })

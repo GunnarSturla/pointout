@@ -22,13 +22,40 @@ export const APPROVE_IN_TERMINAL = 'approve it in your terminal'
 /** Step 4 of §14's chain: nothing preselected, and the footer says why Send is off. */
 export const CHOOSE_A_SESSION = 'Choose which session this goes to'
 
-/** The separator between a Target's name and its status. */
-const DOT = ' · '
+/**
+ * How a Candidate is doing, in the Overlay's words rather than the harness's
+ * (`idle`, `busy`, `waiting`). Each has a colour too, and never only a colour:
+ * the word is always drawn beside its dot.
+ */
+export type Health = 'ready' | 'working' | 'needs'
 
-/** `<name> · <status>`, with what it is waiting for inline when there is any. */
-export function targetLine(name: string, status: string, waitingFor?: string): string {
-  return waitingFor ? name + DOT + status + DOT + waitingFor : name + DOT + status
+const HEALTH: Record<string, Health> = {
+  idle: 'ready',
+  busy: 'working',
+  waiting: 'needs',
 }
+
+const SAID: Record<Health, string> = {
+  ready: 'Ready',
+  working: 'Working',
+  needs: 'Needs you',
+}
+
+/**
+ * A status the harness reports that the Overlay has no word for is shown as the
+ * harness spelled it, with no health, rather than dressed up as one it is not.
+ */
+export function healthOf(status: string): Health | null {
+  return HEALTH[status] ?? null
+}
+
+export function statusWord(status: string): string {
+  const health = healthOf(status)
+  return health ? SAID[health] : status
+}
+
+/** Said beside the Candidate whose pid is `CLAUDE_PID` (spec §7). */
+export const STARTED_THIS_SERVER = 'started this server'
 
 /** A Target blocked on a permission prompt is named, not merely coloured. */
 export function blockedOnPermission(name: string): string {
@@ -44,17 +71,26 @@ export function goneAskingFor(gone: string, replacement: string): string {
   return `${gone} is gone. Send to ${replacement}?`
 }
 
+/** How long a Ready session has been idle: short on the row, whole in its title. */
+export interface IdleAge {
+  /** `3d`: set in tabular figures, so the ages line up down the Session list. */
+  short: string
+  /** `Idle for 3 days`. */
+  title: string
+}
+
 /**
- * *idle for Nd*, from `statusUpdatedAt` and never from `updatedAt`, which is not
- * a heartbeat (spec §14). Null below a day: a session that answered this morning
- * is not idle in the sense this phrase means.
+ * From `statusUpdatedAt` and never from `updatedAt`, which is not a heartbeat
+ * (spec §14). Null below a day: a session that answered this morning is not
+ * idle in the sense this label means.
  */
-export function idleFor(statusUpdatedAt: string | null, now: number): string | null {
+export function idleAge(statusUpdatedAt: string | null, now: number): IdleAge | null {
   if (!statusUpdatedAt) return null
   const since = Date.parse(statusUpdatedAt)
   if (Number.isNaN(since)) return null
   const days = Math.floor((now - since) / 86_400_000)
-  return days >= 1 ? `idle for ${days}d` : null
+  if (days < 1) return null
+  return { short: `${days}d`, title: `Idle for ${days} ${days === 1 ? 'day' : 'days'}` }
 }
 
 /** Spec §17's `sent`: the socket write succeeded, and nothing more is claimed. */

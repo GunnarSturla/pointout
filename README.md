@@ -55,9 +55,10 @@ v0 is better than the third group on four axes:
    forward has to arrive there (see [Loopback only](#loopback-only)).
 
 **There is a way to choose the session.** Click the Target row in the Panel's footer
-and it expands to every Candidate: each session's name, status, what it is waiting
-for, *idle for Nd* once a session has been idle a day or more, and a *started this
-dev server* badge. You will rarely need it, because a session is usually
+and it expands to the Session list, every Candidate with a coloured dot and a word
+for how it is doing: *Ready*, *Working* or *Needs you*, with what it is waiting for.
+A session idle a day or more shows its age, such as *3d*, and the one that started
+the dev server says *started this server*. You will rarely need it, because a session is usually
 preselected: the one you last chose, or the one that started the dev server.
 
 ## Requirements

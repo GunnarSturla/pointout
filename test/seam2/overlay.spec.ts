@@ -221,9 +221,9 @@ test('a click freezes the Highlight and opens the Panel beside the element, focu
   expect(clears).toBe(true)
 
   await expect(page.locator(NOTE)).toBeFocused()
-  // The collapsed Target row is `name` · `status` since ticket 10; the rest of
+  // The collapsed Target row is the name and the status word since overlay-polish 06; the rest of
   // what it can say lives in `targeting.spec.ts`.
-  await expect(page.locator(TARGET)).toHaveText(`${TARGET_NAME} · idle`)
+  await expect(page.locator(TARGET)).toHaveText(`${TARGET_NAME} Ready`)
 })
 
 test('Escape returns a picked Overlay to armed, and a second Escape turns picking off', async ({

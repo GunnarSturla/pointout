@@ -501,7 +501,7 @@ export const OVERLAY_STYLESHEET = `
   flex: 1;
   min-width: 0;
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: baseline;
   padding: 4px 6px;
   border: 0;
@@ -515,11 +515,53 @@ export const OVERLAY_STYLESHEET = `
 
 .target[data-expandable] { cursor: pointer }
 
-.target-line {
+/* The Target row reads dot, name (600), status word (muted), age (11 px):
+   separate elements, spaced by the row, with no glyph between them. What
+   can run long, here and in the Session list, shortens with an ellipsis. */
+.target-line,
+.target-name,
+.row-name,
+.row-waiting,
+.row-started {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.target-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.target-status { flex: none }
+
+/* A session's health (docs/overlay-design.md): an 8 px dot in its status
+   colour, always beside the word that says the same thing. Grey is a status
+   the Overlay has no word for. Under no-preference Working pulses and Needs
+   you rings, in the movement block below; here it holds still. */
+.dot {
+  position: relative;
+  flex: none;
+  align-self: center;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--idle);
+}
+
+.dot[data-status='ready'] { background-color: var(--ready) }
+.dot[data-status='working'] { background-color: var(--working) }
+.dot[data-status='needs'] { background-color: var(--needs) }
+
+/* The idle age: short, and in figures that line up down the Session list.
+   Its title says it in full. */
+.target-age,
+.row-age {
+  flex: none;
+  font: var(--type-small);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
 }
 
 .target-action {
@@ -528,10 +570,34 @@ export const OVERLAY_STYLESHEET = `
   font-weight: 600;
 }
 
+/* Blocked on a permission prompt, the row is a sentence and an imperative,
+   and the two do not fit one line beside Send: the imperative takes the second
+   line, under the sentence rather than under the dot, and the sentence wraps
+   rather than losing what the session is blocked on. Only this row wraps; the
+   others shorten the name instead. */
+.target:has(> .target-action) {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.target:has(> .target-action) > .target-line {
+  flex: 1 1 0;
+  white-space: normal;
+}
+
+.target:has(> .target-action) > .target-action {
+  flex-basis: 100%;
+  padding-inline-start: 16px;
+}
+
+/* The Session list. Its rows share one grid — dot | name | status | age or
+   what it waits for | the chosen mark — through \`subgrid\`, so the words
+   line up down the list. The first and last tracks are sized by content, not
+   fixed, because a subgrid row's own padding is laid into its edge tracks. */
 .targets {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: max-content fit-content(45%) max-content minmax(0, 1fr) max-content;
+  gap: 2px 8px;
   max-height: 180px;
   overflow-y: auto;
   border: 1px solid var(--line);
@@ -541,9 +607,9 @@ export const OVERLAY_STYLESHEET = `
 }
 
 .target-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: baseline;
   padding: 4px 8px;
   border: 0;
@@ -559,18 +625,38 @@ export const OVERLAY_STYLESHEET = `
   background-color: color-mix(in srgb, var(--accent) 12%, var(--surface));
 }
 
-.row-name { font-weight: 600 }
+.target-row > .dot { grid-column: 1 }
 
-.row-status,
-.row-idle,
-.row-waiting { color: var(--ink-muted) }
+.row-name {
+  grid-column: 2;
+  font-weight: 600;
+}
 
-.started-badge {
-  padding: 0 5px;
-  border: 1px solid var(--accent);
-  border-radius: 999px;
-  color: var(--accent);
+.row-status {
+  grid-column: 3;
+  color: var(--ink-muted);
+}
+
+.row-detail {
+  grid-column: 4;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+/* What it waits for, and who started this server: facts, in the small step,
+   and never chrome such as a pill. */
+.row-waiting,
+.row-started {
   font: var(--type-small);
+  color: var(--ink-muted);
+}
+
+.row-chosen {
+  grid-column: 5;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .empty {
@@ -882,6 +968,46 @@ ${each('')} {
   .countdown {
     transform: scaleX(var(--next, 1));
     transition: transform 1000ms linear;
+  }
+
+  /* A session's health, beside its word in the Target row and the Session
+     list. Quiet by default, loud only when it is waiting on the developer:
+     Working breathes, gently, and Needs you sends out two rings, one second
+     apart. Ready holds still. Under reduce neither moves, and the colour and
+     the word still say it. The pulse is a loop rather than an arrival, so it
+     eases in and out; a ring is something leaving, on the strong ease-out. */
+  .dot[data-status='working'] { animation: dot-working 2000ms ease-in-out infinite }
+
+  .dot[data-status='needs']::before,
+  .dot[data-status='needs']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1.5px solid var(--needs);
+    border-radius: 50%;
+    opacity: 0;
+    animation: dot-needs 2000ms cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  }
+
+  .dot[data-status='needs']::after { animation-delay: 1000ms }
+
+  @keyframes dot-working {
+    50% {
+      opacity: 0.5;
+      scale: 0.8;
+    }
+  }
+
+  @keyframes dot-needs {
+    from {
+      opacity: 0.8;
+      scale: 1;
+    }
+
+    to {
+      opacity: 0;
+      scale: 2.25;
+    }
   }
 }
 `

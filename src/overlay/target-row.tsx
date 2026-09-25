@@ -10,9 +10,6 @@ import type { Sessions } from './client.js'
 import { partProps } from './root.js'
 import * as words from './words.js'
 
-/** The badge on the `CLAUDE_PID` match (spec §7). */
-const STARTED_THIS_SERVER = 'started this dev server'
-
 /** The re-resolve question standing in place of the Send row (spec §14). */
 export interface Offer {
   /** The Target that left, by name. Null when it was never named. */
@@ -93,22 +90,32 @@ function line({
   if (!chosen) return said(words.CHOOSE_A_SESSION)
 
   const live = candidates.find((candidate) => candidate.sessionId === chosen.sessionId)
-  if (live?.status === 'waiting') {
+  if (!live) return said(chosen.name)
+  const health = words.healthOf(live.status)
+  if (health === 'needs') {
     return (
       <>
-        {said(words.blockedOnPermission(live.name))}
+        <Dot health={health} />
+        {said(words.blockedOnPermission(live.name))}{' '}
         <span {...partProps('target-action')}>{words.APPROVE_IN_TERMINAL}</span>
       </>
     )
   }
-  return said(
-    live
-      ? words.targetLine(
-          live.name,
-          statusOf(live, sessions.readAt),
-          live.waitingFor ?? undefined,
-        )
-      : chosen.name,
+  const age = idleAgeOf(live, sessions.readAt)
+  // Separate elements, spaced by the row rather than by a glyph between them.
+  // The spaces between them are for what reads the row aloud, and are not drawn.
+  return (
+    <>
+      <Dot health={health} />
+      <span {...partProps('target-name')}>{live.name}</span>{' '}
+      <span {...partProps('target-status')}>{words.statusWord(live.status)}</span>
+      {age && (
+        <>
+          {' '}
+          <Age part="target-age" age={age} />
+        </>
+      )}
+    </>
   )
 }
 
@@ -127,24 +134,34 @@ export const TargetChoices = memo(function TargetChoices({
   return (
     <div {...partProps('targets')}>
       {candidates.map((candidate) => {
-        const stale = words.idleFor(candidate.statusUpdatedAt, readAt)
+        const age = idleAgeOf(candidate, readAt)
+        const isChosen = candidate.sessionId === chosen?.sessionId
         return (
           <button
             type="button"
             key={candidate.sessionId}
             {...partProps('target-row')}
-            data-chosen={candidate.sessionId === chosen?.sessionId ? '' : undefined}
+            data-chosen={isChosen ? '' : undefined}
+            aria-current={isChosen ? 'true' : undefined}
             onClick={() => onChoose(candidate)}
           >
-            <span {...partProps('row-name')}>{candidate.name}</span>
-            <span {...partProps('row-status')}>{candidate.status}</span>
-            {stale && <span {...partProps('row-idle')}>{stale}</span>}
-            {/* A `waiting` Candidate is flagged, never skipped (spec §14). */}
-            {candidate.waitingFor && (
-              <span {...partProps('row-waiting')}>{candidate.waitingFor}</span>
-            )}
-            {candidate.startedThisServer && (
-              <span {...partProps('started-badge')}>{STARTED_THIS_SERVER}</span>
+            <Dot health={words.healthOf(candidate.status)} />
+            <span {...partProps('row-name')}>{candidate.name}</span>{' '}
+            <span {...partProps('row-status')}>{words.statusWord(candidate.status)}</span>{' '}
+            <span {...partProps('row-detail')}>
+              {age && <Age part="row-age" age={age} />}{' '}
+              {/* A `waiting` Candidate is flagged, never skipped (spec §14). */}
+              {candidate.waitingFor && (
+                <span {...partProps('row-waiting')}>{candidate.waitingFor}</span>
+              )}{' '}
+              {candidate.startedThisServer && (
+                <span {...partProps('row-started')}>{words.STARTED_THIS_SERVER}</span>
+              )}
+            </span>
+            {isChosen && (
+              <span {...partProps('row-chosen')} aria-hidden="true">
+                ✓
+              </span>
             )}
           </button>
         )
@@ -153,8 +170,30 @@ export const TargetChoices = memo(function TargetChoices({
   )
 })
 
-/** *idle for Nd* stands in for the status word only where it can be true. */
-function statusOf(candidate: Candidate, readAt: number): string {
-  if (candidate.status !== 'idle') return candidate.status
-  return words.idleFor(candidate.statusUpdatedAt, readAt) ?? candidate.status
+/**
+ * A Candidate's health as a dot: green, amber or red. A status the Overlay has
+ * no word for is grey, the colour that claims nothing, beside the harness's own
+ * word for it. The dot is never the only signal, so it is hidden from what
+ * reads the row aloud: the word beside it says the same.
+ */
+function Dot({ health }: { health: words.Health | null }) {
+  return (
+    <span {...partProps('dot')} data-status={health ?? undefined} aria-hidden="true" />
+  )
+}
+
+/** `3d`, and in its title `Idle for 3 days`. */
+function Age({ part, age }: { part: string; age: words.IdleAge }) {
+  return (
+    <span {...partProps(part)} title={age.title}>
+      {age.short}
+    </span>
+  )
+}
+
+/** The idle age follows Ready only: a long spell in any other state is not idleness. */
+function idleAgeOf(candidate: Candidate, readAt: number): words.IdleAge | null {
+  return words.healthOf(candidate.status) === 'ready'
+    ? words.idleAge(candidate.statusUpdatedAt, readAt)
+    : null
 }

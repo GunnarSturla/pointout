@@ -181,7 +181,7 @@ export interface Candidate {
   name: string
   status: string
   waitingFor: string | null
-  /** Where *idle for Nd* comes from. Never `updatedAt`, which is not a heartbeat. */
+  /** Where the idle age (*3d*) comes from. Never `updatedAt`, which is not a heartbeat. */
   statusUpdatedAt: string | null
   pid: number
   sessionId: string
