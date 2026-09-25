@@ -496,6 +496,93 @@ test('the Picker holds its position while a Pick is outstanding', async ({ page 
   expect(out.y + out.height).toBeLessThanOrEqual(seen.height + 1)
 })
 
+test.describe('the armed Picker', () => {
+  // `docs/overlay-design.md`: the armed Picker is the Overlay's one solid blue
+  // control, `--accent-strong`, with white words on it (4.84:1).
+  const ARMED_FILL = 'rgb(58, 102, 240)'
+  const ON_FILL = 'rgb(255, 255, 255)'
+
+  /** How wide the "ing…" that turns "Pick" into "Picking…" is drawn. */
+  async function tailWidth(page: Page): Promise<number> {
+    return (await boxOf(page, '[data-part="picker-tail"]')).width
+  }
+
+  /** Arm, then take the pointer off the Picker so no hover tint is read. */
+  async function armAndLeave(page: Page): Promise<void> {
+    await arm(page)
+    await page.mouse.move(4, 4)
+  }
+
+  test('says it is picking, in the fill, and lifts off the edge', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await open(page, probe('armed'))
+    const picker = page.locator(PICKER)
+    await expect(picker).toHaveAccessibleName('Pick')
+    expect(await tailWidth(page)).toBe(0)
+
+    await armAndLeave(page)
+
+    // The name, and the words on show: the tail is drawn, not only named.
+    await expect(picker).toHaveAccessibleName('Picking…')
+    await expect.poll(() => tailWidth(page)).toBeGreaterThan(10)
+    await expect(picker).toHaveCSS('background-color', ARMED_FILL)
+    await expect(picker).toHaveCSS('color', ON_FILL)
+    // Lifted 2 px off the viewport's bottom edge. The Picker is out, held there
+    // by being armed, so its resting place is flush with that edge (the
+    // reduce journey below measures it there).
+    const seen = await viewport(page)
+    await expect
+      .poll(async () => {
+        const box = await boxOf(page, PICKER)
+        return Math.round(seen.height - (box.y + box.height))
+      })
+      .toBe(2)
+  })
+
+  test('does not lift for a developer who asked for less motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await open(page, probe('armed-reduce'))
+    const picker = page.locator(PICKER)
+
+    await armAndLeave(page)
+
+    // The fill and the words still change: a colour is a fade, not a move.
+    await expect(picker).toHaveAccessibleName('Picking…')
+    expect(await tailWidth(page)).toBeGreaterThan(10)
+    await expect(picker).toHaveCSS('background-color', ARMED_FILL)
+    const seen = await viewport(page)
+    const box = await boxOf(page, PICKER)
+    expect(Math.round(seen.height - (box.y + box.height))).toBe(0)
+  })
+})
+
+test('the way back to a Panel appears beside the Picker without moving it', async ({
+  page,
+}) => {
+  // Geometry, not motion: the Picker was lifted while armed, and under reduce
+  // it is back on the edge at once rather than easing down while measured.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await open(page, probe('way-back'))
+  await arm(page)
+  await pick(page, PICKED)
+
+  const centreX = async () => {
+    const box = await boxOf(page, PICKER)
+    return box.x + box.width / 2
+  }
+  const before = await centreX()
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+  await expect(page.locator(BACK)).toBeVisible()
+
+  // Out of flow, to the Picker's right: the Picker stays bottom-centre.
+  expect(await centreX()).toBe(before)
+  const back = await boxOf(page, BACK)
+  const picker = await boxOf(page, PICKER)
+  expect(back.x).toBeGreaterThanOrEqual(picker.x + picker.width)
+  expect(Math.round(back.y + back.height)).toBe(Math.round(picker.y + picker.height))
+})
+
 test.describe('the reveal', () => {
   test('animates for a developer who has not asked for less of it', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'no-preference' })

@@ -279,6 +279,16 @@ async function watchShutter(page: Page): Promise<void> {
   }, HOST)
 }
 
+/**
+ * The Picker's own lines taken out. A Pick disarms the Picker, so its colours,
+ * its lift and its width change on the same click that closes the shutter
+ * (overlay-polish ticket 04). That is the Picker saying it is no longer armed,
+ * not the shutter hiding it, and it is read on its own where it matters.
+ */
+function apartFromPicker(sequence: string[]): string[] {
+  return sequence.filter((line) => !/^eased picker(-tail)? /.test(line))
+}
+
 async function shutterSeen(page: Page): Promise<Seen[]> {
   return page.evaluate(
     () => (window as unknown as { seenShutter?: Seen[] }).seenShutter ?? [],
@@ -540,7 +550,7 @@ test.describe('the shutter', () => {
       await context.close()
     }
 
-    const [first, ...rest] = runs.map(sequenceOf)
+    const [first, ...rest] = runs.map((run) => apartFromPicker(sequenceOf(run)))
     // Closed with the fill and the chip gone at once and the outline left on,
     // opened, and the two eased back in — and exactly that, in the same order,
     // in every run. The Picker never leaves; no Pick is outstanding, so there
@@ -613,10 +623,13 @@ test.describe('the shutter', () => {
       picker: 'shown',
       stack: 'shown',
     })
+    // Nothing of either fades out. The Picker does change on this click — it is
+    // disarmed, so its fill and its words change — but it never goes.
     const eased = sequenceOf(await shutterSeen(page)).filter((line) =>
       line.startsWith('eased'),
     )
-    expect(eased.filter((line) => /picker|stack/.test(line))).toEqual([])
+    expect(eased.filter((line) => /(picker|stack)\S* opacity$/.test(line))).toEqual([])
+    expect(eased.filter((line) => line.startsWith('eased stack'))).toEqual([])
   })
 })
 
@@ -646,7 +659,8 @@ test.describe('the shutter under reduced motion', () => {
     // Closed at once, opened, and faded back in — a fade is not movement, so it
     // is the one thing that eases for a developer who asked for less motion
     // (the review-animations gate). Nothing else did.
-    const sequence = sequenceOf(await shutterSeen(page))
+    const seen = sequenceOf(await shutterSeen(page))
+    const sequence = apartFromPicker(seen)
     expect(sequence.slice(0, 2)).toEqual([
       'closed, outline shown, fill hidden, chip hidden, picker shown, stack none',
       'opened, outline shown',
@@ -655,6 +669,11 @@ test.describe('the shutter under reduced motion', () => {
     expect(sequence).toContain('eased chip opacity')
     for (const entry of sequence.filter((line) => line.startsWith('eased'))) {
       expect(entry).toMatch(/ (opacity|background-color)$/)
+    }
+    // The Picker, disarmed by this Pick, only fades too: it does not come down
+    // from a lift it never made, and its width snaps.
+    for (const entry of seen.filter((line) => line.startsWith('eased picker'))) {
+      expect(entry).toMatch(/ (color|background-color|border-\w+-color)$/)
     }
     expect(await onScreen(page)).toEqual({
       outline: 'shown',

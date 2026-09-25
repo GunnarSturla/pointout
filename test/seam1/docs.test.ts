@@ -17,18 +17,47 @@ describe('LICENSE-THIRDPARTY', () => {
   })
 
   it('credits every file that carries a provenance header', () => {
-    const credits = read('LICENSE-THIRDPARTY')
     const borrows = borrowingFiles()
 
     // The header credits and the entry carries the licence the credit stands
     // on; a borrow that does only one of them is not finished.
     expect(borrows.length).toBeGreaterThan(0)
-    for (const borrow of borrows) {
-      expect(credits).toContain(`## ${borrow.project}`)
-      expect(credits).toContain(borrow.url)
-      expect(credits).toContain(borrow.version)
-      expect(credits).toContain(borrow.file)
+    expect(uncredited(borrows, read('LICENSE-THIRDPARTY'))).toEqual([])
+  })
+
+  it('fails an icon header that no entry credits', () => {
+    // The check above, held against a header rather than against today's
+    // files, so that it is known to bite. A second icon set is not credited by
+    // the first one's entry; and a credited set's entry names each file that
+    // holds its artwork, so a new file of it needs its path added there.
+    const credits = read('LICENSE-THIRDPARTY')
+    const header = (file: string, from: string, version: string): Borrow => {
+      const borrow = headerOf(
+        file,
+        [
+          '// Borrowed: icon artwork',
+          `// From: ${from}`,
+          `// Version: ${version} (2026-09-25)`,
+          '// License: MIT — full text in LICENSE-THIRDPARTY',
+          '// Changes: none',
+          '',
+          "const PATH = 'M0 0Z'",
+        ].join('\n'),
+      )
+      if (!borrow) throw new Error(`${file}: the header was not read`)
+      return borrow
     }
+    const feather = header(
+      'src/overlay/other-icons.tsx',
+      'Feather — https://github.com/feathericons/feather',
+      'v4.29.2',
+    )
+    const remix = (file: string) =>
+      header(file, 'Remix Icon — https://github.com/Remix-Design/remixicon', '4.9.1')
+
+    expect(uncredited([feather], credits)).toHaveLength(1)
+    expect(uncredited([remix('src/overlay/other-icons.tsx')], credits)).toHaveLength(1)
+    expect(uncredited([remix('src/overlay/icons.tsx')], credits)).toEqual([])
   })
 
   it('has each borrowing file say where the borrow ends', () => {
@@ -37,16 +66,24 @@ describe('LICENSE-THIRDPARTY', () => {
     }
   })
 
-  it('enters the five projects the spec plans to borrow from, and no other', () => {
-    // Spec §1 names five, and nothing else is vendored. Written out rather than
-    // read off the provenance doc: the list is the contract.
-    expect(thirdPartyEntries().map((entry) => entry.project)).toEqual([
+  it('enters the five projects the spec plans to borrow code from, and icon sets', () => {
+    // Spec §1 names five code borrows, and nothing else is vendored. Written out
+    // rather than read off the provenance doc: the list is the contract. Icon
+    // artwork is the one other thing that may be taken, credited once per set
+    // and marked as a set (docs/agents/provenance.md).
+    const entries = thirdPartyEntries()
+    expect(
+      entries.filter((entry) => !entry.iconSet).map((entry) => entry.project),
+    ).toEqual([
       'vite-plugin-herdr',
       'React DevTools',
       'react-grab',
       'click-to-react-component',
       'UI-Locator',
     ])
+    expect(
+      entries.filter((entry) => entry.iconSet).map((entry) => entry.project),
+    ).toEqual(['Remix Icon'])
   })
 
   it('carries a full licence text in every entry, not a name or a link', () => {
@@ -54,10 +91,18 @@ describe('LICENSE-THIRDPARTY', () => {
       for (const field of ['Source:', 'Version:', 'Used in:', 'Taken:']) {
         expect(entry.text, `${entry.project} has no ${field}`).toContain(field)
       }
-      expect(entry.text, `${entry.project} has no MIT text`).toMatch(/^MIT License$/m)
       expect(entry.text, `${entry.project} has no copyright line`).toMatch(
         /^Copyright \(c\) /m,
       )
+      expect(entry.flowed, `${entry.project} has no warranty disclaimer`).toMatch(
+        /PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND/,
+      )
+    }
+  })
+
+  it('carries the MIT text in every code borrow', () => {
+    for (const entry of thirdPartyEntries().filter((candidate) => !candidate.iconSet)) {
+      expect(entry.text, `${entry.project} has no MIT text`).toMatch(/^MIT License$/m)
       expect(entry.flowed, `${entry.project} has no permission notice`).toContain(
         'The above copyright notice and this permission notice shall be included in ' +
           'all copies or substantial portions of the Software.',
@@ -65,6 +110,21 @@ describe('LICENSE-THIRDPARTY', () => {
       expect(entry.flowed, `${entry.project} has no warranty disclaimer`).toContain(
         'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND',
       )
+    }
+  })
+
+  it("carries each icon set's own licence, under the name its headers give it", () => {
+    const borrows = borrowingFiles()
+    for (const entry of thirdPartyEntries().filter((candidate) => candidate.iconSet)) {
+      const names = borrows
+        .filter((borrow) => borrow.project === entry.project)
+        .map((borrow) => borrow.licence)
+      expect(names.length, `${entry.project} is credited by no header`).toBeGreaterThan(0)
+      for (const name of names) {
+        expect(entry.text.split('\n'), `${entry.project} has no ${name} text`).toContain(
+          name,
+        )
+      }
     }
   })
 
@@ -118,6 +178,8 @@ interface ThirdPartyEntry {
   text: string
   /** The same text with its line breaks taken out. */
   flowed: string
+  /** Marked `Kind: icon set`: icon artwork, credited once for the whole set. */
+  iconSet: boolean
 }
 
 function thirdPartyEntries(): ThirdPartyEntry[] {
@@ -137,8 +199,25 @@ function thirdPartyEntries(): ThirdPartyEntry[] {
           .filter(Boolean),
         text,
         flowed: text.replaceAll(/\s+/g, ' '),
+        iconSet: /^Kind:\s*icon set$/m.test(text),
       }
     })
+}
+
+/**
+ * Each borrow whose header the licence file does not answer: an entry for its
+ * project, with its url and version, naming its file. One line per borrow.
+ */
+function uncredited(borrows: Borrow[], credits: string): string[] {
+  return borrows
+    .filter(
+      (borrow) =>
+        !credits.includes(`## ${borrow.project}`) ||
+        !credits.includes(borrow.url) ||
+        !credits.includes(borrow.version) ||
+        !credits.includes(borrow.file),
+    )
+    .map((borrow) => `${borrow.file} (${borrow.project})`)
 }
 
 /** One borrow, as its file's header states it. */
@@ -147,6 +226,26 @@ interface Borrow {
   project: string
   url: string
   version: string
+  /** The `License:` field's name, before its pointer to LICENSE-THIRDPARTY. */
+  licence: string
+}
+
+/** The borrow a file's provenance header states, or none if it opens with none. */
+function headerOf(file: string, source: string): Borrow | undefined {
+  const lines = source.split('\n')
+  if (!lines[0]?.startsWith('// Borrowed:')) return undefined
+  const field = (name: string) =>
+    (lines.find((line) => line.startsWith(`// ${name}:`)) ?? '')
+      .replace(`// ${name}:`, '')
+      .trim()
+  const [project = '', url = ''] = field('From').split('—')
+  return {
+    file,
+    project: project.trim(),
+    url: url.trim(),
+    version: (field('Version').split('(')[0] ?? '').trim(),
+    licence: (field('License').split('—')[0] ?? '').trim(),
+  }
 }
 
 /**
@@ -161,19 +260,8 @@ function borrowingFiles(): Borrow[] {
       const path = `${dir}/${entry.name}`
       if (entry.isDirectory()) walk(path)
       else if (/\.(ts|tsx|cts|mts|js|jsx|cjs|mjs)$/.test(entry.name)) {
-        const lines = read(path).split('\n')
-        if (!lines[0]?.startsWith('// Borrowed:')) continue
-        const field = (name: string) =>
-          (lines.find((line) => line.startsWith(`// ${name}:`)) ?? '')
-            .replace(`// ${name}:`, '')
-            .trim()
-        const [project = '', url = ''] = field('From').split('—')
-        found.push({
-          file: path,
-          project: project.trim(),
-          url: url.trim(),
-          version: (field('Version').split('(')[0] ?? '').trim(),
-        })
+        const borrow = headerOf(path, read(path))
+        if (borrow) found.push(borrow)
       }
     }
   }

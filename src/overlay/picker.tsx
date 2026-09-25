@@ -10,15 +10,31 @@
 // How far it may tuck is bounded by its own hitbox: the tuck keeps the button's
 // own centre inside the viewport, so the thing a developer aims at is the thing
 // they hit. That is the same rule as "never a flush tuck behind an invisible
-// hitbox", counted in pixels. The 220 ms reveal lives in `styles.ts`, inside the
-// one `prefers-reduced-motion: no-preference` block; under reduce it is instant.
+// hitbox", counted in pixels. How it comes out is the stylesheet's business
+// (`styles.ts`), and so is everything else it does with its shape.
+//
+// Armed, it says so in words and in colour: **Picking…** on the one solid blue
+// control in the Overlay. The label is written as "Pick" and a tail, "ing…",
+// that is always there and is zero wide until the Picker is armed; `styles.ts`
+// says why. The two parts are separate boxes, which an accessible name would
+// read as two words, so the button is named outright with the word on show.
+//
+// "Back to your pick" hangs off the Picker's right edge rather than sitting
+// beside it in the row, so appearing never pushes the Picker off centre.
 
 import { memo } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
+import { CrosshairIcon } from './icons.js'
 import { partProps } from './root.js'
 
 /** Spec §8: the Picker arms the selection, and says so. */
 const PICK = 'Pick'
+
+/** What turns "Pick" into "Picking…" while armed. */
+const PICKING_TAIL = 'ing…'
+
+/** The Picker's word while armed: it is picking now, and a click stops it. */
+const PICKING = `${PICK}${PICKING_TAIL}`
 
 /**
  * The way back to a Panel that has ridden off-screen with its element (spec §7,
@@ -49,19 +65,26 @@ export const Picker = memo(function Picker({
 }: PickerProps) {
   return (
     <div {...partProps('picker-peek')} data-out={held ? '' : undefined}>
-      {wayBack && (
-        <button type="button" {...partProps('picker-back')} onClick={then(onBack)}>
-          {BACK}
+      <div className="picker-anchor">
+        <button
+          type="button"
+          {...partProps('picker')}
+          data-armed={armed ? '' : undefined}
+          aria-label={armed ? PICKING : PICK}
+          onClick={then(onToggle)}
+        >
+          <CrosshairIcon />
+          <span className="picker-label">
+            {PICK}
+            <span {...partProps('picker-tail')}>{PICKING_TAIL}</span>
+          </span>
         </button>
-      )}
-      <button
-        type="button"
-        {...partProps('picker')}
-        data-armed={armed ? '' : undefined}
-        onClick={then(onToggle)}
-      >
-        {PICK}
-      </button>
+        {wayBack && (
+          <button type="button" {...partProps('picker-back')} onClick={then(onBack)}>
+            {BACK}
+          </button>
+        )}
+      </div>
     </div>
   )
 })

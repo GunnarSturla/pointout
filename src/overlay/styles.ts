@@ -23,6 +23,59 @@ const FONT = "13px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans
 export const OVERLAY_STYLESHEET = `
 :host { all: initial }
 
+/* The design tokens (docs/overlay-design.md), for the whole Overlay. Each
+   colour has a light and a dark value, chosen by the host's own
+   \`color-scheme: light dark\`. Tints are mixed from these with \`color-mix\`,
+   never written as new hex values. \`all: initial\` leaves custom properties
+   alone, so they are set on the host after it. */
+:host {
+  --surface: light-dark(#ffffff, #1e2026);
+  --surface-sunken: light-dark(#f3f4f7, #17181d);
+  --ink: light-dark(#1b1d22, #e6e8ee);
+  --ink-muted: light-dark(#5b606b, #a3a8b3);
+  --line: light-dark(#d6d9e0, #3a3d46);
+  --line-strong: light-dark(#8c919b, #6f7480);
+  /* Blue means the pick: the Highlight, the focus ring, the chosen row. The
+     dark value is for the ring and accent text only; the Highlight itself
+     stays #4f7cff in both schemes. */
+  --accent: light-dark(#4f7cff, #6f95ff);
+  /* The armed Picker's fill, the one solid blue control: white on it is
+     4.84:1, where #4f7cff would be 3.71. */
+  --accent-strong: #3a66f0;
+  --on-accent: #ffffff;
+  --ready: light-dark(#1f8a4c, #3fbf73);
+  --working: light-dark(#b06f00, #e0a526);
+  --needs: light-dark(#c8322b, #f06a60);
+  --idle: light-dark(#7a7f8a, #8a909c);
+
+  --font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* The three steps of the type scale, in px so the page's root size cannot
+     leak in. Two weights only: 400, and 600 for names and button labels. */
+  --type-note: 13px/18px var(--font-family);
+  --type-ui: 12px/16px var(--font-family);
+  --type-small: 11px/14px var(--font-family);
+}
+
+/* Forced colours: every token becomes the system colour for its role, so the
+   Overlay does what the operating system says. */
+@media (forced-colors: active) {
+  :host {
+    --surface: Canvas;
+    --surface-sunken: Canvas;
+    --ink: CanvasText;
+    --ink-muted: CanvasText;
+    --line: CanvasText;
+    --line-strong: CanvasText;
+    --accent: Highlight;
+    --accent-strong: Highlight;
+    --on-accent: HighlightText;
+    --ready: CanvasText;
+    --working: CanvasText;
+    --needs: CanvasText;
+    --idle: GrayText;
+  }
+}
+
 *, *::before, *::after { box-sizing: border-box }
 
 /* The shield: raised instead of the armed rule on a page too dense to restyle
@@ -158,25 +211,100 @@ export const OVERLAY_STYLESHEET = `
   .picker-peek:hover { translate: 0 0 }
 }
 
+/* The Picker's row is centred on the Picker alone: "Back to your pick" hangs
+   off its right edge, out of flow, so it never pushes the Picker off centre. */
+.picker-anchor { position: relative }
+
+/* An edge tab (docs/overlay-design.md): attached to the viewport's bottom,
+   so its bottom is square and it has no shadow. */
 .picker,
 .picker-back {
   pointer-events: auto;
-  padding: 10px 12px;
-  border: 1px solid rgb(127 127 127 / 45%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* The bottom padding is the peek's 13 px and a little more, so a tucked
+     Picker still shows its whole icon and label. */
+  padding: 8px 12px 14px;
+  border: 1px solid var(--line);
   border-block-end: 0;
-  border-radius: 999px 999px 0 0;
-  background: Canvas;
-  color: CanvasText;
-  font: 500 11px/1.4 ui-sans-serif, system-ui, sans-serif;
-  text-align: center;
+  border-radius: 6px 6px 0 0;
+  background-color: var(--surface);
+  color: var(--ink);
+  font: 600 var(--type-ui);
+  white-space: nowrap;
   cursor: pointer;
+  transform-origin: 50% 100%;
 }
 
-.picker { width: 72px }
+.picker { justify-content: center }
 
+.picker-back {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: calc(100% + 6px);
+}
+
+.icon { flex: none }
+
+/* "ing…", zero wide until the Picker is armed. It is always in the Picker
+   rather than swapped in with the word, because a width can only ease between
+   two values the element has: from zero to its own width, here, where the
+   movement block below lets \`interpolate-size\` ease it. */
+.picker-tail {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  width: 0;
+}
+
+.picker[data-armed] .picker-tail { width: auto }
+
+/* Armed: the one solid blue control. Its border turns the fill's colour, so
+   the two merge. */
 .picker[data-armed] {
-  border-color: #4f7cff;
-  color: #4f7cff;
+  border-color: var(--accent-strong);
+  background-color: var(--accent-strong);
+  color: var(--on-accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .picker:hover,
+  .picker-back:hover {
+    background-color: color-mix(in srgb, var(--ink) 6%, var(--surface));
+  }
+
+  .picker[data-armed]:hover {
+    border-color: color-mix(in srgb, var(--accent-strong) 88%, black);
+    background-color: color-mix(in srgb, var(--accent-strong) 88%, black);
+  }
+}
+
+.picker:active,
+.picker-back:active {
+  background-color: color-mix(in srgb, var(--ink) 12%, var(--surface));
+}
+
+.picker[data-armed]:active {
+  border-color: color-mix(in srgb, var(--accent-strong) 78%, black);
+  background-color: color-mix(in srgb, var(--accent-strong) 78%, black);
+}
+
+/* The ring sits on a band of surface that fills its offset, so it is always
+   read against the surface (3.71 light, 5.75 dark), over the page or over the
+   blue fill alike. */
+.picker:focus-visible,
+.picker-back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+/* Under forced colours the system would repaint the fill as a plain button;
+   the armed Picker keeps its highlight colours instead, so armed still looks
+   different from not. */
+@media (forced-colors: active) {
+  .picker[data-armed] { forced-color-adjust: none }
 }
 
 /* The Stack (spec §8): bottom-right, and only while something is outstanding. */
@@ -516,6 +644,15 @@ export const OVERLAY_STYLESHEET = `
 
 .chip { transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1) }
 
+/* The Picker's colours: armed and back, hovered and pressed. */
+.picker,
+.picker-back {
+  transition:
+    color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    background-color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    border-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 /* The box is being placed rather than moved — a first appearance, or the
    element it is already on measured again after a scroll, a resize or a hot
    update. Neither is travel, and neither may animate. */
@@ -572,6 +709,33 @@ export const OVERLAY_STYLESHEET = `
      Under reduce it still moves between exactly these two positions — it
      arrives at once, which is the whole difference. */
   .picker-peek { transition: translate 180ms cubic-bezier(0.23, 1, 0.32, 1) }
+
+  /* Armed, the Picker lifts 2 px off the edge, on the reveal's timing. A press
+     presses it in, from its bottom edge. Its colours are restated because this
+     list replaces the fades above. */
+  .picker,
+  .picker-back {
+    transition:
+      translate 180ms cubic-bezier(0.23, 1, 0.32, 1),
+      scale 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      background-color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      border-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .picker[data-armed] { translate: 0 -2px }
+
+  .picker:active,
+  .picker-back:active { scale: 0.97 }
+
+  /* "Pick" widening to "Picking…": the tail eases from zero to its own width.
+     \`interpolate-size\` lets a width ease to \`auto\` where the engine has it;
+     elsewhere the width snaps, and nothing stands in for it in script. */
+  .picker {
+    interpolate-size: allow-keywords;
+  }
+
+  .picker-tail { transition: width 180ms cubic-bezier(0.23, 1, 0.32, 1) }
 
   /* The report-back countdown (spec §8, story 47): script sets where the line
      will be one step from now as --next, and it eases linearly across that

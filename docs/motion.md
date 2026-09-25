@@ -41,6 +41,10 @@ that did.
 | the live mark let go of (Alt released), and the old mark an Alt-click leaves behind | 120 ms, `opacity` to 0, where it stood, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
 | the open Pick's mark dropping to rest while the live mark shows, and relighting | 120 ms, `background-color` + `outline-color`, and the chip's `opacity`, `cubic-bezier(0.23, 1, 0.32, 1)`; the outline's width snaps | every developer |
 | the Picker's reveal out of its peek | 180 ms, `translate`, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
+| the Picker lifting 2 px off the edge while armed, and back down | 180 ms, `translate`, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only; under reduce it never lifts |
+| the Picker widening from "Pick" to "Picking…" and back | 180 ms, `width` of the label's tail, from `0` to `auto` through `interpolate-size: allow-keywords`, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only, and only where the engine has `interpolate-size`; elsewhere it snaps, with no script fallback |
+| the Picker and "Back to your pick" pressed | 120 ms, `scale` to 0.97, from the bottom edge, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
+| the Picker's colours: armed, hovered, pressed | 120 ms, `background-color` + `border-color` + `color`, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
 | the Screen Capture shutter reopening — the Highlight's fill and its chip | 120 ms, `background-color` and the chip's `opacity`, from nothing, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
 | the report-back countdown line, each one-second step | 1000 ms, `transform` (`scaleX`), linear | no-preference only |
 
