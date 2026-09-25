@@ -37,9 +37,7 @@ export async function takeSeam2Lock(
     const owner = ownerOf()
     if (owner === process.pid) break
     if (owner !== undefined && !alive(owner)) {
-      // Taken over: its owner is gone, and nothing will ever release it. A
-      // lock with no readable pid is one being written, never one to remove.
-      if (ownerOf() === owner) rmSync(SEAM2_LOCK_DIR, { recursive: true, force: true })
+      takeOver(owner)
       continue
     }
 
@@ -64,8 +62,9 @@ export async function takeSeam2Lock(
     process.off('exit', release)
     // Only ever our own: a lock that was taken over after this process was
     // thought dead belongs to whoever took it.
-    if (ownerOf() === process.pid)
-      rmSync(SEAM2_LOCK_DIR, { recursive: true, force: true })
+    if (ownerOf() !== process.pid) return
+    const aside = moveAside()
+    if (aside !== undefined) rmSync(aside, { recursive: true, force: true })
   }
   process.on('exit', release)
   return release
@@ -86,9 +85,47 @@ function tryTake(): boolean {
   }
 }
 
-function ownerOf(): number | undefined {
+/**
+ * Clear a lock whose owner is gone, and nothing will ever release it. It is
+ * renamed aside first, which only one waiter can do, and removed only if what
+ * was renamed is still the dead owner's: two waiters that both saw it dead can
+ * never remove the lock the faster one has just taken. If the rename caught a
+ * live lock instead, it is put back; if even that loses a race, it is left
+ * aside, never removed.
+ */
+function takeOver(dead: number): void {
+  const aside = moveAside()
+  if (aside === undefined) return // Someone else moved it first.
+  if (ownerOf(aside) === dead) {
+    rmSync(aside, { recursive: true, force: true })
+    return
+  }
   try {
-    const pid = Number(readFileSync(join(SEAM2_LOCK_DIR, 'pid'), 'utf8').trim())
+    renameSync(aside, SEAM2_LOCK_DIR)
+  } catch {
+    // Taken again in between; the aside copy is inert.
+  }
+}
+
+/**
+ * Rename the lock out of its place and answer where it went. Removing it in
+ * place would empty the directory before removing it, and a rename onto an
+ * empty directory succeeds, so a lock taken in that moment would be removed
+ * with it.
+ */
+function moveAside(): string | undefined {
+  const aside = `${SEAM2_LOCK_DIR}.aside-${process.pid}-${Date.now()}`
+  try {
+    renameSync(SEAM2_LOCK_DIR, aside)
+    return aside
+  } catch {
+    return undefined
+  }
+}
+
+function ownerOf(lock: string = SEAM2_LOCK_DIR): number | undefined {
+  try {
+    const pid = Number(readFileSync(join(lock, 'pid'), 'utf8').trim())
     return Number.isInteger(pid) && pid > 0 ? pid : undefined
   } catch {
     return undefined

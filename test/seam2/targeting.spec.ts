@@ -98,6 +98,16 @@ function probe(name: string): string {
   return `${name}-${Math.random().toString(16).slice(2)}`
 }
 
+/**
+ * One real round trip from the page, after moving its clock. A request a timer
+ * fired inside `runFor` reaches this process's `request` listeners before the
+ * answer to a request the page made later, so a "nothing was read" checked after
+ * this is not checked too early.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(() => fetch('/?settle').then((response) => response.text()))
+}
+
 async function open(page: Page, token: string): Promise<void> {
   await page.goto(`/?probe=${token}`)
   await expect(page.locator(PICKER)).toBeVisible()
@@ -458,6 +468,7 @@ test('sessions are read only while the Panel is open', async ({ page }) => {
 
   // An idle page reads nothing at all (spec §14).
   await page.clock.runFor(5000)
+  await settle(page)
   expect(reads).toBe(0)
 
   await pick(page)
@@ -468,5 +479,6 @@ test('sessions are read only while the Panel is open', async ({ page }) => {
   await expect(page.locator(PANEL)).toHaveCount(0)
   const afterClosing = reads
   await page.clock.runFor(3000)
+  await settle(page)
   expect(reads).toBe(afterClosing)
 })

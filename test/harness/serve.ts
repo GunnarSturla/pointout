@@ -6,6 +6,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { startExampleServer } from './dev-server.js'
 import { repoRoot } from './paths.js'
+import { clearHotUpdateLock } from './hot-update-lock.js'
 import { takeSeam2Lock } from './seam2-lock.js'
 import { listeningSession } from './session-socket.js'
 
@@ -58,6 +59,8 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
   // Before anything is booted: a second full seam 2 on this machine waits for
   // the first, whatever port it was given (seam2-lock.ts).
   const releaseLock = await takeSeam2Lock()
+  // Held now, so nothing else can be using it: only a killed run's leftover.
+  clearHotUpdateLock()
 
   let server
   try {

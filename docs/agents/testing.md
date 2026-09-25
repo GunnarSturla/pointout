@@ -54,7 +54,8 @@ sourcemaps are real. Tests POST and GET against it.
 Seam 1 runs its files side by side, each in a forked process of its own
 (`pool: 'forks'`, `maxWorkers: 4`, in `vitest.config.ts`). A file owns `process.env`
 while it runs, and `advanceClock` moves the clock through it, so the pool is pinned:
-`threads` would share one environment between files and is never safe here. Tests
+`threads` would run files in one process, sharing its working directory, its signal
+handlers and whatever the harness binds in it, and is never safe here. Tests
 within a file still run one at a time. A test and a hook each get 30 s; a test that
 really needs longer, such as the ones in `commands.test.ts` that run a whole command,
 says so beside itself. The harness server's `close()` has a deadline of its own, 20 s,

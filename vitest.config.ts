@@ -11,7 +11,8 @@ export default defineConfig({
     // Files run side by side, each in a forked process of its own. A file owns
     // `process.env` while it runs, and `advanceClock` moves the clock through
     // it, so a file must never share a process with another: `forks`, pinned,
-    // and never `threads`, whose workers share one environment.
+    // and never `threads`, whose workers share one process — its working
+    // directory, its signal handlers, and the servers the harness binds in it.
     pool: 'forks',
     fileParallelism: true,
     maxWorkers: 4,

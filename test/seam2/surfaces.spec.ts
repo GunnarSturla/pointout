@@ -61,7 +61,7 @@ const DISMISS_MS = 8000
 const TICK_MS = 1500
 
 // The page's clock is moved (`page.clock`) wherever a journey would otherwise
-// sit out the dismiss timer or the tick. Each of those two timers keeps one
+// sit out the done chip's timer or the tick. Each of those two timers keeps one
 // real-time journey, in Chromium only, so that its wall-clock length is still
 // proved somewhere: see the two `on the wall clock` tests below.
 
@@ -231,6 +231,16 @@ async function pause(page: Page): Promise<void> {
   await page.clock.pauseAt(now + 500)
 }
 
+/**
+ * One real round trip from the page, after moving its clock. A request a timer
+ * fired inside `runFor` reaches this process's `request` listeners before the
+ * answer to a request the page made later, so a "nothing was read" checked after
+ * this is not checked too early.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(() => fetch('/?settle').then((response) => response.text()))
+}
+
 /** The id the Overlay is tracking one chip by — the Pick the server minted. */
 async function pickIdOf(page: Page, index: number): Promise<string> {
   const id = await chipFor(page, index).getAttribute('data-pick')
@@ -245,7 +255,7 @@ test('a Pick rests as a chip that says only what is known, and clears itself whe
   // things that are true at each end of it.
   test.setTimeout(60_000)
   const token = probe('chip')
-  // The page's clock, so the dismiss timer can be moved past rather than sat
+  // The page's clock, so the done chip's timer can be moved past rather than sat
   // out. It flows on its own until the test stops it.
   await page.clock.install()
   await open(page, token)
@@ -268,7 +278,7 @@ test('a Pick rests as a chip that says only what is known, and clears itself whe
   expect(ack.ok()).toBe(true)
   await expect(chipFor(page, 0).locator(CHIP_WORDS)).toHaveText(working(TARGET_NAME))
 
-  // Stopped, so the tick that reads the done — and the dismiss timer it sets —
+  // Stopped, so the tick that reads the done — and the timer it sets to clear it —
   // happen at a time this test chose, and nothing moves while it waits.
   await pause(page)
   const done = await page.request.post(actionUrl(content, 'done'))
@@ -291,25 +301,33 @@ test('a done chip clears itself on the wall clock, after about eight seconds', a
   page,
   browserName,
 }) => {
-  // The one real-time journey for the dismiss timer, which every other journey
-  // moves the page's clock past. A timer is the page's, not the engine's, so
-  // one engine proves it.
-  test.skip(browserName !== 'chromium', 'the real-time dismiss runs in Chromium only')
+  // The one real-time journey for the done chip's timer, which every other
+  // journey moves the page's clock past. A timer is the page's, not the
+  // engine's, so one engine proves it.
+  test.skip(browserName !== 'chromium', 'the real-time clearing runs in Chromium only')
   test.setTimeout(60_000)
-  const token = probe('wall-dismiss')
+  const token = probe('wall-clear')
   await open(page, token)
   await send(page, PICKED, `wall clock ${token}`)
 
   const content = await delivered(token)
   const done = await page.request.post(actionUrl(content, 'done'))
   expect(done.ok()).toBe(true)
-  await expect(chipFor(page, 0).locator(CHIP_WORDS)).toHaveText(reported(TARGET_NAME))
-  // The timer is set on the tick that read the done, before the words are drawn,
-  // so this is no earlier than it started.
+  // Read every 100 ms, both ends, so the measured span is within a poll of the
+  // timer's own. The timer is set on the tick that read the done, before the
+  // words are drawn, so the start is never earlier than the timer's.
+  const often = { intervals: [100], timeout: DISMISS_MS + 10_000 }
+  await expect
+    .poll(() => chipFor(page, 0).locator(CHIP_WORDS).textContent(), often)
+    .toBe(reported(TARGET_NAME))
   const reportedAt = Date.now()
 
-  await expect(page.locator(CHIP)).toHaveCount(0, { timeout: DISMISS_MS + 10_000 })
-  expect(Date.now() - reportedAt).toBeGreaterThan(DISMISS_MS - 1000)
+  await expect.poll(() => page.locator(CHIP).count(), often).toBe(0)
+  const took = Date.now() - reportedAt
+  // "About eight seconds": not early, and not late by more than a loaded
+  // machine's slack.
+  expect(took).toBeGreaterThan(DISMISS_MS - 500)
+  expect(took).toBeLessThan(DISMISS_MS + 2500)
   await expect(page.locator(STACK)).toHaveCount(0)
 })
 
@@ -597,18 +615,20 @@ test('one timer reads both endpoints, and only while something is open or outsta
   })
 
   // Each read is labelled with the tick the test last moved the clock through,
-  // so "on the same turn" is read off the page's clock rather than guessed from
+  // so "on the same tick" is read off the page's clock rather than guessed from
   // how close together two requests happened to reach this process.
-  let turn = 0
-  const asked: Array<{ path: string; turn: number }> = []
+  let movedThrough = 0
+  const asked: Array<{ path: string; tick: number }> = []
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname
     if (path === '/__agent/sessions' || path === '/__agent/status') {
-      asked.push({ path, turn })
+      asked.push({ path, tick: movedThrough })
     }
   })
   const pathsOn = (tick: number) =>
-    [...new Set(asked.filter((one) => one.turn === tick).map((one) => one.path))].toSorted()
+    [
+      ...new Set(asked.filter((one) => one.tick === tick).map((one) => one.path)),
+    ].toSorted()
 
   const timers = () =>
     page.evaluate(
@@ -620,6 +640,7 @@ test('one timer reads both endpoints, and only while something is open or outsta
   await open(page, token)
   // An idle page reads nothing at all, and starts no timer to read it with.
   await page.clock.runFor(4000)
+  await settle(page)
   expect(asked).toHaveLength(0)
   expect(await timers()).toEqual({ made: 0, cleared: 0 })
 
@@ -628,9 +649,11 @@ test('one timer reads both endpoints, and only while something is open or outsta
   // Stopped, so the only ticks from here are the ones moved through, one at a
   // time, each with its own label.
   await pause(page)
+  // Whatever was already in flight lands before the first labelled tick.
+  await settle(page)
   const settled = asked.length
   for (let tick = 1; tick <= 3; tick++) {
-    turn = tick
+    movedThrough = tick
     const read = Promise.all([
       page.waitForResponse((response) => response.url().includes('/__agent/status')),
       page.waitForResponse((response) => response.url().includes('/__agent/sessions')),
@@ -649,7 +672,7 @@ test('one timer reads both endpoints, and only while something is open or outsta
     )
   }
   for (const status of asked.filter((one) => one.path === '/__agent/status')) {
-    expect(`a sessions read beside the status read: ${pathsOn(status.turn)}`).toBe(
+    expect(`a sessions read beside the status read: ${pathsOn(status.tick)}`).toBe(
       'a sessions read beside the status read: /__agent/sessions,/__agent/status',
     )
   }
@@ -662,13 +685,14 @@ test('one timer reads both endpoints, and only while something is open or outsta
   await page.keyboard.press('Escape')
   await page.clock.runFor(TICK_MS)
   await expect(chipFor(page, 0).locator(CHIP_WORDS)).toHaveText(reported(TARGET_NAME))
-  await page.clock.runFor(DISMISS_MS)
+  await page.clock.runFor(DISMISS_MS + 1000)
   await expect(page.locator(STACK)).toHaveCount(0)
 
   const stopped = await timers()
   expect(stopped.made - stopped.cleared).toBe(0)
   const quiet = asked.length
   await page.clock.runFor(4000)
+  await settle(page)
   expect(asked).toHaveLength(quiet)
 })
 

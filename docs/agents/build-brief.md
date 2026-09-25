@@ -109,8 +109,9 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
   runs a whole command gives its own longer timeout beside itself.
 - **A hot update reaches every page on the seam-2 server**, in every worker and
   engine, and re-measures each Highlight. `highlight.spec.ts` keeps its hot update
-  and its frame-by-frame morph apart with a lock; a new journey that watches frames
-  takes the same one.
+  and its frame-by-frame morph apart with `apartFromHotUpdates`
+  (`test/harness/hot-update-lock.ts`); a new journey that watches frames takes the
+  same lock.
 - **Every example-app fixture sits below the fold.** A seam-2 test must
   `scrollIntoViewIfNeeded` before measuring; `elementsFromPoint` outside the viewport
   answers nothing.
@@ -160,9 +161,15 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 | | |
 | --- | --- |
 | `npm run lint` / `format:check` / `typecheck` | **under 2s each** — run them constantly |
-| `npm run test:seam1` | ~47s |
-| `npm run test:seam2:fast` | ~18s, Chromium only — **iterate on this** |
-| `npm run test:seam2` | ~46s, all three engines — **run before you commit** |
+| `npm run test:seam1` | SEAM1_TIME, four files at a time |
+| `npm run test:seam2:fast` | SEAM2_FAST_TIME, Chromium only |
+| `npm run test:seam2` | SEAM2_FULL_TIME, all three engines |
+
+**Iterate on single files; all three engines once at the end.** Run the file you are
+changing (`npx vitest run test/seam1/<file>` after `npm run build`, or
+`npx playwright test --project=chromium test/seam2/<file>`), and the full
+`caffeinate -i npm test` once, when you are done. Timings are on a loaded 8-core
+laptop, build included.
 
 **Seam 2 binds a fixed port (5178).** Agents running in parallel worktrees must each
 set `SEAM2_PORT` to their own port, or a bind failure reads as a broken test.

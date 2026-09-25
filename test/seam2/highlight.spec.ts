@@ -1,9 +1,8 @@
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import { apartFromHotUpdates } from '../harness/hot-update-lock.js'
 
 // Seam 2: the Highlight's lifecycle and the only motion in the project.
 //
@@ -48,45 +47,6 @@ const HOT_CSS = fileURLToPath(
 )
 const HOT_AT_REST = 'height: 3rem'
 const HOT_UPDATED = 'height: 7rem'
-
-/**
- * A hot update reaches every page open on the dev server, in every worker and
- * engine, and relays each of them out — which re-measures any Highlight on it.
- * A journey that watches a morph frame by frame reads that as a morph cut
- * short, so it and the hot update take this lock, and never overlap. It is a
- * directory, because making one is atomic across the worker processes.
- */
-const HOT_UPDATE_LOCK = join(
-  tmpdir(),
-  `vite-agent-inspect-seam2-hot-update-${process.env.SEAM2_PORT ?? 5178}.lock`,
-)
-
-async function apartFromHotUpdates<T>(work: () => Promise<T>): Promise<T> {
-  const until = Date.now() + 20_000
-  for (;;) {
-    try {
-      mkdirSync(HOT_UPDATE_LOCK)
-      break
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      // Left by a run that was killed while it held it: only one seam 2 runs
-      // at a time (seam2-lock.ts), and no holder keeps it this long.
-      if (Date.now() - statSync(HOT_UPDATE_LOCK).mtimeMs > 30_000) {
-        rmSync(HOT_UPDATE_LOCK, { recursive: true, force: true })
-        continue
-      }
-      if (Date.now() > until) {
-        throw new Error(`${HOT_UPDATE_LOCK} was held for 20 s`, { cause: error })
-      }
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
-  }
-  try {
-    return await work()
-  } finally {
-    rmSync(HOT_UPDATE_LOCK, { recursive: true, force: true })
-  }
-}
 
 /** The Highlight sitting exactly on its element, measured both ways. */
 const ON_IT = { left: 0, top: 0, width: 0, height: 0 }
