@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { Logger } from 'vite'
 import { says, warns } from '../posture.js'
 import type { PostureLine } from '../posture.js'
@@ -47,6 +47,11 @@ export interface CaptureService {
    * it was, for the resend the developer makes (spec §21).
    */
   resolve(request: CaptureRequest | null): Promise<CaptureClaim>
+  /**
+   * Delete a capture this server kept for an accepted Pick, now rather than at
+   * the shutdown sweep: the Pick was withdrawn, and nothing is left to open it.
+   */
+  discard(file: string): void
   /** Kill anything still running and take the directory with it. */
   close(): void
 }
@@ -60,11 +65,16 @@ export interface CaptureService {
 export interface CaptureClaim {
   /** Null when the Pointer says nothing about a capture. */
   line: string | null
-  take(): void
+  /**
+   * The file kept for the agent — the one a Withdraw deletes — or null when
+   * nothing is kept: no capture, the toggle off, one that failed, or one a
+   * second Pick naming the same id took first.
+   */
+  take(): string | null
 }
 
 /** A claim on nothing: there is no capture to keep or to delete. */
-const claimOn = (line: string | null): CaptureClaim => ({ line, take: () => {} })
+const claimOn = (line: string | null): CaptureClaim => ({ line, take: () => null })
 
 interface Capture {
   file: string
@@ -187,14 +197,22 @@ export async function createCaptureService({
       }
 
       const take = () => {
-        if (captures.get(request.id) !== capture) return
+        if (captures.get(request.id) !== capture) return null
         captures.delete(request.id)
         // Kept until the shutdown sweep, so the agent can open it (spec §10).
         if (!request.keep) rmSync(capture.file, { force: true })
+        return request.keep && result.ok ? capture.file : null
       }
       if (!request.keep) return { line: null, take }
       if (!result.ok) return { line: intended(result.reason), take }
       return { line: capture.file + offsetClause(capture.offsetBy), take }
+    },
+
+    discard(file) {
+      // Only a file in this server's own directory: the path came from here,
+      // and this is what keeps that from being a comment nobody enforces.
+      if (dirname(file) !== open.path) return
+      rmSync(file, { force: true })
     },
 
     close() {
@@ -225,6 +243,8 @@ function disabled(
     abort: () => false,
     resolve: (request) =>
       Promise.resolve(claimOn(request?.keep ? intended(reason) : null)),
+    // A disabled service never kept a file for anyone.
+    discard: () => {},
     close: () => directory?.close(),
   }
 }

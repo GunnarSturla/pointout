@@ -341,6 +341,58 @@ export interface PickActionAnswer {
 }
 
 // ---------------------------------------------------------------------------
+// Withdraw: DELETE /__agent/pick/<id>
+// ---------------------------------------------------------------------------
+
+/**
+ * The states a Pick can be withdrawn from whatever its clock says: waiting for
+ * a prompt, out of time or refused, or written with nothing heard since. A Pick
+ * in any other state is withdrawable only while it is offered back (below).
+ */
+export const WITHDRAWABLE: readonly PickState[] = [QUEUED_UNADDRESSED, FAILED, UNKNOWN]
+
+/**
+ * Whether a Pick, as `/status` reports it, can be withdrawn (`CONTEXT.md`:
+ * Withdraw). One rule for both halves: the Overlay offers the action exactly
+ * where the server takes it. A Pick an agent acknowledged, finished or is
+ * holding for an approval is past the point where taking it back means anything.
+ */
+export function isWithdrawable(state: PickState, reportBack: ReportBack | null): boolean {
+  if (WITHDRAWABLE.includes(state)) return true
+  return reportBack?.state === CLOCK_OFFERED && OFFERABLE.includes(state)
+}
+
+/**
+ * What a withdraw answers. The Pick is gone from this server — out of the
+ * queue, its clock stopped, its Screen Capture deleted, and no longer in
+ * `/status`. What it cannot undo is a write: `alreadyWritten` says a session
+ * has it, or may, and nothing can take it back from there (spec §21).
+ */
+export interface WithdrawAnswer {
+  pickId: string
+  /**
+   * True when the Pick was written to a session's socket or drained into a
+   * prompt, unless a Receipt said the harness would not deliver it.
+   */
+  alreadyWritten: boolean
+  /**
+   * The Target it was written to, as it was named then. Null when nothing was
+   * written, and when only the hook floor carried it: the drain does not know
+   * which session was prompted.
+   */
+  targetName: string | null
+}
+
+/** The `error` a withdraw refuses with for a Pick past taking back. */
+export const NOT_WITHDRAWABLE = 'not-withdrawable'
+
+/** The 409 a withdraw answers for a Pick past taking back, naming its state. */
+export interface NotWithdrawableBody extends RefusalBody {
+  error: typeof NOT_WITHDRAWABLE
+  state: PickState
+}
+
+// ---------------------------------------------------------------------------
 // Screen Capture: POST /__agent/capture, DELETE /__agent/capture/<id>
 // ---------------------------------------------------------------------------
 

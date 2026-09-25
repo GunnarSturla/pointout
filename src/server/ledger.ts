@@ -89,6 +89,39 @@ export interface LedgerRecord {
   expiresAt: number
   /** Oldest first. The report-back clock reads the send time off it. */
   history: Transition[]
+  /**
+   * A Receipt said the harness will not deliver it (`failByReceipt`). The one piece of
+   * evidence that a Pick written to a socket is not in the session after all.
+   */
+  refusedByHarness: boolean
+}
+
+/**
+ * Who may have this Pick now, whatever this server does next (`CONTEXT.md`:
+ * Withdraw). A socket write opens a Pick at `sent`, so the first transition
+ * says whether its Target was written to; the floor's claim is any later move
+ * from `queued-unaddressed` to `sent`. A Receipt that refused it is the only
+ * thing that takes a socket write back, and nothing takes back a drain. A
+ * retarget is a new Pick, so the write its old id had travels on the Pick.
+ */
+export function writtenTo(record: LedgerRecord): {
+  alreadyWritten: boolean
+  targetName: string | null
+} {
+  const socket = record.history[0]?.state === SENT && !record.refusedByHarness
+  const before = record.pick.writtenBefore
+  return {
+    alreadyWritten: socket || before !== null || drainedEver(record),
+    targetName: socket ? targetName(record.pick) : before,
+  }
+}
+
+/** Whether the hook floor ever claimed it, at any point in its history. */
+function drainedEver(record: LedgerRecord): boolean {
+  return record.history.some(
+    (transition, at) =>
+      transition.state === SENT && record.history[at - 1]?.state === QUEUED_UNADDRESSED,
+  )
 }
 
 export interface Ledger {
@@ -99,6 +132,11 @@ export interface Ledger {
    * this server never accepted — which the caller refuses rather than invents.
    */
   advance(pickId: string, state: PickState, reason?: string): LedgerRecord | undefined
+  /**
+   * A Receipt said the harness will not deliver it: `failed`, with the
+   * sentence, and marked as never having reached the session.
+   */
+  failByReceipt(pickId: string, reason: string): LedgerRecord | undefined
   get(pickId: string): LedgerRecord | undefined
   /** Every Pick this server accepted, oldest first. */
   all(): LedgerRecord[]
@@ -116,8 +154,9 @@ export interface Ledger {
    */
   requeue(pickId: string, at: number): LedgerRecord | undefined
   /**
-   * Forget a Pick entirely. Only a retarget does this: the Pick lives on as a
-   * new one with its own id, and the old id must not be delivered or shown.
+   * Forget a Pick entirely: it is not delivered, drained or shown again. A
+   * retarget does this, because the Pick lives on under a new id; so does a
+   * Withdraw, because the developer took it back.
    */
   remove(pickId: string): void
   /**
@@ -151,6 +190,7 @@ export function createLedger(clock: () => number): Ledger {
         reason: reason ?? null,
         expiresAt: pick.createdAt + TTL_MS,
         history: [{ state, at: pick.createdAt, reason: reason ?? null }],
+        refusedByHarness: false,
       }
       records.set(pick.id, record)
       return record
@@ -160,6 +200,14 @@ export function createLedger(clock: () => number): Ledger {
       const record = records.get(pickId)
       if (!record) return undefined
       move(record, state, reason ?? null)
+      return record
+    },
+
+    failByReceipt(pickId, reason) {
+      const record = records.get(pickId)
+      if (!record) return undefined
+      move(record, FAILED, reason)
+      record.refusedByHarness = true
       return record
     },
 

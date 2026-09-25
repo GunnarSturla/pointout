@@ -11,6 +11,7 @@ import {
   parseCaptureId,
   parsePickAction,
   parseReportPath,
+  parseWithdrawPath,
 } from '../api.js'
 import type { PickAction } from '../api.js'
 import {
@@ -18,23 +19,27 @@ import {
   CLOCK_OFFERED,
   UNKNOWN_CAPTURE,
   DONE,
+  NOT_WITHDRAWABLE,
   OFFERABLE,
   QUEUED_UNADDRESSED,
   REQUEUE,
   SENT,
   SENT_AWAITING_ACK,
   WORKING,
+  isWithdrawable,
 } from '../wire.js'
 import type {
   CaptureDeleted,
   CaptureStarted,
   NamedTarget,
+  NotWithdrawableBody,
   PickAccepted,
   PickActionAnswer,
   PickState,
   ReportAnswer,
   SessionsResponse,
   StatusResponse,
+  WithdrawAnswer,
 } from '../wire.js'
 import { boundAddress } from './bound-host.js'
 import type { CaptureService } from './capture/index.js'
@@ -45,7 +50,7 @@ import type { Discovery } from './discovery.js'
 import { drainQueue, parseDrainBody, refuseDrainCaller } from './drain.js'
 import { refuseForeignOrigin, refuseNonLoopback, refuseWrongNonce } from './guard.js'
 import type { Refusal } from './guard.js'
-import { createLedger } from './ledger.js'
+import { createLedger, writtenTo } from './ledger.js'
 import type { Ledger } from './ledger.js'
 import { resolveOwnerChain } from './owner-chain.js'
 import { readRequestBody } from './parse.js'
@@ -145,6 +150,13 @@ const ENDPOINTS: Endpoint[] = [
     matches: (path) => parseReportPath(path) !== null,
     policy: 'ingress',
     handle: resolveReport,
+  },
+  {
+    method: 'DELETE',
+    path: `${PICK_PATH}/<id>`,
+    matches: (path) => parseWithdrawPath(path) !== null,
+    policy: 'ingress',
+    handle: withdrawPick,
   },
   { method: 'POST', path: DRAIN_PATH, policy: 'credential', handle: drainPicks },
 ]
@@ -446,7 +458,8 @@ async function resolveReport(
     name: chosen.name,
   }
 
-  const fitted = fitPayload(reissuePick(record.pick, target), {
+  const reissued = reissuePick(record.pick, target, writtenTo(record).targetName)
+  const fitted = fitPayload(reissued, {
     origin: context.origin(),
   })
   if (!fitted.ok) return sendRefusal(logger, response, fitted.refusal)
@@ -471,6 +484,67 @@ async function resolveReport(
     replaces: oldId,
     ...(unwritten ? { reason: unwritten } : {}),
   }
+  sendJson(response, 200, answer)
+}
+
+/**
+ * Withdraw (`CONTEXT.md`, spec §20): the developer takes back a submitted Pick
+ * that went wrong. Everything this server still holds of it goes — the queue
+ * entry, the report-back clock, the Screen Capture, the ledger row — and the
+ * answer says whether a session already has it, because nothing here can take
+ * a write back (spec §21). A Pick an agent acknowledged, finished or is holding
+ * is refused with the state it is in, and nothing moves.
+ */
+function withdrawPick(
+  request: Connect.IncomingMessage,
+  response: ServerResponse,
+  { ledger, clock, captures, logger }: RequestContext,
+): void {
+  const path = (request.url ?? '/').split('?')[0] ?? '/'
+  const pickId = parseWithdrawPath(path)
+  const record = pickId ? ledger.get(pickId) : undefined
+  if (!record) {
+    return sendRefusal(logger, response, {
+      status: 404,
+      body: {
+        error: 'unknown-pick',
+        reason:
+          'refused to withdraw a pick this dev server is not holding. It was ' +
+          'withdrawn already, or it was never accepted here.',
+      },
+    })
+  }
+
+  const id = record.pick.id
+  const reportBack = clock.stateOf(id)
+  if (!isWithdrawable(record.state, reportBack)) {
+    const body: NotWithdrawableBody = {
+      error: NOT_WITHDRAWABLE,
+      reason:
+        `refused to withdraw pick ${id}: it is ${record.state}` +
+        // Only a Pick with a clock can still be offered back; a drained one
+        // has none, and waits for its TTL instead.
+        (reportBack ? ', and it has not been offered back.' : '.'),
+      state: record.state,
+    }
+    return sendRefusal(logger, response, { status: 409, body })
+  }
+
+  // Nothing awaits between the check and the removal: a drain, an ack or a
+  // second withdraw arriving meanwhile finds no Pick.
+  const written = writtenTo(record)
+  ledger.remove(id)
+  clock.forget(id)
+  if (record.pick.captureFile) captures.discard(record.pick.captureFile)
+
+  logger.info(
+    `vite-agent-inspect: pick ${id} was withdrawn. ` +
+      (written.alreadyWritten
+        ? `It had already been written to ${written.targetName ?? 'a prompt in this repo'}, ` +
+          'which may still act on it: a write cannot be recalled.'
+        : 'No session had it.'),
+  )
+  const answer: WithdrawAnswer = { pickId: id, ...written }
   sendJson(response, 200, answer)
 }
 
@@ -605,16 +679,21 @@ async function ingestPick(
   // send is one the developer is asked to shorten, not one that waits around to
   // fail later. Excerpts are all it may trim, and it says what it took (§13).
   const fitted = fitPayload(
-    mintPick(input, { ownerChain, target, captureLine: capture.line }),
+    mintPick(input, {
+      ownerChain,
+      target,
+      captureLine: capture.line,
+    }),
     { origin: context.origin() },
   )
   // A refusal leaves the capture exactly as it was: the page still holds its id
   // and sends it again with the shortened Pick (spec §21).
   if (!fitted.ok) return sendRefusal(logger, response, fitted.refusal)
-  const { pick, body: rendered } = fitted.value
   // Accepted, so the capture is this Pick's now: kept for the agent, or deleted
-  // when the toggle was off. Nothing was awaited since `resolve`.
-  capture.take()
+  // when the toggle was off. Nothing was awaited since `resolve`. The Pick
+  // holds only a file it really took, so a Withdraw deletes nothing of another's.
+  const pick: Pick = { ...fitted.value.pick, captureFile: capture.take() }
+  const rendered = fitted.value.body
 
   const unwritten = await deliverRendered(context, registry, pick, rendered)
   const written = pick.target !== null && unwritten === undefined

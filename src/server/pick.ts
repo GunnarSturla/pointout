@@ -73,6 +73,16 @@ export interface Pick {
    */
   captureLine: string | null
   /**
+   * The Screen Capture file kept for the agent, which a Withdraw deletes. Null
+   * when the Pick keeps none. Set once the capture is taken, after the fit.
+   */
+  captureFile: string | null
+  /**
+   * The Target an earlier id of this Pick was written to, when a retarget made
+   * it a new Pick. That write happened, and a Withdraw must still say so.
+   */
+  writtenBefore: string | null
+  /**
    * What the 32 KiB cap took out of this Pick's Excerpts, in the words both the
    * payload and the Panel use. Null when the Pick fitted as it was (spec §13).
    */
@@ -105,6 +115,8 @@ export function mintPick(body: PickBody, resolved: Resolved): Pick {
     note: body.note,
     target: resolved.target,
     captureLine: resolved.captureLine,
+    captureFile: null,
+    writtenBefore: null,
     trimNote: null,
   }
 }
@@ -115,14 +127,20 @@ export function mintPick(body: PickBody, resolved: Resolved): Pick {
  * byte-identical one as a duplicate, and because the old id's ack and done URLs
  * must never be able to answer for the new delivery. The Pointer, the Note and
  * the Screen Capture line are what the developer made, and travel unchanged.
+ * `writtenBefore` is who already has the old one, if anybody does.
  */
-export function reissuePick(pick: Pick, target: NamedTarget): Pick {
+export function reissuePick(
+  pick: Pick,
+  target: NamedTarget,
+  writtenBefore: string | null,
+): Pick {
   return {
     ...pick,
     id: randomUUID(),
     nonce: randomBytes(6).toString('hex'),
     createdAt: now(),
     target,
+    writtenBefore,
   }
 }
 

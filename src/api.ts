@@ -130,3 +130,25 @@ export function parseReportPath(path: string): string | null {
     return null
   }
 }
+
+/**
+ * `/pick/<id>`, relative to `API_BASE`: the path a Withdraw is a DELETE on
+ * (spec §20). Built and parsed here, like the report path, so the Overlay and
+ * the server cannot spell it two ways.
+ */
+export function withdrawPath(pickId: string): string {
+  return `${PICK_PATH}/${encodeURIComponent(pickId)}`
+}
+
+/** The Pick a withdraw path names, or null when the path is not one. */
+export function parseWithdrawPath(path: string): string | null {
+  if (!path.startsWith(`${PICK_PATH}/`)) return null
+  const id = path.slice(PICK_PATH.length + 1)
+  if (id.length === 0 || id.includes('/')) return null
+  try {
+    return decodeURIComponent(id)
+  } catch {
+    // A percent escape that is not one. It names no Pick this server minted.
+    return null
+  }
+}
