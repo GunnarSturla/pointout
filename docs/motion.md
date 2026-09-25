@@ -45,6 +45,8 @@ that did.
 | the Picker widening from "Pick" to "Picking…" and back | 180 ms, `width` of the label's tail, from `0` to `auto` through `interpolate-size: allow-keywords`, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only, and only where the engine has `interpolate-size`; elsewhere it snaps, with no script fallback |
 | the Picker and "Back to your pick" pressed | 120 ms, `scale` to 0.97, from the bottom edge, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
 | the Picker's colours: armed, hovered, pressed | 120 ms, `background-color` + `border-color` + `color`, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
+| every other control's colours: Send, Cancel, the camera toggle, the Target row, the Session list rows and the offer's answers, hovered, pressed, enabled, and the camera turned on or off | 120 ms, `background-color` + `border-color` + `color`, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
+| those controls pressed | 120 ms, `scale` to 0.97, from the centre, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
 | the Screen Capture shutter reopening — the Highlight's fill and its chip | 120 ms, `background-color` and the chip's `opacity`, from nothing, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
 | the report-back countdown line, each one-second step | 1000 ms, `transform` (`scaleX`), linear | no-preference only |
 
@@ -60,6 +62,16 @@ The Picker comes out on `:hover` only where there is a pointer that hovers
 (`@media (hover: hover) and (pointer: fine)`): a tap on a touch screen leaves a hover
 behind, and the Picker would come out and stay out for it. Focus and an unresolved
 Pick still bring it out everywhere.
+
+A control's hover sits behind the same `(hover: hover) and (pointer: fine)`
+query, for the same reason. Its keyboard ring (`:focus-visible`) appears at once:
+an outline's style is not a colour, and a ring that faded in would lag the key
+that moved it.
+
+**The Note grows with what is typed** (`field-sizing: content`, three lines to
+twelve, then it scrolls), and that is the field's own size following its text, not
+motion: it is never eased, in any mode. Where an engine has no `field-sizing` the
+Note keeps its three lines and scrolls.
 
 Two things never move, and the rule for both is the same one:
 

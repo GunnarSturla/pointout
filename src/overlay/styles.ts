@@ -18,7 +18,46 @@ export const HOST_STYLE = [
   'color-scheme: light dark',
 ].join('; ')
 
-const FONT = "13px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
+/**
+ * Every Overlay control but the Picker, which has rules of its own: Send,
+ * Cancel, the camera toggle, the Target row, the Session list rows and the
+ * offer's answers. The plan's states table (docs/overlay-design.md) applies to
+ * each, so each state's rule is written once, for the whole list.
+ */
+const CONTROLS = [
+  '.cancel',
+  '.offer-elsewhere',
+  '.offer-leave',
+  '.camera',
+  '.target',
+  '.target-row',
+  '.send',
+]
+
+/**
+ * How a control is named in a hover or a press rule: the Target row takes one
+ * only when it has rows to open, and Send only while it is enabled.
+ */
+const WHEN_ABLE: Record<string, string> = {
+  '.target': '.target[data-expandable]',
+  '.send': '.send:not(:disabled)',
+}
+
+/** The selector list naming each of `these` controls in one state. */
+function each(state: string, these: string[] = CONTROLS): string {
+  return these.map((control) => `${control}${state}`).join(',\n')
+}
+
+/** The same, for a state a control takes only when it is able to. */
+function eachAble(state: string, these: string[] = CONTROLS): string {
+  return each(
+    state,
+    these.map((control) => WHEN_ABLE[control] ?? control),
+  )
+}
+
+/** Every control but Send, which is filled and has its own tints. */
+const QUIET = CONTROLS.filter((control) => control !== '.send')
 
 export const OVERLAY_STYLESHEET = `
 :host { all: initial }
@@ -318,7 +357,7 @@ export const OVERLAY_STYLESHEET = `
   align-items: stretch;
   gap: 6px;
   max-width: 320px;
-  font: ${FONT};
+  font: var(--type-ui);
 }
 
 .summary {
@@ -366,21 +405,9 @@ export const OVERLAY_STYLESHEET = `
   gap: 6px;
 }
 
-.offer-elsewhere,
-.offer-leave {
-  padding: 3px 8px;
-  border: 1px solid rgb(127 127 127 / 45%);
-  border-radius: 6px;
-  background: none;
-  color: inherit;
-  font: ${FONT};
-  font-size: 11px;
-  cursor: pointer;
-}
-
 .offer-refusal {
-  font-size: 11px;
-  color: #b3261e;
+  font: var(--type-small);
+  color: var(--needs);
 }
 
 /* The countdown: a thin line whose length is the time left, set once a second
@@ -405,6 +432,8 @@ export const OVERLAY_STYLESHEET = `
   text-align: end;
 }
 
+/* The open Panel: the floating card (docs/overlay-design.md), the outermost
+   radius, and the shadow of a thing furthest from the page. */
 .panel {
   position: fixed;
   inset-block-start: 0;
@@ -416,24 +445,50 @@ export const OVERLAY_STYLESHEET = `
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  border: 1px solid rgb(127 127 127 / 45%);
-  border-radius: 8px;
-  background: Canvas;
-  color: CanvasText;
-  box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
-  font: ${FONT};
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background-color: var(--surface);
+  color: var(--ink);
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 10%),
+    0 12px 32px -8px rgb(0 0 0 / 28%);
+  font: var(--type-ui);
 }
 
+/* The Note: three lines to begin with, growing with what is typed to twelve,
+   then scrolling. \`field-sizing: content\` is progressive: an engine without
+   it keeps the three lines and scrolls, and keeps the resize handle there
+   instead. Growing with typing is the field's own size and is never eased.
+   The heights are in lines of the Note's own type step, plus its padding and
+   border (14 px). */
 .note {
   width: 100%;
-  min-height: 64px;
+  min-height: calc(3lh + 14px);
+  max-height: calc(12lh + 14px);
   padding: 6px 8px;
   resize: vertical;
-  border: 1px solid rgb(127 127 127 / 45%);
+  border: 1px solid var(--line-strong);
   border-radius: 6px;
-  background: Field;
-  color: FieldText;
-  font: ${FONT};
+  background-color: var(--surface-sunken);
+  color: var(--ink);
+  font: var(--type-note);
+}
+
+@supports (field-sizing: content) {
+  .note {
+    field-sizing: content;
+    resize: none;
+  }
+}
+
+.note::placeholder { color: var(--ink-muted) }
+
+/* The Note is a field, not a button: its ring is drawn over its own edge
+   rather than 2 px outside it, because the field runs the Panel's full width
+   and a ring outside would sit in the Panel's padding, nearly at its border. */
+.note:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .footer {
@@ -448,14 +503,13 @@ export const OVERLAY_STYLESHEET = `
   display: flex;
   gap: 6px;
   align-items: baseline;
-  padding: 0;
+  padding: 4px 6px;
   border: 0;
-  background: none;
-  color: inherit;
-  font: ${FONT};
-  font-size: 12px;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--ink-muted);
+  font: var(--type-ui);
   text-align: start;
-  opacity: 0.75;
   cursor: default;
 }
 
@@ -470,6 +524,7 @@ export const OVERLAY_STYLESHEET = `
 
 .target-action {
   flex: none;
+  color: var(--ink);
   font-weight: 600;
 }
 
@@ -479,9 +534,10 @@ export const OVERLAY_STYLESHEET = `
   gap: 2px;
   max-height: 180px;
   overflow-y: auto;
-  border: 1px solid rgb(127 127 127 / 45%);
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 4px;
+  background-color: var(--surface-sunken);
 }
 
 .target-row {
@@ -489,41 +545,43 @@ export const OVERLAY_STYLESHEET = `
   flex-wrap: wrap;
   gap: 6px;
   align-items: baseline;
-  padding: 4px 6px;
+  padding: 4px 8px;
   border: 0;
   border-radius: 4px;
-  background: none;
-  color: inherit;
-  font: ${FONT};
-  font-size: 12px;
+  background-color: transparent;
+  color: var(--ink);
+  font: var(--type-ui);
   text-align: start;
   cursor: pointer;
 }
 
-.target-row[data-chosen] { background: rgb(79 124 255 / 14%) }
+.target-row[data-chosen] {
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--surface));
+}
 
 .row-name { font-weight: 600 }
 
 .row-status,
 .row-idle,
-.row-waiting { opacity: 0.75 }
+.row-waiting { color: var(--ink-muted) }
 
 .started-badge {
   padding: 0 5px;
-  border: 1px solid #4f7cff;
+  border: 1px solid var(--accent);
   border-radius: 999px;
-  color: #4f7cff;
-  font-size: 11px;
+  color: var(--accent);
+  font: var(--type-small);
 }
 
 .empty {
   padding: 6px 2px;
-  font-size: 12px;
+  font: var(--type-ui);
 }
 
-/* The camera toggle, leftmost in the footer (spec §7). Off is quiet, on is the
-   accent, and one this dev server cannot honour is visibly unavailable — still
-   there, still asking to be clicked for its reason. */
+/* The camera toggle, leftmost in the Panel footer (spec §7). Off is quiet, on
+   is the accent, and one this dev server cannot honour is visibly
+   unavailable: a dashed edge and a muted icon, still there, still asking to
+   be clicked for its reason. */
 .camera {
   flex: none;
   display: grid;
@@ -531,89 +589,146 @@ export const OVERLAY_STYLESHEET = `
   width: 26px;
   height: 26px;
   padding: 0;
-  border: 1px solid rgb(127 127 127 / 45%);
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: none;
-  color: inherit;
-  opacity: 0.75;
+  background-color: transparent;
+  color: var(--ink-muted);
   cursor: pointer;
 }
 
 .camera[data-on] {
-  border-color: #4f7cff;
-  background: rgb(79 124 255 / 14%);
-  color: #4f7cff;
-  opacity: 1;
+  border-color: var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
 }
 
 .camera[aria-disabled='true'] {
   border-style: dashed;
-  opacity: 0.45;
+  border-color: var(--line-strong);
+  color: var(--ink-muted);
   cursor: help;
 }
 
 .camera-off,
 .camera-failed {
-  font-size: 12px;
-  opacity: 0.85;
+  font: var(--type-ui);
+  color: var(--ink-muted);
 }
 
-.camera-failed { color: #b3261e }
+.camera-failed { color: var(--needs) }
 
-.cancel {
+/* The quiet buttons: Cancel beside Send, and the report-back offer's answers. */
+.cancel,
+.offer-elsewhere,
+.offer-leave {
   flex: none;
   padding: 5px 10px;
-  border: 1px solid rgb(127 127 127 / 45%);
+  border: 1px solid var(--line);
   border-radius: 6px;
-  background: none;
-  color: inherit;
-  font: ${FONT};
+  background-color: transparent;
+  color: var(--ink);
+  font: 600 var(--type-ui);
   cursor: pointer;
 }
 
+/* The offer's answers sit inside a Stack chip, one step smaller. */
+.offer-elsewhere,
+.offer-leave {
+  padding: 3px 8px;
+  font: 600 var(--type-small);
+}
+
+/* Send is ink, not blue: blue is kept for the pick (docs/overlay-design.md). */
 .send {
   flex: none;
-  padding: 5px 10px;
-  border: 1px solid #4f7cff;
+  padding: 5px 12px;
+  border: 1px solid var(--ink);
   border-radius: 6px;
-  background: #4f7cff;
-  color: #fff;
-  font: 500 ${FONT};
+  background-color: var(--ink);
+  color: var(--surface);
+  font: 600 var(--type-ui);
   cursor: pointer;
 }
 
 .send:disabled {
-  opacity: 0.6;
+  border-color: var(--line);
+  background-color: var(--surface-sunken);
+  color: var(--ink-muted);
   cursor: default;
 }
 
-.status { font-size: 12px }
+/* The states every control answers (docs/overlay-design.md): rest, hover,
+   press, keyboard focus, in that order, because a press comes after a hover
+   and has to win over it. Hover only where there is a pointer that hovers: a
+   tap leaves a hover behind. Tints are the ink, or the accent where the
+   control is on, mixed into the surface. An unavailable camera still tints:
+   unlike a disabled control it is there to be clicked, for its reason. */
+@media (hover: hover) and (pointer: fine) {
+  ${eachAble(':hover', QUIET)} {
+    background-color: color-mix(in srgb, var(--ink) 6%, var(--surface));
+  }
 
-.status[data-refused] { color: #b3261e }
+  .camera[data-on]:hover,
+  .target-row[data-chosen]:hover {
+    background-color: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  }
+
+  .send:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--ink) 86%, var(--surface));
+    background-color: color-mix(in srgb, var(--ink) 86%, var(--surface));
+  }
+}
+
+${eachAble(':active', QUIET)} {
+  background-color: color-mix(in srgb, var(--ink) 12%, var(--surface));
+}
+
+.camera[data-on]:active,
+.target-row[data-chosen]:active {
+  background-color: color-mix(in srgb, var(--accent) 24%, var(--surface));
+}
+
+.send:not(:disabled):active {
+  border-color: color-mix(in srgb, var(--ink) 76%, var(--surface));
+  background-color: color-mix(in srgb, var(--ink) 76%, var(--surface));
+}
+
+/* The ring, the same on every control as on the Picker: on a band of surface
+   that fills its offset, so it is always read against the surface. */
+${each(':focus-visible')} {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.status { font: var(--type-ui) }
+
+.status[data-refused] { color: var(--needs) }
 
 .status-reason {
-  font-size: 12px;
-  opacity: 0.85;
+  font: var(--type-ui);
+  color: var(--ink-muted);
 }
 
 /* The Note counter: quiet until the cap, and at the cap it is the reason the
    Send button is off, so it stops being quiet (spec §7). */
 .counter {
   align-self: flex-end;
-  font-size: 11px;
-  opacity: 0.6;
+  font: var(--type-small);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
 }
 
 .counter[data-over] {
-  opacity: 1;
+  color: var(--ink);
   font-weight: 600;
 }
 
 /* Excerpts the 32 KiB cap took out: one quiet informational line, deliberately
    not the refusal colour above — the Pick was accepted (spec §7, §13). */
 .trimmed {
-  font-size: 12px;
-  opacity: 0.85;
+  font: var(--type-ui);
+  color: var(--ink-muted);
 }
 
 /* ------------------------------------------------------------------------
@@ -647,6 +762,15 @@ export const OVERLAY_STYLESHEET = `
 /* The Picker's colours: armed and back, hovered and pressed. */
 .picker,
 .picker-back {
+  transition:
+    color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    background-color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    border-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Every other control's colours: hovered, pressed, on and off, enabled and
+   not. The camera's on and off is one of them. */
+${each('')} {
   transition:
     color 120ms cubic-bezier(0.23, 1, 0.32, 1),
     background-color 120ms cubic-bezier(0.23, 1, 0.32, 1),
@@ -727,6 +851,19 @@ export const OVERLAY_STYLESHEET = `
 
   .picker:active,
   .picker-back:active { scale: 0.97 }
+
+  /* Every other control presses in too, from its centre (the default origin),
+     on the same timing. Its colours are restated because this list replaces
+     the fades above. */
+  ${each('')} {
+    transition:
+      scale 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      background-color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      border-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  ${eachAble(':active')} { scale: 0.97 }
 
   /* "Pick" widening to "Picking…": the tail eases from zero to its own width.
      \`interpolate-size\` lets a width ease to \`auto\` where the engine has it;

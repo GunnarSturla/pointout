@@ -12,8 +12,8 @@ import type { Page, Request, Route } from '@playwright/test'
 // The dev server is seam 2's own, with ticket 17's fake `screencapture` first on
 // its `PATH`, writing a known PNG. That server lives in Playwright's
 // `globalSetup` process, so a spec cannot change the fake's mode between picks;
-// the two cases that need a server this one is not — a capture that takes two
-// seconds to answer, and a server whose capture is disabled — are made at the
+// the two cases that need a server this one is not — a capture whose answer is
+// held back, and a server whose capture is disabled — are made at the
 // network, with the server's own 409 written out below as the contract it is.
 // Seam 1 (`capture.test.ts`) is where the real 409 is proved.
 //
@@ -280,13 +280,40 @@ async function watchShutter(page: Page): Promise<void> {
 }
 
 /**
+ * The shutter is open and nothing in the Overlay is still easing. CSS
+ * transitions do not run on `page.clock`, so a fade is waited out here, by
+ * what the page says is running, rather than by a guess at how long it takes.
+ */
+async function settled(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate((tag) => {
+        const host = document.querySelector(tag)
+        if (!host?.shadowRoot || host.hasAttribute('data-shutter')) return -1
+        return [...host.shadowRoot.querySelectorAll('*')].reduce(
+          (count, element) => count + element.getAnimations().length,
+          0,
+        )
+      }, HOST),
+    )
+    .toBe(0)
+}
+
+/**
  * The Picker's own lines taken out. A Pick disarms the Picker, so its colours,
  * its lift and its width change on the same click that closes the shutter
  * (overlay-polish ticket 04). That is the Picker saying it is no longer armed,
  * not the shutter hiding it, and it is read on its own where it matters.
+ *
+ * The Panel's controls are taken out too, for the same reason. They fade their
+ * colours when their state changes (overlay-polish ticket 05), and some change
+ * as the Pick lands: the camera turns unavailable when the server refuses the
+ * capture, and Send is enabled once the Target is read. Neither is the shutter.
  */
-function apartFromPicker(sequence: string[]): string[] {
-  return sequence.filter((line) => !/^eased picker(-tail)? /.test(line))
+function apartFromControls(sequence: string[]): string[] {
+  return sequence.filter(
+    (line) => !/^eased (picker(-tail)?|camera|send|cancel|target(-row)?) /.test(line),
+  )
 }
 
 async function shutterSeen(page: Page): Promise<Seen[]> {
@@ -483,13 +510,18 @@ test.describe('a capture at every pick', () => {
   })
 
   test('never holds the Panel back, however long the capture takes', async ({ page }) => {
-    // A capture that takes two seconds to answer. The request goes through at
-    // once and its answer is held, which is the slower of the two cases: ticket
-    // 17's server answers the id at once and runs the tool behind it.
+    // A capture whose answer is held until this test lets it go. The request
+    // goes through at once and its answer waits, which is the slower of the two
+    // cases: ticket 17's server answers the id at once and runs the tool behind
+    // it.
     let answered = false
+    let release: () => void = () => {}
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
     await page.route(CAPTURE, async (route: Route) => {
       const response = await route.fetch()
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      await released
       answered = true
       await route.fulfill({ response })
     })
@@ -504,8 +536,10 @@ test.describe('a capture at every pick', () => {
     await expect(page.locator(PANEL)).toBeVisible({ timeout: 1000 })
     expect(Date.now() - clicked).toBeLessThan(1000)
     expect(answered).toBe(false)
-    // The held answer outlives the test; left in flight, its fetch throws into
-    // whichever test the worker runs next.
+    // Let the held answer go, and see it land. A route left holding one throws
+    // into whichever test the worker runs next, so it is unrouted as well.
+    release()
+    await expect.poll(() => answered).toBe(true)
     await page.unrouteAll({ behavior: 'ignoreErrors' })
   })
 })
@@ -522,12 +556,12 @@ test.describe('the shutter', () => {
     const at = await centre(page, PICKED)
     await page.mouse.move(at.x, at.y)
     await expect(page.locator(HIGHLIGHT).first()).toBeVisible()
-    await page.waitForTimeout(400)
+    await settled(page)
     await watchShutter(page)
     await page.mouse.click(at.x, at.y)
     await expect(page.locator(PANEL)).toBeVisible()
     await expect.poll(async () => (await shutterSeen(page)).length).toBeGreaterThan(2)
-    await page.waitForTimeout(400)
+    await settled(page)
     return shutterSeen(page)
   }
 
@@ -550,7 +584,7 @@ test.describe('the shutter', () => {
       await context.close()
     }
 
-    const [first, ...rest] = runs.map((run) => apartFromPicker(sequenceOf(run)))
+    const [first, ...rest] = runs.map((run) => apartFromControls(sequenceOf(run)))
     // Closed with the fill and the chip gone at once and the outline left on,
     // opened, and the two eased back in — and exactly that, in the same order,
     // in every run. The Picker never leaves; no Pick is outstanding, so there
@@ -562,6 +596,16 @@ test.describe('the shutter', () => {
     expect(first).toContain('eased highlight background-color')
     expect(first).toContain('eased chip opacity')
     for (const run of rest) expect(run).toEqual(first)
+    // What the Panel's controls did as the Pick landed is taken out above, and
+    // held here: a colour fade, or a press, and never anything that hides.
+    for (const run of runs) {
+      const controls = sequenceOf(run).filter((line) =>
+        /^eased (camera|send|cancel|target(-row)?) /.test(line),
+      )
+      for (const line of controls) {
+        expect(line).toMatch(/ (color|background-color|border-\w+-color|scale)$/)
+      }
+    }
     for (const run of runs) {
       expect(heldFor(run)).toBeGreaterThanOrEqual(200)
       expect(heldFor(run)).toBeLessThan(600)
@@ -601,18 +645,7 @@ test.describe('the shutter', () => {
     await page.mouse.move(at.x, at.y)
     // Settled: the first Pick's shutter is open and nothing in the Overlay is
     // still easing, so what is recorded is this Pick alone.
-    await expect
-      .poll(() =>
-        page.evaluate((tag) => {
-          const host = document.querySelector(tag)
-          if (!host?.shadowRoot || host.hasAttribute('data-shutter')) return -1
-          return [...host.shadowRoot.querySelectorAll('*')].reduce(
-            (count, element) => count + element.getAnimations().length,
-            0,
-          )
-        }, HOST),
-      )
-      .toBe(0)
+    await settled(page)
     await watchShutter(page)
     await page.mouse.click(at.x, at.y)
     await expect(page.locator(PANEL)).toBeVisible()
@@ -654,13 +687,13 @@ test.describe('the shutter under reduced motion', () => {
     await expect(page.locator(PANEL)).toBeVisible()
     await expect.poll(() => closedAtRequest).toBe(true)
     await expect.poll(async () => (await shutterSeen(page)).length).toBeGreaterThan(1)
-    await page.waitForTimeout(300)
+    await settled(page)
 
     // Closed at once, opened, and faded back in — a fade is not movement, so it
     // is the one thing that eases for a developer who asked for less motion
     // (the review-animations gate). Nothing else did.
     const seen = sequenceOf(await shutterSeen(page))
-    const sequence = apartFromPicker(seen)
+    const sequence = apartFromControls(seen)
     expect(sequence.slice(0, 2)).toEqual([
       'closed, outline shown, fill hidden, chip hidden, picker shown, stack none',
       'opened, outline shown',
@@ -672,7 +705,8 @@ test.describe('the shutter under reduced motion', () => {
     }
     // The Picker, disarmed by this Pick, only fades too: it does not come down
     // from a lift it never made, and its width snaps.
-    for (const entry of seen.filter((line) => line.startsWith('eased picker'))) {
+    // So do the Panel's controls, whatever of theirs changed as the Pick landed.
+    for (const entry of seen.filter((line) => !sequence.includes(line))) {
       expect(entry).toMatch(/ (color|background-color|border-\w+-color)$/)
     }
     expect(await onScreen(page)).toEqual({
