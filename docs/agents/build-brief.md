@@ -10,8 +10,17 @@ is stale — say so.
 The server side: root discovery and cwd normalization, the Guard (loopback always,
 Origin on ingress), the session registry read and Candidate filter, the startup posture
 block, Pick ingest, the claim-once queue and its ledger, `GET /__agent/status`, the
-reply socket and the Receipts read off it, the drain endpoint and CLI, and Screen
-Capture.
+reply socket and the Receipts read off it, the drain endpoint and CLI, Screen
+Capture, and Withdraw.
+
+Withdraw is `DELETE /__agent/pick/<id>` (overlay-polish 02), guarded as Pick ingress.
+`isWithdrawable(state, reportBack)` in `src/wire.ts` is the one predicate both halves
+apply: `queued-unaddressed`, `failed`, `unknown`, and a `sent` or `unknown` Pick while
+it is offered back. It takes the Pick off the queue and out of the ledger, stops its
+clock and deletes the capture file that Pick itself took. The answer's `alreadyWritten`
+is about who may have the Pick, not what this server tried: a requeued or retargeted
+Pick still says a session had it, and `targetName` is null when the hook floor carried
+it.
 
 The startup posture block is complete and ordered (ticket 19); every line and what it
 means is in `docs/posture.md`. It is logged once, at `warn` when any line degrades.
@@ -31,7 +40,29 @@ skill text, live in `src/cli/claude/`. It mirrors `DeliveryRoute` in
 The Overlay: one open shadow root, the Picker, Highlight, Panel and Stack, the hit
 test with its shield, the Owner chain with per-frame Confidence, and Target selection.
 The Panel, Stack and Picker are React components fed by an imperative controller; the
-Highlight is imperative (ADR-0004). The Panel's placement is arithmetic in
+Highlight is imperative (ADR-0004).
+
+Every surface follows `docs/overlay-design.md`, the
+approved design plan; its tokens are custom properties on `:host` at the top of
+`src/overlay/styles.ts`, with a forced-colours mapping. The Picker is an edge tab with
+Remix Icon's crosshair (`src/overlay/icons.tsx`, credited once for the set), reading
+**Picking…** on solid `--accent-strong` while armed; "Back to your pick" hangs off its
+right edge, out of flow. Every control is listed once in `CONTROLS` in `styles.ts`,
+which gives it hover, press and the focus ring.
+
+There are two Highlights,
+`src/overlay/marks.ts` (overlay-polish 03): with an unsubmitted Panel open and Alt held,
+a **live** mark follows the pointer while the **current** one rests; the boxes trade
+roles on an Alt-click (`data-mark`), and one not shown is out of the DOM. The shutter
+hides only the fill and the chip.
+
+A session's health is a dot and a word
+(`words.healthOf`, `src/overlay/dot.tsx`): Ready, Working, Needs you. The Panel's
+arrival, departure and travel are `src/overlay/presence.ts`: a leaving surface leaves an
+inert, part-less still copy ahead of the surfaces' container. Same-origin frames are
+heard through `src/overlay/frames.ts`; a frame whose probe event nobody hears gets a
+frame shield while armed (overlay-polish 12). The example app's decoy is off at load,
+and `/?decoy` turns it on. The Panel's placement is arithmetic in
 `src/overlay/placement.ts`; there is no runtime dependency. Send closes the
 unsubmitted Panel, and the Pick rests as its minimized Panel in the Stack
 (overlay-polish ticket 08): a traffic light with its state in a `title`, the component,
@@ -172,6 +203,22 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
   drain's secret is at `SEAM2_DISCOVERY_ENTRY`, set by `globalSetup`. A null-Target Pick
   cannot make a queued one there: the server preselects the started-this-server session;
   an offer left for the next prompt does.
+- **WebKit runs no listener in a frame sandboxed without `allow-scripts`**, not even
+  one the parent page adds (overlay-polish 12). Chromium and Firefox run them. The
+  Overlay measures it with a probe event rather than reading the attribute, and covers
+  such a frame with a frame shield, so in WebKit only the shield route is exercised.
+- **A `ResizeObserver` reports every target once when it starts observing it.** That
+  report is not a change; taken for one, it cancelled the Highlight's morph about 33 ms
+  in. `highlight.ts` skips each target's first report, and a seam-2 journey samples the
+  morph frame by frame to keep it so.
+- **A clone of a `textarea` does not reliably carry what was typed** (Chromium's does,
+  others do not), so `presence.ts` copies field values into a leaving copy by hand.
+- **The status dots loop forever.** A `settled()` that waits for `getAnimations()` to
+  reach zero never returns while a Working or Needs you dot or light is drawn; leave out
+  `dot-working` and `dot-needs` by animation name.
+- **Firefox spends `locator.click()`'s actionability checks inside frames a journey is
+  watching**; the frame-by-frame motion journeys press by coordinates.
+- **WebKit needs `Alt+Tab` to reach a button from the keyboard** in Playwright.
 - **A Playwright route that holds an answer must be unrouted before its test ends**
   (`page.unrouteAll({ behavior: 'ignoreErrors' })`), or it throws into the next test on
   that worker, which never runs; Playwright exits 1 with *1 error was not a part of any
@@ -246,6 +293,30 @@ tree an agent reported green, and then once per batch of merges, not once per me
 - **`CONTEXT.md` has no term for the report-back offer and no definition of
   `unknown`** (ticket 14), and none for the Shutter (ticket 18), which is now in
   `data-shutter`, `styles.ts` and `docs/motion.md`.
+- **The `review-animations` gate needs a re-run** before v0 is called done. Its
+  2026-09-23 outcome covers the build at `2640572`; everything the overlay-polish
+  tickets 03 to 10 made move came after it. `docs/motion.md` › *The re-run owed* lists
+  what it has to see. It is run by the human, by name; no agent runs it.
+- **`CONTEXT.md` lags the Overlay** (overlay-polish): the Picker's _Avoid_ says no
+  form is chosen, and the design plan now calls it an edge tab; the glossary says the
+  **current** and **live** Highlight where the code says *mark* (`marks.ts`,
+  `data-mark`); and there is no term for a frame shield.
+- **The camera on a minimized Panel is the page's claim** (overlay-polish 08): it shows
+  when the Send kept a capture, and `PickAccepted` does not say whether the tool then
+  succeeded. Closing that needs a field on the accept answer.
+- **A drained `sent` Pick cannot be withdrawn until its TTL fails it** (overlay-polish
+  02): it has no report-back clock, so no offer comes. Adding `sent` with a null
+  `reportBack` to `isWithdrawable` changes both halves at once.
+- **The §21 audit table in v0 ticket 19 has no Withdraw row.** It would be *a Withdraw
+  that implies recall*, held by three `withdraw.test.ts` journeys named in
+  overlay-polish 02's Comments.
+- **Frames, left open by overlay-polish 12**: a frame inside a shadow root is not
+  found; the armed cursor and the armed `pointer-events` rule are set in the top
+  document only; the wheel over a frame shield scrolls the top page; and
+  `topDocumentPoint`, like `viewportBox`, walks to the outermost same-origin window, so
+  if the Overlay's own page were framed by a same-origin parent, a point from one of
+  its child frames would come back in the parent's coordinates.
+- **"Back to your pick" has no guard against a narrow viewport's right edge.**
 - **react-dom under Trusted Types is unverified.** The Overlay's surfaces are built by
   react-dom now, and the guarantee that nothing builds DOM from a markup string rests on
   its behaviour under the first consumer's `require-trusted-types-for 'script'`. Check

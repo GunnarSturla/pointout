@@ -11,24 +11,50 @@ done: two human checks remain (see [Before v0 is called done](#before-v0-is-call
 ## What it does
 
 You are looking at your app in the browser and one element is wrong. Hold Alt/Option,
-or click the Picker at the bottom centre of the page, and a Highlight follows whatever
-you hover, with a chip naming the component and its file. Click, and a Panel opens
-beside the element. Type a Note and press Enter. The Pick goes into the inbox of a
-Claude Code session working in this checkout, with the element's Owner chain attached:
+or click the Picker, and a Highlight follows whatever you hover, with a chip naming the
+component and its file. Click, and a Panel opens beside the element. Type a Note and
+press Enter. The Pick goes into the inbox of a Claude Code session working in this
+checkout, with the element's Owner chain attached:
 every JSX call site that produced the element, innermost first, each as
 `path:line:col` with a stated Confidence.
 
+- **The Picker** is a small tab at the bottom centre of the page, peeking up from the
+  edge with a crosshair and the word **Pick**. It comes out when you hover it or give it
+  focus, and stays out while anything is unresolved. Armed, it turns solid blue and
+  reads **Picking…**; click it again to stop. When the open Panel has scrolled out of
+  view with its element, **Back to your pick** appears beside it.
 - **Enter** sends, **Shift+Enter** starts a new line, **Escape** discards. `Escape`
   unwinds one level at a time: picked, then armed, then off.
 - With an empty Note the button reads **Locate & stand by**: the agent finds the
   element, reports where it is and changes nothing.
 - The Note is capped at 4,000 characters. A counter appears from 3,500.
 - **Alt-click another element** before sending and the Pick moves there, keeping your
-  Note. After sending, Alt-click starts a new Pick.
-- Sent Picks rest in the **Stack**, bottom right, until their fate is settled. A chip
-  shows what is known: sent, waiting for you to approve something in the terminal,
-  being worked on, done, failed with a reason, or not acknowledged yet. The Overlay
-  never reports a Pick as delivered on the strength of silence.
+  Note. While the Panel is open, holding Alt shows a second Highlight on whatever you
+  hover, so you see what an Alt-click would pick before you make it. After sending,
+  Alt-click starts a new Pick.
+- **A Pick has one Panel for its whole life, in two forms.** Before you send, it is
+  open beside its element, and there is only ever one. Send shrinks it into the
+  **Stack**, bottom right, where it rests **minimized** until its fate is settled: one
+  line with a traffic light, the component, the first line of your Note, and a camera
+  if a Screen Capture went with it. The light's colour, and the words it shows on
+  hover, say what is known: grey *Sent* or *Waiting for the next prompt*; amber
+  *Working*; green *Done* (the agent's claim, and it clears itself after about eight
+  seconds); red *Needs your approval*, ringing where motion is allowed, when it is
+  waiting for you in the terminal; steady red *Failed*, *No acknowledgement yet* or
+  *Never picked up*. A second line underneath says
+  what happened and what to do next. The Overlay never reports a Pick as delivered on
+  the strength of silence.
+- **Click a minimized Panel** and it opens above the Stack to be read: the whole Note,
+  and which session it went to. One opens at a time. Click it again, or press
+  **Escape** inside it, to put it back. The Panel you are still writing keeps its place
+  and its focus.
+- **Withdraw.** A Pick that went wrong — failed, not acknowledged, never picked up, or
+  still queued for your next prompt — has a **×** beside its minimized Panel. It takes
+  back whatever the dev server still holds: the queued Pick, its report-back offer, its
+  Screen Capture. It cannot take back a Pick already written to a session, and says so:
+  *Already sent to `<name>` — it may still act on it*, or, when the hooks carried it,
+  *Already delivered to a session — it may still act on it*. A Pick that is still only sent, working, waiting
+  on your approval, or done cannot be withdrawn.
 
 The Target is the session a Pick goes to, shown in the Panel's footer before you send.
 It is preselected, in this order: the session you last sent to from this origin, while
@@ -196,7 +222,7 @@ What the Stack says comes from those Receipts, from the agent's Ack, from
 the session's status in the registry, and from a clock:
 
 - If the Target stays idle for 60 s after the write, or ends a turn without
-  acknowledging, the Pick's chip in the Stack offers it back. The offer has a 30 s
+  acknowledging, the Pick's minimized Panel in the Stack offers it back. The offer has a 30 s
   countdown, and you can send the Pick to another session. If you do nothing, it is
   left for your next prompt.
 - A Pick nobody has acknowledged reads as not acknowledged, with a next step. It
@@ -321,10 +347,14 @@ never refuses, when yours is newer. Every line and what it means is in
   `react-dom` itself stays within `require-trusted-types-for 'script'` has not been
   checked against a real app that enforces it. `connect-src 'self'` is not a problem,
   because every request goes to the dev server's own origin.
-- **The `review-animations` gate has not been run.** It is a human-run review of the
-  Overlay's motion. It is prepared in [`docs/motion.md`](docs/motion.md#running-the-gate).
-  All motion is opt-in under `prefers-reduced-motion: no-preference`. With reduced
-  motion set, nothing in the Overlay moves.
+- **The `review-animations` gate needs a re-run.** It is a human-run review of the
+  Overlay's motion. It ran on 2026-09-23, and its outcome is in
+  [`docs/motion.md`](docs/motion.md#the-outcome). Everything that moves since then —
+  the Picker's lift and widening, the pressed controls, the status dots, the Panel
+  growing, travelling and shrinking into the Stack — was added after that run, and
+  the outcome does not cover it. All movement is opt-in under
+  `prefers-reduced-motion: no-preference`. With reduced motion set, nothing in the
+  Overlay moves; fades still ease.
 
 ## What v0 does not do
 
@@ -351,9 +381,12 @@ npm test               # seams 1 and 2: the dev server's HTTP surface, then thre
 npm run lint && npm run format:check && npm run typecheck
 ```
 
-`examples/react-app/` is the React 19 test bed. The conventions every change follows
-start at [`CLAUDE.md`](CLAUDE.md), and the domain language is in
-[`CONTEXT.md`](CONTEXT.md).
+`examples/react-app/` is the React 19 test bed. Its full-viewport decoy, the fixture that
+covers the page the way a real app's scrim does, is off when the page loads; add
+`?decoy` to the URL to load with it on, or press **Show decoy**, bottom left.
+
+The conventions every change follows start at [`CLAUDE.md`](CLAUDE.md), and the domain
+language is in [`CONTEXT.md`](CONTEXT.md).
 
 ### The canary suites
 

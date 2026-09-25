@@ -315,7 +315,8 @@ that gate's frequency rule.**
   not.
 - **Status**: the gate **has run** (2026-09-23, *The outcome* below). It did not
   silently reverse the morph: it raised the frequency finding, and the human kept the
-  morph as an accepted deviation, retuned to 120 ms on the strong ease-out.
+  morph as an accepted deviation, retuned to 120 ms on the strong ease-out. **A re-run
+  is owed** for everything added since (*The re-run owed*, below).
 
 The second, smaller deviation is the `width`/`height` animation above: a performance
 finding under the same standards, accepted for the reason given there. It is the gate's
@@ -430,6 +431,34 @@ The gate **has run**.
      distort its own edges, and the box is one fixed element outside the page's flow.
 
 Neither pre-registered decision was reversed.
+
+### The re-run owed
+
+**The outcome above does not cover the Overlay as it now is, and the gate has to run
+again before v0 is called done.** It reviewed the build at `2640572` and was recorded
+in `646ccc5`. Every change to the Overlay's motion since `646ccc5` came after it, and
+none of it has been through the gate:
+
+- **The overlay-polish tickets 03 to 10**, which added most of what the table in *What
+  moves* now lists: the live mark and its morph over an open Panel, and the current mark
+  resting and relighting (03); the Picker lifting, widening to "Picking…" and pressing,
+  and its colours (04); every other control's colours and press (05); the Working dot's
+  pulse and the Needs you dot's rings, the only motion nobody started (06); the Panel
+  arriving, growing, leaving and travelling (07); a sent Panel shrinking into its slot,
+  the minimized Panel fading in, and a submitted Panel opening above the Stack and
+  closing back into it (09); and a withdrawn Pick's minimized Panel going (10).
+- **Two changes to decisions the gate made.** The fade rule it set allowed `opacity`
+  alone; ticket 03 widened it to the four colours. And the shutter's opening, which the
+  gate kept as an opacity fade of the Highlight, the Stack and the Picker, is now the
+  Highlight's fill and chip alone.
+- **Choices the tickets flagged for the gate to judge**: the shrink into the Stack uses
+  `scale`, which the morph refuses (*A Panel going into the Stack*, above); the dots hold
+  still under reduce rather than fading; and the pulse is the one loop on its own curve.
+
+The run reviews the table in *What moves, and what does not*, not the one in *What the gate reviews*, which
+is the build of 2026-09-23 and stays as the record of that run. The two accepted
+deviations stand unless the re-run says otherwise out loud. Its outcome is recorded here,
+beside the first, in the same shape.
 
 ## How the rule is held
 
