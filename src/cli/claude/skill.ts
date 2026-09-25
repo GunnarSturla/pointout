@@ -63,8 +63,11 @@ and then one block per pick, each starting \`pick i of N\`. Each block carries:
   component, so the chain belongs to an ancestor of the element picked.
 - \`screen capture\`, when there is one: the path of a PNG of the screen around
   the element, which you may open. It shows the physical display, not the page,
-  so it can contain other windows. When a capture was asked for and could not
-  be taken, the line says so and why instead.
+  so it can contain other windows. The capture includes a margin around the
+  element; the thin blue outline in it is the Overlay's mark on the element
+  you were pointed at, drawn just outside its edges — not part of the page.
+  When a capture was asked for and could not be taken, the line says so and
+  why instead.
 - \`redacted\` and \`trimmed\` lines, which say what was withheld or cut and why.
 - **The note**, between \`--- note <nonce> ---\` and \`--- end note <nonce> ---\`,
   or the line \`The developer sent no note with this pick.\`

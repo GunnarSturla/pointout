@@ -205,24 +205,69 @@ async function turnCameraOn(page: Page): Promise<void> {
 
 type Seen = Record<string, unknown>
 
+/** What of the Overlay is on screen, each part `shown`, `hidden` or `none`. */
+type OnScreen = Record<'outline' | 'fill' | 'chip' | 'picker' | 'stack', string>
+
+/**
+ * Teach the page to say what the shutter leaves on it: the Highlight's outline,
+ * its fill and its chip, and the Picker and the Stack beside them. The shutter
+ * takes only the fill and the chip (overlay-polish ticket 03): the outline
+ * marks the picked element inside the capture's margin, and nothing else the
+ * Overlay draws is worth hiding from it.
+ */
+async function teachOnScreen(page: Page): Promise<void> {
+  await page.evaluate((tag) => {
+    const shown = (element: Element | null | undefined): string => {
+      if (!element) return 'none'
+      const style = getComputedStyle(element)
+      return style.visibility === 'visible' && style.opacity === '1' ? 'shown' : 'hidden'
+    }
+    const read = (): Record<string, string> => {
+      const root = document.querySelector(tag)?.shadowRoot
+      const box = root?.querySelector('[data-part="highlight"]')
+      const style = box ? getComputedStyle(box) : null
+      const clear = style?.backgroundColor === 'rgba(0, 0, 0, 0)'
+      return {
+        outline:
+          style && style.outlineStyle !== 'none' && shown(box) === 'shown'
+            ? 'shown'
+            : 'hidden',
+        fill: style ? (clear ? 'hidden' : 'shown') : 'none',
+        chip: shown(box?.querySelector('[data-part="chip"]')),
+        picker: shown(root?.querySelector('[data-part="picker-peek"]')),
+        stack: shown(root?.querySelector('[data-part="stack"]')),
+      }
+    }
+    Object.assign(window, { onScreen: read })
+  }, HOST)
+}
+
+async function onScreen(page: Page): Promise<OnScreen> {
+  return page.evaluate(() =>
+    (window as unknown as { onScreen: () => OnScreen }).onScreen(),
+  )
+}
+
 /**
  * The shutter, as the page saw it: every time the host closed or opened it,
- * whether the Highlight was on screen at that moment, and every property that
+ * what of the Overlay was on screen at that moment, and every property that
  * began to ease anywhere in the Overlay afterwards.
  */
 async function watchShutter(page: Page): Promise<void> {
+  await teachOnScreen(page)
   await page.evaluate((tag) => {
     const host = document.querySelector(tag)
     const root = host?.shadowRoot
     if (!host || !root) throw new Error('the Overlay is not mounted')
+    const read = (window as unknown as { onScreen: () => Record<string, string> })
+      .onScreen
     const seen: Array<Record<string, unknown>> = []
     Object.assign(window, { seenShutter: seen })
     new MutationObserver(() => {
-      const box = root.querySelector('[data-part="highlight"]')
       seen.push({
         closed: host.hasAttribute('data-shutter'),
         at: performance.now(),
-        highlight: box ? getComputedStyle(box).visibility : 'none',
+        ...read(),
       })
     }).observe(host, { attributes: true, attributeFilter: ['data-shutter'] })
     root.addEventListener('transitionrun', (event) => {
@@ -240,13 +285,19 @@ async function shutterSeen(page: Page): Promise<Seen[]> {
   )
 }
 
-/** The shutter's story with its clock taken out: what happened, in order. */
+/**
+ * The shutter's story with its clock taken out: what happened, in order. At
+ * the close, everything the page shows is read; at the opening only the
+ * outline is, because the fill and the chip are just starting to fade back in
+ * and are neither one thing nor the other.
+ */
 function sequenceOf(seen: Seen[]): string[] {
-  return seen.map((entry) =>
-    'eased' in entry
-      ? `eased ${String(entry.eased)}`
-      : `${entry.closed ? 'closed' : 'opened'}, highlight ${String(entry.highlight)}`,
-  )
+  return seen.map((entry) => {
+    if ('eased' in entry) return `eased ${String(entry.eased)}`
+    if (!entry.closed) return `opened, outline ${String(entry.outline)}`
+    const parts = ['outline', 'fill', 'chip', 'picker', 'stack']
+    return `closed, ${parts.map((part) => `${part} ${String(entry[part])}`).join(', ')}`
+  })
 }
 
 /** How long the shutter stayed closed, from the first close to the first open. */
@@ -256,18 +307,18 @@ function heldFor(seen: Seen[]): number {
   return Number(opened?.at) - Number(closed?.at)
 }
 
-async function highlightClosedAt(page: Page): Promise<boolean> {
-  return page.evaluate((tag) => {
-    const host = document.querySelector(tag)
-    const box = host?.shadowRoot?.querySelector('[data-part="highlight"]')
-    return (
-      host?.hasAttribute('data-shutter') === true &&
-      box instanceof Element &&
-      getComputedStyle(box).visibility === 'hidden'
-    )
-  }, HOST)
+/** Closed, as the capture needs it: the fill and the chip gone, the outline on. */
+async function closedForCapture(page: Page): Promise<boolean> {
+  await teachOnScreen(page)
+  const closed = await page.evaluate(
+    (tag) => document.querySelector(tag)?.hasAttribute('data-shutter') === true,
+    HOST,
+  )
+  const seen = await onScreen(page)
+  return (
+    closed && seen.outline === 'shown' && seen.fill === 'hidden' && seen.chip === 'hidden'
+  )
 }
-
 function escaped(text: string): string {
   return text.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -490,13 +541,16 @@ test.describe('the shutter', () => {
     }
 
     const [first, ...rest] = runs.map(sequenceOf)
-    // Closed with the Highlight gone at once, opened, and eased back in — and
-    // exactly that, in the same order, in every run.
+    // Closed with the fill and the chip gone at once and the outline left on,
+    // opened, and the two eased back in — and exactly that, in the same order,
+    // in every run. The Picker never leaves; no Pick is outstanding, so there
+    // is no Stack.
     expect(first?.slice(0, 2)).toEqual([
-      'closed, highlight hidden',
-      'opened, highlight visible',
+      'closed, outline shown, fill hidden, chip hidden, picker shown, stack none',
+      'opened, outline shown',
     ])
-    expect(first).toContain('eased highlight opacity')
+    expect(first).toContain('eased highlight background-color')
+    expect(first).toContain('eased chip opacity')
     for (const run of rest) expect(run).toEqual(first)
     for (const run of runs) {
       expect(heldFor(run)).toBeGreaterThanOrEqual(200)
@@ -507,13 +561,62 @@ test.describe('the shutter', () => {
   test('is closed while the capture is asked for', async ({ page }) => {
     let closedAtRequest: boolean | null = null
     await page.route(CAPTURE, async (route: Route) => {
-      closedAtRequest = await highlightClosedAt(page)
+      closedAtRequest = await closedForCapture(page)
       await route.continue()
     })
     await open(page, probe('shutter-closed'))
     await arm(page)
     await pick(page, PICKED)
     await expect.poll(() => closedAtRequest).toBe(true)
+  })
+
+  test('never hides the Stack or the Picker', async ({ page }) => {
+    // A Pick sent first, so there is a Stack for the second Pick's shutter to
+    // leave alone. Its chip sits bottom-right and the Picker bottom-centre:
+    // neither is anywhere near the element, and hiding them only made the
+    // Overlay blink.
+    const token = probe('shutter-stack')
+    await open(page, token)
+    await arm(page)
+    await pick(page, SECOND_PICKED)
+    await page.locator(NOTE).fill(`first ${token}`)
+    await page.locator(NOTE).press('Enter')
+    await expect(page.locator(PANEL_STATUS)).toHaveText(SENT)
+    await expect(page.locator('[data-part="stack"]')).toBeVisible()
+
+    await page.keyboard.press('Escape')
+    await expect(page.locator(PANEL)).toHaveCount(0)
+    await arm(page)
+    const at = await centre(page, PICKED)
+    await page.mouse.move(at.x, at.y)
+    // Settled: the first Pick's shutter is open and nothing in the Overlay is
+    // still easing, so what is recorded is this Pick alone.
+    await expect
+      .poll(() =>
+        page.evaluate((tag) => {
+          const host = document.querySelector(tag)
+          if (!host?.shadowRoot || host.hasAttribute('data-shutter')) return -1
+          return [...host.shadowRoot.querySelectorAll('*')].reduce(
+            (count, element) => count + element.getAnimations().length,
+            0,
+          )
+        }, HOST),
+      )
+      .toBe(0)
+    await watchShutter(page)
+    await page.mouse.click(at.x, at.y)
+    await expect(page.locator(PANEL)).toBeVisible()
+    await expect.poll(async () => (await shutterSeen(page)).length).toBeGreaterThan(1)
+
+    const closed = (await shutterSeen(page)).find((entry) => entry.closed === true)
+    expect({ picker: closed?.picker, stack: closed?.stack }).toEqual({
+      picker: 'shown',
+      stack: 'shown',
+    })
+    const eased = sequenceOf(await shutterSeen(page)).filter((line) =>
+      line.startsWith('eased'),
+    )
+    expect(eased.filter((line) => /picker|stack/.test(line))).toEqual([])
   })
 })
 
@@ -525,7 +628,7 @@ test.describe('the shutter under reduced motion', () => {
   }) => {
     let closedAtRequest: boolean | null = null
     await page.route(CAPTURE, async (route: Route) => {
-      closedAtRequest = await highlightClosedAt(page)
+      closedAtRequest = await closedForCapture(page)
       await route.continue()
     })
     await open(page, probe('shutter-reduced'))
@@ -545,20 +648,21 @@ test.describe('the shutter under reduced motion', () => {
     // (the review-animations gate). Nothing else did.
     const sequence = sequenceOf(await shutterSeen(page))
     expect(sequence.slice(0, 2)).toEqual([
-      'closed, highlight hidden',
-      'opened, highlight visible',
+      'closed, outline shown, fill hidden, chip hidden, picker shown, stack none',
+      'opened, outline shown',
     ])
-    expect(sequence).toContain('eased highlight opacity')
+    expect(sequence).toContain('eased highlight background-color')
+    expect(sequence).toContain('eased chip opacity')
     for (const entry of sequence.filter((line) => line.startsWith('eased'))) {
-      expect(entry).toMatch(/ opacity$/)
+      expect(entry).toMatch(/ (opacity|background-color)$/)
     }
-    const opacity = await page.evaluate((tag) => {
-      const box = document
-        .querySelector(tag)
-        ?.shadowRoot?.querySelector('[data-part="highlight"]')
-      return box ? getComputedStyle(box).opacity : null
-    }, HOST)
-    expect(opacity).toBe('1')
+    expect(await onScreen(page)).toEqual({
+      outline: 'shown',
+      fill: 'shown',
+      chip: 'shown',
+      picker: 'shown',
+      stack: 'none',
+    })
   })
 })
 
