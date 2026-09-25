@@ -863,6 +863,38 @@ ${each('')} {
     border-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+/* The Panel arriving, leaving and changing place (overlay-polish ticket 07).
+   For every developer these are fades where the Panel stands: it fades in
+   where it opens, over 180 ms; a Panel that goes leaves a still copy behind
+   (\`presence.ts\`, \`data-leaving\`) that fades out where it stood, over
+   120 ms, quicker than it came; and under reduce a change of place is the
+   copy fading out at the old place while the Panel fades in, from
+   \`data-arriving\`, at the new one. Where movement is allowed, the block
+   below adds the growing and the going. \`@starting-style\` is where each
+   begins: a Panel from nothing, and its copy from a Panel fully shown. */
+.panel { transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1) }
+
+@starting-style {
+  .panel { opacity: 0 }
+}
+
+.panel[data-leaving] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@starting-style {
+  .panel[data-leaving] { opacity: 1 }
+}
+
+.panel[data-arriving] { opacity: 0 }
+
+/* The Panel drawn once where a change of place starts from: back where it
+   was, or unseen where it now is. Nothing eases into that; only out of it. */
+.panel[data-placing],
+.panel[data-arriving] { transition: none }
+
 /* The box is being placed rather than moved — a first appearance, or the
    element it is already on measured again after a scroll, a resize or a hot
    update. Neither is travel, and neither may animate. */
@@ -968,6 +1000,42 @@ ${each('')} {
   .countdown {
     transform: scaleX(var(--next, 1));
     transition: transform 1000ms linear;
+  }
+
+  /* The Panel grows out of the edge that faces its element — its top edge
+     when it opened below the element, its bottom edge when above, from the
+     point on it nearest the element's middle (\`placement.ts\`) — from 0.96
+     to its size, over 180 ms, as it fades in. A first appearance has nowhere
+     to come from, so it grows where it opens and travels from nowhere. Its
+     copy shrinks back into the same edge as it fades, in 120 ms. An Alt-click
+     that moves the Pick sends the Panel from where it was to its new place
+     in 200 ms: script draws it back at the old place with a \`translate\`,
+     committed with \`data-placing\` on, and lets go. Riding with its element
+     sets its \`left\` and \`top\`, which never ease: tracking is not
+     travelling. */
+  .panel {
+    transform-origin: var(--face-x, 0px) top;
+    transition:
+      opacity 180ms cubic-bezier(0.23, 1, 0.32, 1),
+      transform 180ms cubic-bezier(0.23, 1, 0.32, 1),
+      translate 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .panel[data-side='above'] { transform-origin: var(--face-x, 0px) bottom }
+
+  @starting-style {
+    .panel { transform: scale(0.96) }
+  }
+
+  .panel[data-leaving] {
+    transform: scale(0.96);
+    transition:
+      opacity 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @starting-style {
+    .panel[data-leaving] { transform: none }
   }
 
   /* A session's health, beside its word in the Target row and the Session

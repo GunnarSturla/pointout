@@ -24,7 +24,8 @@ import {
 import type { Sessions } from './client.js'
 import { viewportBox } from './deep-element.js'
 import { inViewport, offsetFrom, placeBeside, ride } from './placement.js'
-import type { Position, Size } from './placement.js'
+import type { Placement, Position, Size } from './placement.js'
+import { relocate } from './presence.js'
 import type { Reflow } from './reflow.js'
 import { partProps } from './root.js'
 import { TargetChoices, TargetRow, sessionsState } from './target-row.js'
@@ -370,7 +371,9 @@ export const Panel = memo(function Panel({
  * developer scrolls. So the opening is placed and shifted into the viewport,
  * and every reflow after it keeps the offset that opening chose — which is what
  * makes the Panel travel with the element instead of sticking to the edge. A
- * move (spec §7) is a fresh opening on the new element.
+ * move (spec §7) is a fresh opening on the new element, and the Panel goes
+ * there from where it was (`presence.ts`); every other placement is made at
+ * once, the first included.
  */
 function usePlacement(
   element: Element,
@@ -382,9 +385,18 @@ function usePlacement(
   const offset = useRef<Position | null>(null)
 
   // Placed before the first paint, and again as if just opened when the Pick
-  // moves to another element.
+  // moves to another element. Only the second is a change of place: a first
+  // opening has nowhere to come from.
   useLayoutEffect(() => {
-    if (panel.current) offset.current = openBeside(panel.current, element, view)
+    const node = panel.current
+    if (!node) return
+    if (offset.current === null) {
+      offset.current = openBeside(node, element, view)
+      return
+    }
+    relocate(node, view, () => {
+      offset.current = openBeside(node, element, view)
+    })
   }, [element, view])
 
   // Following the element, for as long as it is on the page. A detached element
@@ -425,13 +437,27 @@ function viewportOf(view: Window): Size {
   return { width: view.innerWidth, height: view.innerHeight }
 }
 
-/** The opening placement, applied. Answers the offset that riding then keeps. */
+/**
+ * The opening placement, applied. Answers the offset that riding then keeps.
+ *
+ * Measured by its layout size, not by what is drawn: the Panel may be drawn
+ * smaller, or off where it is placed, for the moment it is arriving or
+ * changing place, and neither is its size. The side it opened on, and the
+ * point along its facing edge nearest the element, are handed to `styles.ts`,
+ * which is where the Panel's opening grows out of.
+ */
 function openBeside(node: HTMLElement, element: Element, view: Window): Position {
   const anchor = viewportBox(element)
-  const { width, height } = node.getBoundingClientRect()
-  const position = placeBeside(anchor, { width, height }, viewportOf(view))
-  moveTo(node, position)
-  return offsetFrom(anchor, position)
+  const size = { width: node.offsetWidth, height: node.offsetHeight }
+  const placement = placeBeside(anchor, size, viewportOf(view))
+  moveTo(node, placement)
+  face(node, placement)
+  return offsetFrom(anchor, placement)
+}
+
+function face(node: HTMLElement, placement: Placement): void {
+  node.setAttribute('data-side', placement.side)
+  node.style.setProperty('--face-x', `${placement.faceX}px`)
 }
 
 function follow(node: HTMLElement, element: Element, offset: Position): void {

@@ -588,7 +588,7 @@ test.describe('Alt held over an open Panel', () => {
     await page.keyboard.up('Alt')
     await expect(page.locator(LIVE)).toHaveCount(0)
 
-    // One Panel, moved to the new element at once (ticket 07 animates it).
+    // One Panel, moved to the new element (panel-motion.spec.ts watches it go).
     await expect(page.locator(PANEL)).toHaveCount(1)
     await expect.poll(async () => (await boxOf(page, PANEL)).y).not.toBe(panelBefore.y)
     await expect(page.locator(CURRENT)).toHaveCount(1)

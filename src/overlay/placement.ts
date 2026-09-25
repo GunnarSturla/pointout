@@ -24,26 +24,44 @@ export interface Position {
   top: number
 }
 
+/** Which side of its element the Panel opened on. */
+export type Side = 'below' | 'above'
+
+/**
+ * An opening: where the Panel goes, and which of its edges faces its element —
+ * its top edge when it is below the element, its bottom edge when above. Along
+ * that edge, `faceX` is the point nearest the element's middle, in the Panel's
+ * own coordinates, so what grows out of the edge grows out of the element.
+ */
+export interface Placement extends Position {
+  side: Side
+  faceX: number
+}
+
 /**
  * Open placement: beside the anchor, flipped above when below has no room and
  * above has more, and shifted whole into the viewport.
  */
-export function placeBeside(anchor: ViewportBox, panel: Size, viewport: Size): Position {
+export function placeBeside(anchor: ViewportBox, panel: Size, viewport: Size): Placement {
   const below = anchor.top + anchor.height + ELEMENT_GAP
   const above = anchor.top - ELEMENT_GAP - panel.height
   const overflowBelow = below + panel.height - (viewport.height - VIEWPORT_PADDING)
   const overflowAbove = VIEWPORT_PADDING - above
 
-  let top = below
-  if (overflowBelow > 0) top = overflowAbove < overflowBelow ? above : below
+  const side: Side =
+    overflowBelow > 0 && overflowAbove < overflowBelow ? 'above' : 'below'
+  const top = side === 'above' ? above : below
+  const left = clamp(
+    anchor.left,
+    VIEWPORT_PADDING,
+    viewport.width - panel.width - VIEWPORT_PADDING,
+  )
 
   return {
-    left: clamp(
-      anchor.left,
-      VIEWPORT_PADDING,
-      viewport.width - panel.width - VIEWPORT_PADDING,
-    ),
+    left,
     top: clamp(top, VIEWPORT_PADDING, viewport.height - panel.height - VIEWPORT_PADDING),
+    side,
+    faceX: clamp(anchor.left + anchor.width / 2 - left, 0, panel.width),
   }
 }
 

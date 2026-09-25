@@ -309,10 +309,15 @@ async function settled(page: Page): Promise<void> {
  * colours when their state changes (overlay-polish ticket 05), and some change
  * as the Pick lands: the camera turns unavailable when the server refuses the
  * capture, and Send is enabled once the Target is read. Neither is the shutter.
+ *
+ * So is the Panel's own arrival: it fades in, and grows where movement is
+ * allowed, on the same click (overlay-polish ticket 07). Its entrance is never
+ * gated on a capture, and it is held on its own below.
  */
 function apartFromControls(sequence: string[]): string[] {
   return sequence.filter(
-    (line) => !/^eased (picker(-tail)?|camera|send|cancel|target(-row)?) /.test(line),
+    (line) =>
+      !/^eased (picker(-tail)?|camera|send|cancel|target(-row)?|panel) /.test(line),
   )
 }
 
@@ -605,6 +610,10 @@ test.describe('the shutter', () => {
       for (const line of controls) {
         expect(line).toMatch(/ (color|background-color|border-\w+-color|scale)$/)
       }
+      // The Panel arrives: a fade and a grow, and nothing that travels.
+      const panel = sequenceOf(run).filter((line) => line.startsWith('eased panel '))
+      expect(panel).toContain('eased panel opacity')
+      for (const line of panel) expect(line).toMatch(/ (opacity|transform)$/)
     }
     for (const run of runs) {
       expect(heldFor(run)).toBeGreaterThanOrEqual(200)
@@ -705,10 +714,15 @@ test.describe('the shutter under reduced motion', () => {
     }
     // The Picker, disarmed by this Pick, only fades too: it does not come down
     // from a lift it never made, and its width snaps.
-    // So do the Panel's controls, whatever of theirs changed as the Pick landed.
-    for (const entry of seen.filter((line) => !sequence.includes(line))) {
+    // So do the Panel's controls, whatever of theirs changed as the Pick landed,
+    // and so does the Panel itself as it arrives.
+    const taken = seen.filter((line) => !sequence.includes(line))
+    for (const entry of taken.filter((line) => !line.startsWith('eased panel '))) {
       expect(entry).toMatch(/ (color|background-color|border-\w+-color)$/)
     }
+    expect(seen.filter((line) => line.startsWith('eased panel '))).toEqual([
+      'eased panel opacity',
+    ])
     expect(await onScreen(page)).toEqual({
       outline: 'shown',
       fill: 'shown',

@@ -10,6 +10,7 @@ import { Panel } from './panel.js'
 import type { PanelProps } from './panel.js'
 import { Picker } from './picker.js'
 import type { PickerProps } from './picker.js'
+import { leaveBehind } from './presence.js'
 import { part } from './root.js'
 import { Stack } from './stack.js'
 import type { StackProps } from './stack.js'
@@ -33,13 +34,27 @@ export interface Surfaces {
  * Mount the tree once. The container is a plain block in the shadow root; every
  * surface inside it is fixed-position, so the container has no layout of its
  * own and takes no pointer, like the host it inherits that from.
+ *
+ * A Panel that goes — put away, discarded, or replaced by a new Pick's — is
+ * gone from the tree at once, and leaves a still copy of itself behind for a
+ * moment where it stood (`presence.ts`). The copy is taken here, while React
+ * has yet to render the change and the Panel is still in the page.
  */
 export function mountSurfaces(document: Document, shadow: ShadowRoot): Surfaces {
+  const view = document.defaultView
+  if (!view) throw new Error('vite-agent-inspect: the Overlay needs a window')
   const container = part(document, 'div', 'surfaces')
   shadow.append(container)
   const root = createRoot(container)
+  let panelKey: string | null = null
   return {
     render(props) {
+      const key = props.panel?.key ?? null
+      if (panelKey !== null && key !== panelKey) {
+        const panel = container.querySelector<HTMLElement>(':scope > [data-part="panel"]')
+        if (panel) leaveBehind(panel, view)
+      }
+      panelKey = key
       root.render(<SurfacesView {...props} />)
     },
   }

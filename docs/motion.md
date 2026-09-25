@@ -30,7 +30,9 @@ slower: the same states are reached, and only a fade is eased on the way.
 Only CSS transitions and the Web Animations API are used. The Panel's placement is
 arithmetic in `src/overlay/placement.ts` and never animates; the React surfaces
 (ADR-0004) declare no motion of their own, and the built-Overlay test would catch one
-that did.
+that did. What script does for the Panel's arrival, departure and move is in
+`src/overlay/presence.ts`, and it only sets attributes and a `translate` offset: the
+stylesheet says how each is drawn.
 
 ## What moves, and what does not
 
@@ -49,6 +51,10 @@ that did.
 | those controls pressed | 120 ms, `scale` to 0.97, from the centre, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
 | the Screen Capture shutter reopening — the Highlight's fill and its chip | 120 ms, `background-color` and the chip's `opacity`, from nothing, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
 | the report-back countdown line, each one-second step | 1000 ms, `transform` (`scaleX`), linear | no-preference only |
+| the Panel arriving | 180 ms, `opacity` 0 to 1, where it opens, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
+| the Panel growing as it arrives, out of the edge that faces its element | 180 ms, `transform: scale(0.96)` to none, `transform-origin` on its top edge when below the element and its bottom edge when above, at the point nearest the element's middle, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
+| the Panel leaving (`Escape`, a discard, a new Pick): a still copy of it, where it stood | 120 ms, `opacity` to 0, `cubic-bezier(0.23, 1, 0.32, 1)`; and `transform: scale(0.96)` back into the same edge under no-preference | the fade for every developer; the shrink no-preference only |
+| the Panel travelling to the element an Alt-click moved its Pick to | 200 ms, `translate` from the old place to none, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only; under reduce the old place fades out (a copy, 120 ms) while the Panel fades in at the new one (180 ms) |
 | a Working session's dot, in the Target row and the Session list | a 2000 ms loop, `scale` to 0.8 and `opacity` to 0.5 at its midpoint and back, `ease-in-out` | no-preference only; under reduce it holds still |
 | a Needs you session's dot: two rings, one second apart | a 2000 ms loop per ring, a 1.5 px `--needs` circle from `scale` 1 at 0.8 opacity to `scale` 2.25 at 0, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only; under reduce there are no rings |
 
@@ -94,7 +100,9 @@ Two things never move, and the rule for both is the same one:
   travel *from*, so it flies in from the last element it was on — or from the page's
   corner. The live Highlight, the chip, the frozen Highlight and the Panel are each
   placed instantly when they appear. One rule; it fixed four observed bugs in the
-  prototype.
+  prototype. The Panel's entrance (overlay-polish ticket 07) keeps it: it grows and
+  fades in *where it is placed*, and its first `translate` is none. Only a move of
+  an open Panel, which has somewhere to come from, travels.
 - **Tracking is not travelling.** A scroll, a resize or a hot update moves the element
   under a Highlight that is already on it. A box that eased its way after a scroll
   would lag behind the thing it marks, so a re-measure is a placement and never a
@@ -125,7 +133,7 @@ Pick's to rest: that one is already the Stack's.
 - Letting go of Alt fades the live mark where it stands and relights the Pick's.
 - An Alt-click hands the Pick to the live mark as it stands, and the old mark fades
   where it stood. The box on the new element does not move, blink or re-appear. The
-  Panel moves to it at once (overlay-polish ticket 07 animates that move).
+  Panel travels to it (below).
 - The live mark is placed instantly on its first element, like any first appearance,
   and morphs between elements after that, under no-preference only.
 - The two boxes trade roles, so each carries the role it is playing (`data-mark`), and
@@ -133,6 +141,42 @@ Pick's to rest: that one is already the Stack's.
   the Pick's over the Stack's resting marks, and every surface over all of them.
 - A mark that is not shown is not in the page at all. Once a fade has run, the box is
   taken out.
+
+### The Panel arriving, leaving and moving
+
+Overlay-polish ticket 07. The Panel should look as if it came out of the element it
+is about, go quickly when it is put away, and follow its Pick when an Alt-click moves
+it.
+
+- **Arriving.** `@starting-style` is where it begins: opacity 0, and under
+  no-preference `scale(0.96)`. `src/overlay/placement.ts` reports the side it placed
+  the Panel on (`data-side`) and the point along the facing edge nearest the
+  element's middle (`--face-x`), and that is the `transform-origin`. The Panel is
+  placed by its layout size (`offsetWidth`), not by its drawn rectangle, which is
+  smaller while it grows.
+- **Leaving.** The Panel itself leaves the tree at once, so nothing can type into it
+  or find it by its part name while it goes. Just before React renders that change,
+  `surfaces.tsx` leaves a still copy behind (`presence.ts`'s `leaveBehind`): a clone,
+  inert, `aria-hidden`, with every `data-part` taken off it and its descendants, and
+  `data-leaving` on. It is what was drawn: it carries the `translate` the Panel had
+  mid-travel, and the Note as typed (a clone's field is not reliably given what was
+  typed, so it is copied across). Its own `@starting-style` starts it fully shown, and it fades
+  (and shrinks, under no-preference) where it stood. It is placed just ahead of the
+  surfaces' container, so every live surface paints over it, and it is taken out
+  after 200 ms, longer than its 120 ms. Keep the two in step.
+- **Moving.** `presence.ts`'s `relocate` asks `prefers-reduced-motion` itself, since
+  the two modes do different things. Under no-preference the Panel is placed at its
+  new `left` and `top`, drawn back where it was with a `translate` committed under
+  `data-placing` (transitions off), and let go; the 200 ms is the `translate`
+  easing to none. A ride during it only changes `left` and `top`, so the Panel still
+  lands on its element. Under reduce a copy is left at the old place and the Panel is
+  committed once with `data-arriving` (opacity 0, transitions off), so it fades in at
+  the new one: spec §9's cross-fade.
+- **Riding is not travelling**: `left` and `top` never ease.
+
+A move that lands while the Panel is still growing finishes the growth at once,
+because `data-placing` turns every transition off for that one frame. It is rare and
+it is not wrong, so it is left.
 
 ## The shutter
 
@@ -368,7 +412,9 @@ first appearance (nothing), what runs on a hover move (`translate`, `width`, `he
 never `scale`), that the box's border and radius are unchanged in a mid-morph frame,
 that the morph is still under way frames after the hover that started it, the two
 marks' preview, release and Alt-click, and that under emulated reduced motion nothing
-but a fade runs while every position still updates. `test/seam2/capture.spec.ts` holds
+but a fade runs while every position still updates. `test/seam2/panel-motion.spec.ts`
+watches the Panel frame by frame as it arrives, leaves and travels, in both modes.
+`test/seam2/capture.spec.ts` holds
 the shutter: the outline on and the fill and chip off while it is closed, and the Stack
 and the Picker never hidden.
 
