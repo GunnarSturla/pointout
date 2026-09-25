@@ -1,5 +1,5 @@
 import type { Logger } from 'vite'
-import { FAILED, HELD, SENT } from '../wire.js'
+import { HELD, SENT } from '../wire.js'
 import type { Target } from '../wire.js'
 import { now } from './clock.js'
 import type { DeliveryRoute } from './delivery.js'
@@ -174,7 +174,7 @@ function applyReceipt(receipt: Receipt, { ledger, logger }: ReplyEvidence): void
   // route here may either: `failed` takes it out of the claim-once queue, which
   // also keeps the TTL sweep from writing its own sentence over this one.
   const sentence = failureSentence(receipt, name)
-  ledger.advance(receipt.pickId, FAILED, sentence)
+  ledger.failByReceipt(receipt.pickId, sentence)
   logger.warn(`vite-agent-inspect: pick ${receipt.pickId} ${receipt.status}. ${sentence}`)
 }
 
