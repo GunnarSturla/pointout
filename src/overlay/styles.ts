@@ -49,22 +49,37 @@ export const OVERLAY_STYLESHEET = `
 
 .highlight[hidden] { display: none }
 
-/* The element this was on has left the page (spec §5). The box fades where it
-   stood — it never flies off, and the Pick made of it still sends. */
-.highlight[data-gone] { opacity: 0 }
+/* Painting order, by role rather than by where a box sits in the shadow root:
+   the Stack's resting marks lowest, the open Pick's mark over them, the live
+   mark that follows the pointer while Alt is held over a Panel over both — it
+   is the one being pointed at — and every surface over all of them. */
+.highlight { z-index: 1 }
+
+.highlight[data-mark='current'] { z-index: 2 }
+
+.highlight[data-mark='live'] { z-index: 3 }
+
+.stack,
+.picker-peek,
+.panel { z-index: 4 }
+
+/* The element this was on has left the page (spec §5), or this was the live
+   mark and it has been let go of. The box fades where it stood — it never
+   flies off, and a Pick made of it still sends. */
+.highlight[data-gone],
+.highlight[data-fading] { opacity: 0 }
 
 /* The shutter (spec §10): closed for the frame a Screen Capture is taken in.
-   Everything the Overlay draws on the page leaves it at once — the Highlight
-   and its chip, the resting Highlights, the Stack and the Picker — and the
-   Panel stays, because its entrance is never gated on a capture. Closing is
-   always instant, so no capture ever catches the Overlay halfway out; only
-   the opening is eased, and it is a fade (see the fades, below). */
-:host([data-shutter]) .highlight,
-:host([data-shutter]) .stack,
-:host([data-shutter]) .picker-peek {
-  visibility: hidden;
-  opacity: 0;
-}
+   It takes only what would pollute the capture: the Highlight's fill, which
+   would tint the element, and its chip, which would cover the page beside it.
+   The outline stays — it marks the picked element inside the capture's
+   margin, and the setup skill tells the agent so. The Stack, the Picker and
+   the Panel are nowhere near the element and stay too. Closing is always
+   instant, so no capture ever catches the fill halfway out; only the opening
+   is eased, and it is a fade (see the fades, below). */
+:host([data-shutter]) .highlight { background-color: transparent }
+
+:host([data-shutter]) .chip { opacity: 0 }
 
 .chip {
   position: absolute;
@@ -92,12 +107,15 @@ export const OVERLAY_STYLESHEET = `
 /* The resting Highlight of a submitted Pick (spec §5): a thin outline, no fill
    and no chip, desaturated — the Pick is still marked on the page, and the page
    is still readable under it. Hovering its chip in the Stack takes the attribute
-   off and the box is the live treatment again. */
+   off and the box is the live treatment again. The open Pick's own mark wears
+   it too while the live mark shows what an Alt-click would pick instead. */
 .highlight[data-resting] {
   outline-width: 1px;
   outline-color: rgb(127 127 127 / 75%);
   background: none;
 }
+
+.highlight[data-resting] .chip { opacity: 0 }
 
 /* What the Picker peeks out of (spec §8). It is the part that moves, so the
    button inside it keeps one job. Full width and pointer-transparent: this
@@ -464,19 +482,29 @@ export const OVERLAY_STYLESHEET = `
    Fades, for every developer (spec §9: "under reduce ... panels cross-fade").
 
    A fade is not movement: nothing travels, nothing changes size, and what
-   appears or leaves does so where it already is. So the three opacity changes
-   the Overlay makes ease for a developer who asked their system for less
-   motion too — the review-animations gate's reading of reduced motion as
-   gentler, not zero. Only \`opacity\` may ease out here, and \`transition: none\`
-   may stop it; a seam-1 test reads the built file to hold both.
+   appears or leaves does so where it already is. So the Overlay's fades ease
+   for a developer who asked their system for less motion too — the
+   review-animations gate's reading of reduced motion as gentler, not zero.
+   Only a fade may ease out here — \`opacity\`, \`color\`, \`background-color\`,
+   \`border-color\` and \`outline-color\` — and \`transition: none\` may stop
+   one; a seam-1 test reads the built file to hold both.
+
+   The Highlight fades three ways: its opacity when it leaves (its element
+   gone, or a live mark let go of), its fill when the shutter opens, and its
+   fill and outline colour when it drops to rest and relights. The chip fades
+   with it. The outline's width changes too when it rests, and that is a
+   change of size, so it is never eased.
 
    The curve is the strong ease-out: a fade is something leaving or arriving.
    ------------------------------------------------------------------------ */
-.highlight,
-.picker-peek,
-.stack {
-  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+.highlight {
+  transition:
+    opacity 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    background-color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+    outline-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
 }
+
+.chip { transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1) }
 
 /* The box is being placed rather than moved — a first appearance, or the
    element it is already on measured again after a scroll, a resize or a hot
@@ -484,14 +512,19 @@ export const OVERLAY_STYLESHEET = `
 .highlight[data-placing] { transition: none }
 
 /* The shutter (spec §10). Closing is never eased: no capture may catch the
-   Overlay halfway out, and an opening that started from a half-finished close
-   would not read the same twice. The opening is the fade above.
+   fill or the chip halfway out, and an opening that started from a
+   half-finished close would not read the same twice. The opening is the fade
+   above. A mark already fading out when the shutter closes — the one an
+   Alt-click left behind — keeps fading: only its opacity eases, and nothing
+   of it travels while the shutter is closed.
 
-   This rule and the placing one outrank the plain selectors in the movement
-   block below by specificity, so they hold under no-preference too. */
-:host([data-shutter]) .highlight,
-:host([data-shutter]) .stack,
-:host([data-shutter]) .picker-peek { transition: none }
+   These rules and the placing one outrank the plain selectors in the
+   movement block below by specificity, so they hold under no-preference too. */
+:host([data-shutter]) .highlight {
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+:host([data-shutter]) .chip { transition: none }
 
 /* ------------------------------------------------------------------------
    Movement, and the only place in the Overlay there is any (spec §9).
@@ -499,8 +532,9 @@ export const OVERLAY_STYLESHEET = `
    Everything that moves lives inside this block, so a developer who has asked
    their system for less motion is not opted out of anything — they were never
    opted in. Nothing outside it may declare an animation, a set of keyframes,
-   or a transition of anything but \`opacity\`, and a seam-1 test reads the
-   built file to say so.
+   or a transition of anything but a fade, and a seam-1 test reads the built
+   file to say so. A rule here that lists a Highlight's transitions restates
+   its fades too, because it replaces the whole list above.
 
    The Highlight's morph animates \`translate\`, \`width\` and \`height\` on a box
    that is one fixed element outside the host's layout flow. \`scale\` is
@@ -519,17 +553,15 @@ export const OVERLAY_STYLESHEET = `
       translate 120ms cubic-bezier(0.23, 1, 0.32, 1),
       width 120ms cubic-bezier(0.23, 1, 0.32, 1),
       height 120ms cubic-bezier(0.23, 1, 0.32, 1),
-      opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+      opacity 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      background-color 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      outline-color 120ms cubic-bezier(0.23, 1, 0.32, 1);
   }
 
   /* The Picker's reveal (spec §8): 180 ms, out of the peek and back into it.
      Under reduce it still moves between exactly these two positions — it
      arrives at once, which is the whole difference. */
-  .picker-peek {
-    transition:
-      translate 180ms cubic-bezier(0.23, 1, 0.32, 1),
-      opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
-  }
+  .picker-peek { transition: translate 180ms cubic-bezier(0.23, 1, 0.32, 1) }
 
   /* The report-back countdown (spec §8, story 47): script sets where the line
      will be one step from now as --next, and it eases linearly across that

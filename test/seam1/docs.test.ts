@@ -292,9 +292,12 @@ describe('the motion record', () => {
     expect(doc).toContain('src/overlay/styles.ts')
     expect(doc).toMatch(/no movement by default/i)
     // The review-animations gate's one change to the rule: a fade is kept for a
-    // developer who asked for less motion, and only a fade.
+    // developer who asked for less motion, and only a fade — which, since
+    // overlay-polish ticket 03, is a colour as well as an opacity.
     expect(flowed).toMatch(/a fade is not movement/i)
-    expect(flowed).toMatch(/Only `opacity` may ease/)
+    expect(flowed).toMatch(
+      /Only a fade may ease there: `opacity`, `color`, `background-color`, `border-color` and `outline-color`/,
+    )
   })
 
   it('records the morph deviation as pre-registered against the gate', () => {

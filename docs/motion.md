@@ -13,11 +13,15 @@ there is exactly one such block in the whole project, at the bottom of
 opted *out* of any movement here; they were never opted in.
 
 **A fade is not movement.** Since the `review-animations` gate (below), the Overlay's
-three opacity changes — the Highlight of an element that left, and the shutter
-reopening — ease for every developer, just above that block. Only `opacity` may ease
-there, and `transition: none` may stop it. That is the gate's reading of reduced motion
-as *gentler, not zero*, and it is what spec §9 already said: under reduce, panels
-cross-fade.
+fades — the Highlight of an element that left, the live mark let go of, the shutter
+reopening, and a Highlight dropping to rest or relighting — ease for every developer,
+just above that block. Only a fade may ease there: `opacity`, `color`,
+`background-color`, `border-color` and `outline-color`, and `transition: none` may stop
+one. The gate allowed `opacity` alone; overlay-polish ticket 03 widened it to colour,
+the first time anything needed it, because a fill fading back or an outline greying
+out changes what something looks like and never where it is or how big. That is the
+gate's reading of reduced motion as *gentler, not zero*, and it is what spec §9 already
+said: under reduce, panels cross-fade.
 
 Under reduce the Highlight jumps, the Picker's tuck is instant, the countdown shortens
 in whole steps, and what appears or leaves fades where it stands. Nothing is merely
@@ -30,14 +34,14 @@ that did.
 
 ## What moves, and what does not
 
-| | |
-| --- | --- |
-| | | |
+| what | how | for whom |
 | --- | --- | --- |
-| the Highlight travelling between two hovered elements | 120 ms, `translate` + `width` + `height`, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
+| the Highlight travelling between two hovered elements, and the live mark between two elements while Alt is held over a Panel | 120 ms, `translate` + `width` + `height`, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
 | the Highlight of an element that has left the page | 120 ms, `opacity` to 0, where it stood, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
+| the live mark let go of (Alt released), and the old mark an Alt-click leaves behind | 120 ms, `opacity` to 0, where it stood, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
+| the open Pick's mark dropping to rest while the live mark shows, and relighting | 120 ms, `background-color` + `outline-color`, and the chip's `opacity`, `cubic-bezier(0.23, 1, 0.32, 1)`; the outline's width snaps | every developer |
 | the Picker's reveal out of its peek | 180 ms, `translate`, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
-| the Screen Capture shutter reopening — Highlights, Stack, Picker | 120 ms, `opacity` from 0, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
+| the Screen Capture shutter reopening — the Highlight's fill and its chip | 120 ms, `background-color` and the chip's `opacity`, from nothing, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
 | the report-back countdown line, each one-second step | 1000 ms, `transform` (`scaleX`), linear | no-preference only |
 
 The prototype's numbers were 170 ms on `cubic-bezier(0.77, 0, 0.175, 1)` for the morph
@@ -69,20 +73,60 @@ In the Highlight both are the same mechanism: the box carries `data-placing` for
 one placement, the attribute suppresses the morph, and the placement is committed
 before it comes off.
 
+**A report that nothing moved is not tracking.** A `ResizeObserver` reports every
+target once when it starts observing it. The Highlight watches each new element with
+one, and until overlay-polish ticket 03 it took that first report for the page moving
+the element: it re-placed the box a frame or two into the morph and cancelled it.
+Measured in Chromium, the three transitions started at about 621 ms and were cancelled
+at about 654 ms. Sampled once a frame in all three engines, the drawn width was at the
+destination by the third frame after the hover and stayed there. Each target's first
+report is skipped now, and `test/seam2/highlight.spec.ts` watches the drawn width frame
+by frame to keep it so.
+
+### Two marks
+
+With an unsubmitted Panel open and Alt held, a second, **live** Highlight follows the
+pointer — fill, chip and morph — and the open Pick's own mark drops to the resting
+treatment. It shows what an Alt-click would pick without losing what is picked. Over a
+submitted Panel it follows the pointer the same way, and there is no mark of the open
+Pick's to rest: that one is already the Stack's.
+
+- Letting go of Alt fades the live mark where it stands and relights the Pick's.
+- An Alt-click hands the Pick to the live mark as it stands, and the old mark fades
+  where it stood. The box on the new element does not move, blink or re-appear. The
+  Panel moves to it at once (overlay-polish ticket 07 animates that move).
+- The live mark is placed instantly on its first element, like any first appearance,
+  and morphs between elements after that, under no-preference only.
+- The two boxes trade roles, so each carries the role it is playing (`data-mark`), and
+  painting order follows the role, not the shadow root: the live mark over the Pick's,
+  the Pick's over the Stack's resting marks, and every surface over all of them.
+- A mark that is not shown is not in the page at all. Once a fade has run, the box is
+  taken out.
+
 ## The shutter
 
-Every Pick, and every move of one, closes a shutter over the Overlay for the frame a
-Screen Capture is taken in (spec §10, story 68). The host carries `data-shutter` for a
-fixed 250 ms; while it does, the Highlight and its chip, the resting Highlights, the
-Stack and the Picker are `visibility: hidden` and `opacity: 0`. The Panel is not behind
-it: its entrance is never gated on a capture, and a large element's capture may catch
-its edge.
+Every Pick, and every move of one, closes a shutter for the frame a Screen Capture is
+taken in (spec §10, story 68). The host carries `data-shutter` for a fixed 250 ms.
+While it does, **only what would pollute the capture is hidden**: every Highlight's
+fill, which would tint the element, and the chip, which would cover the page beside
+it. Since overlay-polish ticket 03 nothing else is.
 
+- **The outline stays.** The capture is the element plus a 24 px margin, and the
+  outline is drawn just outside the element's edges, so it lands in the capture and
+  marks the element there. The setup skill tells the agent that the thin blue outline
+  is the Overlay's mark and not part of the page.
+- **The Stack, the Picker and the Panel stay.** They sit along the bottom edge and
+  beside the element, and hiding the first two only made the whole Overlay blink on
+  every Pick. The Panel's entrance is never gated on a capture, and a large element's
+  capture may catch its edge.
 - **Closing is instant in every mode.** A close that eased could be caught half-done by
-  the capture, so the opt-in block turns easing off while the shutter is closed.
-- **Opening fades, for every developer** — 120 ms of `opacity`, the same span the
-  Highlight fades by when its element leaves. A fade is not movement, so it is kept
-  under reduce too; the Overlay is still absent while the capture is asked for.
+  the capture, so the fill and the chip are not eased while the shutter is closed. A
+  mark that is already fading out (the old mark an Alt-click leaves behind) keeps
+  fading. Only its opacity eases, and nothing travels while the shutter is closed.
+- **Opening fades, for every developer**: 120 ms of the fill's `background-color` and
+  the chip's `opacity`, the same span the Highlight fades by when its element leaves. A
+  fade is not movement, so it is kept under reduce too. The fill and the chip are still
+  gone while the capture is asked for.
 - **It reads the same whether a capture is taken, skipped, or unavailable.** The span is
   fixed, not tied to the capture's answer, because the dev server answers the id at once
   and runs the tool behind it. 250 ms is the real `screencapture` run (75–110 ms for a
@@ -91,8 +135,9 @@ its edge.
 
 The gate saw it as a blink on every Pick, which is a frequent action. The hide is the
 feature and stays; the gate kept the 120 ms opening because it softens the pop back
-in, and moved it to the strong ease-out. It is the next thing to remove if the Overlay
-ever feels busy.
+in, and moved it to the strong ease-out. Ticket 03 then took away most of the blink by
+hiding only the fill and the chip. The opening is the next thing to remove if the
+Overlay ever feels busy.
 
 ## The report-back countdown
 
@@ -275,9 +320,13 @@ Neither pre-registered decision was reversed.
 `test/seam1/overlay-build.test.ts` reads the **built** Overlay — what the consumer's
 browser actually runs — and asserts four things: motion is declared in the stylesheet
 and in no other module; outside the one `prefers-reduced-motion: no-preference` block
-there is no animation, no keyframes, and no transition of anything but `opacity` (or
-`none`); no movement is timed outside it; and the query is `no-preference` rather than
-`reduce`, because `reduce` would be movement by default undone afterwards.
+there is no animation, no keyframes, and no transition of anything but a fade —
+`opacity`, `color`, `background-color`, `border-color`, `outline-color` — or `none`; no
+movement is timed outside it; and the query is `no-preference` rather than `reduce`,
+because `reduce` would be movement by default undone afterwards. The fade rule is also
+held against values rather than only against today's sheet, so it is known to bite: a
+colour passes, and `translate`, `outline-width`, the `background` shorthand and `all`
+fail.
 
 Anything that animates through the Web Animations API instead has to name
 `prefers-reduced-motion` in its own file: a script call carries no media query of its
@@ -286,8 +335,12 @@ own, so the file that makes one has to ask first.
 `test/seam2/highlight.spec.ts` is the other half, in a real browser: what runs on a
 first appearance (nothing), what runs on a hover move (`translate`, `width`, `height`,
 never `scale`), that the box's border and radius are unchanged in a mid-morph frame,
-and that under emulated reduced motion nothing but a fade runs while every position
-still updates.
+that the morph is still under way frames after the hover that started it, the two
+marks' preview, release and Alt-click, and that under emulated reduced motion nothing
+but a fade runs while every position still updates. `test/seam2/capture.spec.ts` holds
+the shutter: the outline on and the fill and chip off while it is closed, and the Stack
+and the Picker never hidden.
+
 
 The test bed holds still on purpose: `examples/react-app/` animates nothing, so those
 assertions mean what they say.

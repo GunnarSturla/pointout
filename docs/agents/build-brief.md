@@ -74,8 +74,8 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 - **Movement is opt-in, and lives in one place.** Everything that travels, resizes or
   shortens sits inside the single `@media (prefers-reduced-motion: no-preference)`
   block at the bottom of `src/overlay/styles.ts`. A fade is not movement: just above
-  that block, `opacity` alone may ease, for every developer, and `transition: none` may
-  stop it. A module that animates in script has to name `prefers-reduced-motion`
+  that block, a fade — `opacity`, `color`, `background-color`, `border-color`,
+  `outline-color` — may ease, for every developer, and `transition: none` may stop it. A module that animates in script has to name `prefers-reduced-motion`
   itself. A seam-1 test reads the built Overlay for all of it. See `docs/motion.md`,
   which also records the `review-animations` gate's outcome and the deviations it
   accepted.

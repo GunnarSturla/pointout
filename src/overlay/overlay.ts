@@ -18,18 +18,20 @@ import { viewportBox } from './deep-element.js'
 import type { ViewportBox } from './deep-element.js'
 import { describeElement } from './describe.js'
 import { readOwner, readOwnerChain } from './fiber.js'
-import { createHighlight } from './highlight.js'
 import { elementAtPoint } from './hit-test.js'
+import { createMarks } from './marks.js'
 import type { PanelCamera, PointerInputs } from './panel.js'
 import { inViewport } from './placement.js'
 import { createReflow } from './reflow.js'
-import { mountOverlayRoot } from './root.js'
+import { mountOverlayRoot, part } from './root.js'
 import type { Submitted } from './stack.js'
 import { mountSurfaces } from './surfaces.js'
 
 /** What arms the Overlay. Alt is held; the Picker is a toggle. */
 type ArmedBy = 'alt' | 'picker'
 type Mode = 'off' | 'armed' | 'picked'
+/** A point in the top document's viewport, as a pointer event gives it. */
+type Point = { x: number; y: number }
 
 /**
  * How long the shutter stays closed around a Screen Capture (spec §10). A fixed
@@ -52,11 +54,14 @@ export function startOverlay(document: Document): OverlayHandle {
   if (!view) throw new Error('vite-agent-inspect: the Overlay needs a window')
 
   const { host, shadow } = mountOverlayRoot(document)
-  const highlight = createHighlight(document, shadow)
+  // The two Highlights are drawn into a layer of their own, ahead of the
+  // surfaces. Which box paints over which is `styles.ts`'s, by role, not the
+  // order they happen to be in.
+  const layer = part(document, 'div', 'marks')
+  shadow.append(layer)
+  const marks = createMarks(document, layer)
   const hittability = createHittability(document, shadow)
   const reflow = createReflow()
-  // After the Highlight, so the resting boxes paint over the live one and never
-  // under it — the surfaces sit later in the shadow root than the box does.
   const surfaces = mountSurfaces(document, shadow)
 
   let mode: Mode = 'off'
@@ -76,6 +81,11 @@ export function startOverlay(document: Document): OverlayHandle {
   let offeredWayBack = false
   /** The page's own cursor, put back exactly as it was found. */
   let pageCursor = ''
+  /**
+   * Where the pointer last was on the page, so Alt pressed over an open Panel
+   * previews at once. Null while it is over the Overlay's own chrome.
+   */
+  let lastPointer: Point | null = null
   /** When the shutter opens again, while it is closed. */
   let shutterOpens = 0
 
@@ -117,7 +127,7 @@ export function startOverlay(document: Document): OverlayHandle {
     openPickId = pickId
     // The frozen Highlight becomes the Stack's resting one: one box on the
     // element, not two (spec §5).
-    highlight.hide()
+    marks.hide()
     if (picked) submitted = [...submitted, { pickId, targetName, element: picked }]
     render()
   }
@@ -140,7 +150,7 @@ export function startOverlay(document: Document): OverlayHandle {
   }
   const pointer = (): PointerInputs => {
     if (!picked) throw new Error('vite-agent-inspect: no Pick is open to send')
-    return pointerOf(view, picked, highlight.lastBox())
+    return pointerOf(view, picked, marks.lastBox())
   }
 
   /** The open Panel has ridden out of the viewport with its element (spec §7). */
@@ -204,7 +214,7 @@ export function startOverlay(document: Document): OverlayHandle {
     mode = 'off'
     armedBy = null
     hovered = null
-    highlight.hide()
+    marks.hide()
     document.documentElement.style.cursor = pageCursor
     hittability.disarm()
     render()
@@ -229,7 +239,7 @@ export function startOverlay(document: Document): OverlayHandle {
     gone = false
     pickCount += 1
     captureAt(element)
-    highlight.show(element, readOwner(element))
+    marks.show(element, readOwner(element))
     mode = 'picked'
     // Picked is not armed: the page goes back to the hittability its author gave
     // it while the Note is being written.
@@ -239,13 +249,15 @@ export function startOverlay(document: Document): OverlayHandle {
 
   /**
    * The moment a Pick is made or moved (spec §10, story 67). The shutter closes
-   * first — the Highlight and its chip, the Stack and the Picker leave the page
-   * for the frame — and the capture is asked for in the same task, so the
-   * request cannot reach the dev server before the page has stopped drawing
-   * them. Toggle or no toggle, capture or none: the same shutter, every time.
+   * first — the Highlight's fill and its chip leave the page for the frame, and
+   * its outline stays to mark the element — and the capture is asked for in the
+   * same task, so the request cannot reach the dev server before the page has
+   * stopped drawing them. Toggle or no toggle, capture or none: the same
+   * shutter, every time.
    *
-   * The Panel is not behind the shutter. Its entrance is never gated on a
-   * capture, and a large element's capture may catch it at its edge.
+   * Nothing else is behind the shutter. The Stack and the Picker are nowhere
+   * near the element, and the Panel's entrance is never gated on a capture; a
+   * large element's capture may catch it at its edge.
    */
   const captureAt = (element: Element) => {
     host.setAttribute('data-shutter', '')
@@ -257,18 +269,19 @@ export function startOverlay(document: Document): OverlayHandle {
   // The picked element can leave the page while its Panel is open (spec §5,
   // user story 25). The Highlight fades where it stood; the Panel is what says
   // so, and the Pick it belongs to is still sendable.
-  highlight.whenGone(() => {
+  marks.whenGone(() => {
     if (!picked) return
     gone = true
     render()
   })
   // A hot update moved the element under the Highlight: everything else
   // anchored to the page moves with it.
-  highlight.whenMoved(() => reflow.emit())
+  marks.whenMoved(() => reflow.emit())
 
   /** `Escape` unwinds exactly one level, never two (spec §4). */
   const unwind = () => {
     if (mode === 'picked') {
+      marks.release()
       closePanel()
       mode = 'armed'
       armedBy = armedBy ?? 'picker'
@@ -292,15 +305,37 @@ export function startOverlay(document: Document): OverlayHandle {
   }
 
   const onPointerMove = (event: PointerEvent) => {
+    // Over the Overlay's own chrome an Alt-click means nothing to the page, so
+    // there is nothing to preview there.
+    lastPointer = ours(event) ? null : { x: event.clientX, y: event.clientY }
+    if (mode === 'picked') {
+      if (event.altKey && lastPointer) previewAt(lastPointer)
+      else marks.release()
+      return
+    }
     if (mode !== 'armed') return
     const element = elementAtPoint(document, event.clientX, event.clientY)
     if (!element) {
       hovered = null
-      highlight.hide()
+      marks.hide()
       return
     }
     hovered = element
-    highlight.show(element, readOwner(element))
+    marks.show(element, readOwner(element))
+  }
+
+  /**
+   * With a Panel open and Alt held, the live mark shows what an Alt-click here
+   * would pick, and the Pick's own mark rests under it (spec §5, §7).
+   */
+  const previewAt = (at: Point) => {
+    const element = elementAtPoint(document, at.x, at.y)
+    if (!element) {
+      marks.release()
+      return
+    }
+    hovered = element
+    marks.preview(element, readOwner(element))
   }
 
   const onClick = (event: MouseEvent) => {
@@ -318,17 +353,20 @@ export function startOverlay(document: Document): OverlayHandle {
     // Spec §7's two meanings. An unsubmitted Panel *moves* — the Note the
     // developer already wrote is theirs and travels with the Pick. A submitted
     // one is a finished Pick, so this is a new one and the old Panel minimizes
-    // into the Stack, where its chip has been resting since it was sent.
-    if (mode === 'picked' && openPickId === null) {
-      picked = element
-      hovered = element
-      gone = false
-      captureAt(element)
-      highlight.show(element, readOwner(element))
-      render()
-      return
+    // into the Stack, where its chip has been resting since it was sent. Either
+    // way the live mark is already on the element, and it becomes the Pick's.
+    if (mode === 'picked') {
+      marks.promote(element, readOwner(element))
+      if (openPickId === null) {
+        picked = element
+        hovered = element
+        gone = false
+        captureAt(element)
+        render()
+        return
+      }
+      closePanel()
     }
-    if (mode === 'picked') closePanel()
 
     pickOn(element)
   }
@@ -354,20 +392,23 @@ export function startOverlay(document: Document): OverlayHandle {
       return
     }
     if (event.altKey && mode === 'off') arm('alt')
+    if (event.altKey && mode === 'picked' && lastPointer) previewAt(lastPointer)
   }
 
   const onKeyUp = (event: KeyboardEvent) => {
     if (event.altKey) return
+    if (mode === 'picked') marks.release()
     if (mode === 'armed' && armedBy === 'alt') off()
   }
 
   /** A held Alt the window never sees released would leave it armed for ever. */
   const onBlur = () => {
+    if (mode === 'picked') marks.release()
     if (mode === 'armed' && armedBy === 'alt') off()
   }
 
   const onReflow = () => {
-    highlight.remeasure()
+    marks.remeasure()
     reflow.emit()
     // Whether the Panel has ridden off-screen is a question about where the page
     // is, so it is answered where the page moves (spec §7, story 16) — and only

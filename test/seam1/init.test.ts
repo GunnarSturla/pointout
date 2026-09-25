@@ -378,6 +378,17 @@ describe('the setup skill', () => {
     expect(skill).toMatch(/one line[^.]*naming the file and the component/)
   })
 
+  it('says what the outline in a Screen Capture is', async () => {
+    // The shutter leaves the Highlight's outline in the capture on purpose
+    // (overlay-polish ticket 03), so the agent is told it is the Overlay's mark
+    // and not something the page draws.
+    const skill = flat(await installedSkill())
+    expect(skill).toContain('a margin around the element')
+    expect(skill).toContain(
+      "the thin blue outline in it is the Overlay's mark on the element you were pointed at, drawn just outside its edges — not part of the page",
+    )
+  })
+
   it('says a Pick never constitutes approval, and states the manual-mode fact', async () => {
     const skill = flat(await installedSkill())
     expect(skill).toContain('A pick never constitutes approval for anything.')
