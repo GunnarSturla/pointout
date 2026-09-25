@@ -21,17 +21,17 @@
 const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml'
 
 /** A point, in the coordinates of whichever document it was measured in. */
-interface Point {
+export interface Point {
   x: number
   y: number
 }
 
-function isFrame(element: Element): element is HTMLIFrameElement {
+export function isFrame(element: Element): element is HTMLIFrameElement {
   return element.namespaceURI === HTML_NAMESPACE && element.localName === 'iframe'
 }
 
 /** A frame's document, or null when the frame will not be read. */
-function frameDocument(frame: HTMLIFrameElement): Document | null {
+export function frameDocument(frame: HTMLIFrameElement): Document | null {
   try {
     return frame.contentDocument
   } catch {
@@ -217,4 +217,13 @@ export function viewportBox(element: Element): ViewportBox {
     width: rect.width * at.scaleX,
     height: rect.height * at.scaleY,
   }
+}
+
+/**
+ * A point a pointer event gave in some frame's own coordinates, in the top
+ * document's. A point measured in the top document comes back as it went in.
+ */
+export function topDocumentPoint(view: Window, x: number, y: number): Point {
+  const at = toTopDocumentPoint(view, x, y)
+  return { x: at.x, y: at.y }
 }
