@@ -38,7 +38,12 @@ unsubmitted Panel, and the Pick rests as its minimized Panel in the Stack
 the Note's first line, a camera when a Screen Capture went, and a second line of §17's
 words. The light, its word, the words and the next action come from one
 `say(state, reason, name, offered)` in `stack.tsx`; `held` and `failed` Receipts reach
-it (ticket 27). "Chip" means the Highlight's label only.
+it (ticket 27). "Chip" means the Highlight's label only. Send shrinks the Panel
+into its slot (overlay-polish 09), and pressing a minimized Panel's first line, a button,
+opens it above the Stack (`Expanded` in `stack.tsx`, part `expanded`): at most one, its
+slot marked `data-open`, and it closes back into the slot. A submitted Panel's `Escape` is
+its own; the controller leaves it alone (`inSubmittedPanel`). `Submitted.slot` is the
+Stack's key, and survives a retarget.
 
 The Panel footer has the camera toggle, and a pick closes the Shutter for the
 capture frame whatever the toggle says (ticket 18, `src/overlay/capture.ts`). A Pick

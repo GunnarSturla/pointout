@@ -78,6 +78,8 @@ export function startOverlay(document: Document): OverlayHandle {
   let gone = false
   /** Every Pick outstanding, oldest first: what the Stack shows. */
   let submitted: readonly Submitted[] = []
+  /** The Stack slot the open Panel is being sent into, for the one render that closes it. */
+  let landing: string | null = null
   /** Whether the Picker was last drawn offering the way back to the Panel. */
   let offeredWayBack = false
   /** The page's own cursor, put back exactly as it was found. */
@@ -129,9 +131,15 @@ export function startOverlay(document: Document): OverlayHandle {
   const onSubmitted = (count: number, accepted: Accepted) => {
     const { element } = accepted
     const name = readOwner(element).name ?? element.tagName.toLowerCase()
-    submitted = [...submitted, { ...accepted, name }]
-    if (count === pickCount && picked) off({ sent: true })
-    else render()
+    // Its place in the Stack is named for the id it was first accepted under,
+    // and keeps that name when an offer sends it on as a new Pick.
+    const slot = accepted.pickId
+    submitted = [...submitted, { ...accepted, name, slot }]
+    if (count === pickCount && picked) {
+      landing = slot
+      off({ sent: true })
+      landing = null
+    } else render()
   }
   /**
    * The open Panel's `onSubmitted`: `onSubmitted` told which Pick the Panel
@@ -203,6 +211,7 @@ export function startOverlay(document: Document): OverlayHandle {
             },
           }
         : null,
+      landing,
       stack: { view, reflow, picks: submitted, onDismiss, onReplaced },
     })
   }
@@ -317,6 +326,22 @@ export function startOverlay(document: Document): OverlayHandle {
     return path.includes(host) && !hittability.onShield(path)
   }
 
+  /**
+   * The event is about the submitted Panel open above the Stack: in it, or on
+   * the minimized line that opened it. Anywhere else, Escape is as it was.
+   */
+  const inSubmittedPanel = (event: Event): boolean =>
+    ours(event) &&
+    event
+      .composedPath()
+      .some(
+        (node) =>
+          node instanceof Element &&
+          (node.getAttribute('data-part') === 'expanded' ||
+            (node.getAttribute('data-part') === 'minimized-line' &&
+              node.getAttribute('aria-expanded') === 'true')),
+      )
+
   const onPointerMove = (event: PointerEvent) => {
     const at = pointOf(view, event)
     // Over the Overlay's own chrome an Alt-click means nothing to the page, so
@@ -407,7 +432,9 @@ export function startOverlay(document: Document): OverlayHandle {
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
-      if (mode === 'off') return
+      // A submitted Panel that has focus closes on its own Escape, and leaves
+      // the unsubmitted one alone (`stack.tsx`).
+      if (mode === 'off' || inSubmittedPanel(event)) return
       event.preventDefault()
       unwind()
       return

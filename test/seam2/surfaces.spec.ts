@@ -48,6 +48,12 @@ const MINIMIZED_CAMERA = '[data-part="minimized-camera"]'
 const MINIMIZED_WORDS = '[data-part="minimized-words"]'
 const MINIMIZED_NEXT = '[data-part="minimized-next"]'
 const SUMMARY = '[data-part="summary"]'
+const MINIMIZED_LINE = '[data-part="minimized-line"]'
+const EXPANDED = '[data-part="expanded"]'
+const EXPANDED_NOTE = '[data-part="expanded-note"]'
+const EXPANDED_TARGET = '[data-part="expanded-target"]'
+const EXPANDED_NAME = '[data-part="expanded-name"]'
+const EXPANDED_STATE = '[data-part="expanded-state"]'
 
 /** Spec §17's words, written out because they are the contract. */
 const SENT = 'Sent'
@@ -67,6 +73,8 @@ const FAILED = 'Failed'
 
 /** `--idle` in the light scheme (docs/overlay-design.md): #7a7f8a. */
 const IDLE_GREY = 'rgb(122, 127, 138)'
+/** `--accent` in the light scheme: #4f7cff. */
+const ACCENT = 'rgb(79, 124, 255)'
 /** `--needs` in the light scheme: #c8322b. */
 const NEEDS_RED = 'rgb(200, 50, 43)'
 
@@ -366,6 +374,210 @@ test('Send minimizes the Panel into the Stack: a grey light titled Sent, the com
   const box = await boxOf(page, MINIMIZED)
   expect(box.height).toBeLessThanOrEqual(30)
   expect(box.width).toBeLessThanOrEqual(320)
+})
+
+/** The colour of a minimized Panel's accent edge, or null when it has none. */
+async function edgeOf(page: Page, index: number): Promise<string | null> {
+  return minimizedAt(page, index).evaluate((slot) => {
+    const edge = getComputedStyle(slot, '::before')
+    return edge.content === 'none' ? null : edge.backgroundColor
+  })
+}
+
+/** Which of the Overlay's own elements has focus, by part name, or null. */
+async function focusedPart(page: Page): Promise<string | null> {
+  return page.evaluate(
+    () =>
+      document
+        .querySelector('vite-agent-inspect')
+        ?.shadowRoot?.activeElement?.getAttribute('data-part') ?? null,
+  )
+}
+
+test('pressing a minimized Panel opens it above the Stack: the whole Note, and where it went', async ({
+  page,
+}) => {
+  const token = probe('expanded')
+  await open(page, token)
+  await arm(page)
+  await pick(page, PICKED)
+  await page.keyboard.type(`the first line ${token}`)
+  await page.keyboard.press('Shift+Enter')
+  await page.keyboard.type('and the rest of it')
+  await page.keyboard.press('Enter')
+  await expect(page.locator(MINIMIZED)).toHaveCount(1)
+  await expect(page.locator(EXPANDED)).toHaveCount(0)
+  const line = minimizedAt(page, 0).locator(MINIMIZED_LINE)
+  await expect(line).toHaveAttribute('aria-expanded', 'false')
+  expect(await edgeOf(page, 0)).toBeNull()
+  const slot = await boxOf(page, MINIMIZED)
+
+  await line.click()
+
+  // Read-only, above the Stack: the whole Note as it was written, the light's
+  // word, the component, and the session it went to.
+  const expanded = page.locator(EXPANDED)
+  await expect(expanded).toHaveCount(1)
+  await expect(expanded.locator(EXPANDED_NOTE)).toHaveText(
+    `the first line ${token}\nand the rest of it`,
+  )
+  await expect(expanded.locator(EXPANDED_STATE)).toHaveText(SENT)
+  await expect(expanded.locator(EXPANDED_NAME)).toHaveText('CardHeading')
+  await expect(expanded.locator(EXPANDED_TARGET)).toHaveText(`To ${TARGET_NAME}`)
+  await expect(expanded.locator('textarea, input')).toHaveCount(0)
+  // Once it has grown out of its slot, where motion is allowed.
+  const stackTop = (await boxOf(page, STACK)).y
+  await expect
+    .poll(async () => {
+      const above = await boxOf(page, EXPANDED)
+      return above.y + above.height <= stackTop
+    })
+    .toBe(true)
+  // Its slot stays where it was, marked with the accent edge.
+  await expect(line).toHaveAttribute('aria-expanded', 'true')
+  expect(await edgeOf(page, 0)).toBe(ACCENT)
+  const kept = await boxOf(page, MINIMIZED)
+  expect(Math.abs(kept.y - slot.y)).toBeLessThan(1)
+  expect(Math.abs(kept.height - slot.height)).toBeLessThan(1)
+
+  // A second press closes it, and the mark goes with it.
+  await line.click()
+  await expect(page.locator(EXPANDED)).toHaveCount(0)
+  await expect(line).toHaveAttribute('aria-expanded', 'false')
+  expect(await edgeOf(page, 0)).toBeNull()
+})
+
+test('opening a second submitted Panel closes the first', async ({ page }) => {
+  const token = probe('expanded-two')
+  await open(page, token)
+  await send(page, PICKED, `first ${token}`)
+  await send(page, SECOND_PICKED, `second ${token}`)
+  await expect(page.locator(MINIMIZED)).toHaveCount(2)
+
+  await minimizedAt(page, 0).locator(MINIMIZED_LINE).click()
+  await expect(page.locator(EXPANDED_NOTE)).toHaveText(`first ${token}`)
+
+  await minimizedAt(page, 1).locator(MINIMIZED_LINE).click()
+  await expect(page.locator(EXPANDED)).toHaveCount(1)
+  await expect(page.locator(EXPANDED_NOTE)).toHaveText(`second ${token}`)
+  await expect(minimizedAt(page, 0).locator(MINIMIZED_LINE)).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  )
+  await expect(minimizedAt(page, 1).locator(MINIMIZED_LINE)).toHaveAttribute(
+    'aria-expanded',
+    'true',
+  )
+  expect(await edgeOf(page, 0)).toBeNull()
+  expect(await edgeOf(page, 1)).toBe(ACCENT)
+})
+
+test('an unsubmitted Panel keeps its place and its focus while a submitted one is opened', async ({
+  page,
+}) => {
+  const token = probe('expanded-focus')
+  await open(page, token)
+  await send(page, PICKED, `sent ${token}`)
+  await arm(page)
+  await pick(page, SECOND_PICKED)
+  await page.keyboard.type('still ')
+  const stood = await boxOf(page, PANEL)
+
+  await minimizedAt(page, 0).locator(MINIMIZED_LINE).click()
+
+  await expect(page.locator(EXPANDED)).toHaveCount(1)
+  await expect(page.locator(PANEL)).toHaveCount(1)
+  expect(await focusedPart(page)).toBe('note')
+  await page.keyboard.type('writing')
+  await expect(page.locator(NOTE)).toHaveValue('still writing')
+  const kept = await boxOf(page, PANEL)
+  expect(Math.abs(kept.x - stood.x)).toBeLessThan(1)
+  expect(Math.abs(kept.y - stood.y)).toBeLessThan(1)
+
+  // Escape from the Note is the unsubmitted Panel's, as it always was: it is
+  // put away, and the submitted one stays open.
+  await page.keyboard.press('Escape')
+  await expect(page.locator(PANEL)).toHaveCount(0)
+  await expect(page.locator(EXPANDED)).toHaveCount(1)
+})
+
+test('clicked into, a submitted Panel closes on Escape and leaves the unsubmitted one open', async ({
+  page,
+}) => {
+  const token = probe('expanded-escape')
+  await open(page, token)
+  await send(page, PICKED, `sent ${token}`)
+  await arm(page)
+  await pick(page, SECOND_PICKED)
+  await minimizedAt(page, 0).locator(MINIMIZED_LINE).click()
+  await expect(page.locator(EXPANDED)).toHaveCount(1)
+
+  await page.locator(EXPANDED_NOTE).click()
+  expect(await focusedPart(page)).toBe('expanded')
+  await page.keyboard.press('Escape')
+
+  await expect(page.locator(EXPANDED)).toHaveCount(0)
+  await expect(page.locator(PANEL)).toHaveCount(1)
+  // Focus goes back to what opened it.
+  expect(await focusedPart(page)).toBe('minimized-line')
+})
+
+test('Escape on a minimized Panel that is not open is still the unsubmitted Panel’s', async ({
+  page,
+}) => {
+  const token = probe('expanded-escape-closed')
+  await open(page, token)
+  await send(page, PICKED, `sent ${token}`)
+  await arm(page)
+  await pick(page, SECOND_PICKED)
+  await minimizedAt(page, 0).locator(MINIMIZED_LINE).focus()
+
+  await page.keyboard.press('Escape')
+
+  await expect(page.locator(PANEL)).toHaveCount(0)
+})
+
+test('a submitted Panel closed by its own line hands focus back to the line', async ({
+  page,
+}) => {
+  const token = probe('expanded-refocus')
+  await open(page, token)
+  await send(page, PICKED, `sent ${token}`)
+  const line = minimizedAt(page, 0).locator(MINIMIZED_LINE)
+  await line.click()
+  await page.locator(EXPANDED_NOTE).click()
+  expect(await focusedPart(page)).toBe('expanded')
+  await expect(line).toHaveAttribute('aria-controls', /.+/)
+  const controls = await line.getAttribute('aria-controls')
+  expect(await page.locator(EXPANDED).getAttribute('id')).toBe(controls)
+
+  await line.click()
+
+  await expect(page.locator(EXPANDED)).toHaveCount(0)
+  expect(await focusedPart(page)).toBe('minimized-line')
+  await expect(line).not.toHaveAttribute('aria-controls', /.*/)
+})
+
+test('from the keyboard, a minimized Panel opens on Enter or Space and closes on Escape', async ({
+  page,
+}) => {
+  const token = probe('expanded-keys')
+  await open(page, token)
+  await send(page, PICKED, `sent ${token}`)
+  const line = minimizedAt(page, 0).locator(MINIMIZED_LINE)
+  await line.focus()
+
+  await page.keyboard.press('Enter')
+  await expect(page.locator(EXPANDED)).toHaveCount(1)
+  await expect(line).toHaveAttribute('aria-expanded', 'true')
+  await page.keyboard.press('Space')
+  await expect(page.locator(EXPANDED)).toHaveCount(0)
+  await expect(line).toHaveAttribute('aria-expanded', 'false')
+  await page.keyboard.press('Space')
+  await expect(page.locator(EXPANDED)).toHaveCount(1)
+  await page.keyboard.press('Escape')
+  await expect(page.locator(EXPANDED)).toHaveCount(0)
+  expect(await focusedPart(page)).toBe('minimized-line')
 })
 
 /**

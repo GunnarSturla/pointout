@@ -18,6 +18,11 @@
 // A minimized Panel owns the resting Highlight of its Pick as well as its
 // words: the two are one thing to the developer, and hovering the one is what
 // re-lights the other.
+//
+// Pressing a minimized Panel opens it above the Stack, to be read: the whole
+// Note and where it went. It is still the same Panel, so its slot stays where
+// it is, marked, and closing it puts it back there. At most one is open, and
+// opening it never takes focus from an unsubmitted Panel's Note.
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -44,6 +49,7 @@ import type {
   Target,
 } from '../wire.js'
 import { readSessions, readStatus, resolveOffer } from './client.js'
+import { growFrom, landIn, leaveBehind } from './presence.js'
 import type { Sessions } from './client.js'
 import type { Accepted } from './panel.js'
 import { viewportBox } from './deep-element.js'
@@ -75,6 +81,11 @@ const UNACKNOWLEDGED: readonly string[] = [SENT, QUEUED_UNADDRESSED, UNKNOWN]
 export interface Submitted extends Accepted {
   /** What the element is called: the component that wrote it, or its tag. */
   name: string
+  /**
+   * Its place in the Stack, for as long as it is outstanding: an offer that
+   * sends it on replaces its id and keeps its place.
+   */
+  slot: string
 }
 
 export interface StackProps {
@@ -127,6 +138,13 @@ export const Stack = memo(function Stack({
   const [sessions, setSessions] = useState<Sessions | null>(null)
   /** The Pick whose minimized Panel is hovered: its resting box is the live treatment again. */
   const [lit, setLit] = useState<string | null>(null)
+  /** The slot whose Panel is open above the Stack, when one is. */
+  const [open, setOpen] = useState<string | null>(null)
+  const toggle = useCallback(
+    (slot: string) => setOpen((was) => (was === slot ? null : slot)),
+    [],
+  )
+  const close = useCallback(() => setOpen(null), [])
   /** The Picks whose dismissal timer is running: a second poll must not restart it. */
   const dismissing = useRef(new Set<string>())
 
@@ -283,28 +301,41 @@ export const Stack = memo(function Stack({
   // Spec §17: the paused clock's footer names the Target and the one action
   // that unblocks it — the phrase the Target row and a `held` Pick use.
   const waitingOn = [...new Set(rows.filter((row) => row.paused).map((row) => row.name))]
+  const opened = rows.find((row) => row.pick.slot === open) ?? null
 
   return (
     <>
       {rows.map(({ pick }) => (
         <RestingBox
-          key={pick.pickId}
+          key={pick.slot}
           element={pick.element}
           reflow={reflow}
           lit={lit === pick.pickId}
         />
       ))}
       <div {...partProps('stack')}>
+        {opened && (
+          <Expanded
+            key={opened.pick.slot}
+            view={view}
+            pick={opened.pick}
+            said={opened.said}
+            name={opened.name}
+            onClose={close}
+          />
+        )}
         {rows.length >= 2 && unacknowledged > 0 && (
           <div {...partProps('summary')}>{words.noneAcknowledgedYet(unacknowledged)}</div>
         )}
         {rows.map(({ pick, state, said, name, target, offer }) => (
           <Minimized
-            key={pick.pickId}
+            key={pick.slot}
             pick={pick}
             state={state}
             said={said}
+            open={pick.slot === open}
             onHover={setLit}
+            onToggle={toggle}
           >
             {offer && (
               <ReportBackOffer
@@ -347,13 +378,18 @@ function Minimized({
   pick,
   state,
   said,
+  open,
   onHover,
+  onToggle,
   children,
 }: {
   pick: Submitted
   state: PickState
   said: Said
+  /** It is open above the Stack, and this is its slot. */
+  open: boolean
   onHover(pickId: string | null): void
+  onToggle(slot: string): void
   /** The offer, when there is one: the Panel expands into it in place (spec §8). */
   children?: ReactNode
 }) {
@@ -376,15 +412,33 @@ function Minimized({
   // The spaces between the parts are for what reads the Panel aloud; the line
   // spaces them itself. An offer stands in for the second line: it says what
   // that line would have said about the Pick, and what to do about it.
+  //
+  // The first line is what opens it. A press on it keeps focus wherever it
+  // was, which is the Note, when one is being written; the keyboard reaches it
+  // as any button, and Escape on it closes what it opened.
   return (
     <div
       ref={hover}
       {...partProps('minimized')}
       data-pick={pickId}
+      data-slot={pick.slot}
       data-state={state}
       data-offered={children ? '' : undefined}
+      data-open={open ? '' : undefined}
     >
-      <div {...partProps('minimized-line')}>
+      <button
+        type="button"
+        {...partProps('minimized-line')}
+        aria-expanded={open}
+        aria-controls={open ? expandedId(pick.slot) : undefined}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => onToggle(pick.slot)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || !open) return
+          event.preventDefault()
+          onToggle(pick.slot)
+        }}
+      >
         <span
           {...partProps('light')}
           role="img"
@@ -410,7 +464,7 @@ function Minimized({
             </span>
           </>
         )}
-      </div>
+      </button>
       {children ??
         ((said.words || said.next) && (
           <div {...partProps('minimized-said')}>
@@ -423,6 +477,98 @@ function Minimized({
       {pick.trimmed && <div {...partProps('trimmed')}>{pick.trimmed}</div>}
     </div>
   )
+}
+
+/**
+ * A submitted Pick's Panel, open above the Stack (docs/overlay-design.md): the
+ * same card as the unsubmitted Panel, read-only, with the whole Note as text
+ * and the session it went to. It comes up out of its slot and goes back into
+ * it (`presence.ts`), however it is closed — pressed again, Escape while it has
+ * focus, another opened, or its Pick over.
+ *
+ * It takes focus only when it is clicked into, so it can hear its Escape.
+ */
+function Expanded({
+  view,
+  pick,
+  said,
+  name,
+  onClose,
+}: {
+  view: Window
+  pick: Submitted
+  said: Said
+  /** The session it went to, as the Stack last heard it named. */
+  name: string
+  onClose(): void
+}) {
+  const panel = useRef<HTMLDivElement>(null)
+  const { slot } = pick
+
+  useLayoutEffect(() => {
+    const node = panel.current
+    if (!node) return
+    const from = node.parentElement && slotIn(node.parentElement, slot)
+    if (from) growFrom(node, view, from.getBoundingClientRect())
+    return () => {
+      const into = node.parentElement && slotIn(node.parentElement, slot)
+      // Focus in it goes back to what opened it, rather than out of the
+      // Overlay, however it closes.
+      const focused = (node.getRootNode() as Document | ShadowRoot).activeElement
+      if (focused && node.contains(focused)) {
+        into?.querySelector<HTMLElement>('[data-part="minimized-line"]')?.focus()
+      }
+      const copy = leaveBehind(node, view, { landing: true })
+      if (into) landIn(copy, into.getBoundingClientRect())
+    }
+  }, [view, slot])
+
+  return (
+    <div
+      ref={panel}
+      {...partProps('expanded')}
+      id={expandedId(slot)}
+      data-slot={slot}
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        if (event.key !== 'Escape') return
+        event.preventDefault()
+        onClose()
+      }}
+    >
+      <div {...partProps('expanded-head')}>
+        <Dot light={said.light} />
+        <span {...partProps('expanded-state')}>{said.title}</span>
+        <span {...partProps('expanded-name')}>{pick.name}</span>
+        {pick.captured && (
+          <span
+            {...partProps('expanded-camera')}
+            role="img"
+            aria-label={words.CAPTURE_SENT}
+            title={words.CAPTURE_SENT}
+          >
+            <CameraIcon />
+          </span>
+        )}
+      </div>
+      <div {...partProps('expanded-note')} data-empty={pick.note ? undefined : ''}>
+        {pick.note ?? words.STAND_BY}
+      </div>
+      <div {...partProps('expanded-target')}>{words.sentTo(name)}</div>
+    </div>
+  )
+}
+
+/** The minimized Panel in `slot`, wherever in `scope` the Stack has drawn it. */
+export function slotIn(scope: ParentNode, slot: string): HTMLElement | null {
+  return scope.querySelector<HTMLElement>(
+    `[data-part="minimized"][data-slot="${CSS.escape(slot)}"]`,
+  )
+}
+
+/** The id of the Panel in `slot` opened above the Stack, which its line controls. */
+function expandedId(slot: string): string {
+  return `expanded-${slot}`
 }
 
 /** The Note's first line, or null for a Pick sent without one. */

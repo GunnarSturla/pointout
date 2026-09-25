@@ -25,6 +25,9 @@ const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'
 const NOTE = '[data-part="note"]'
+const MINIMIZED = '[data-part="minimized"]'
+const MINIMIZED_LINE = '[data-part="minimized-line"]'
+const EXPANDED = '[data-part="expanded"]'
 
 const PICKED = '[data-fixture="card-heading"]'
 /** Above `PICKED`, so a Panel opened below that one never covers it. */
@@ -54,14 +57,20 @@ interface Frame {
   panel: Drawn | null
   /** A Panel that has gone, leaving: null when there is none. */
   leaving: Drawn | null
+  /** The newest minimized Panel in the Stack: null when there is none. */
+  minimized: Drawn | null
 }
 
 interface Drawn {
   opacity: number
-  /** The scale its `transform` draws it at, 1 when it has none. */
+  /** The scale its `transform` draws it at across, 1 when it has none. */
   scale: number
+  /** The same, down. */
+  scaleY: number
   top: number
   left: number
+  width: number
+  height: number
   /** Where it is placed, which a travel draws it away from until it arrives. */
   placedTop: number
   /** What its Note field says, or null when it has none. */
@@ -73,6 +82,8 @@ interface Watched {
   live: string[]
   /** Every transition started on a leaving copy, by property. */
   leaving: string[]
+  /** Every transition started on a minimized Panel, by property. */
+  minimized: string[]
   frames: Frame[]
 }
 
@@ -138,25 +149,35 @@ async function settled(page: Page): Promise<void> {
 
 /**
  * Start watching, then do `gesture` with the real mouse or keyboard, and
- * answer what the Panel did over the frames after it.
+ * answer what the Panel did over the frames after it. `surface` is the part
+ * watched: the unsubmitted Panel, or a submitted one opened above the Stack.
  */
-async function watchPanel(page: Page, gesture: () => Promise<void>): Promise<Watched> {
+async function watchPanel(
+  page: Page,
+  gesture: () => Promise<void>,
+  surface: 'panel' | 'expanded' = 'panel',
+): Promise<Watched> {
   return apartFromHotUpdates(async () => {
     await page.evaluate(
-      ({ tag, frames }) => {
+      ({ tag, frames, part }) => {
         const root = document.querySelector(tag)?.shadowRoot
         if (!root) throw new Error('the Overlay is not mounted')
         const watched = {
           live: [] as string[],
           leaving: [] as string[],
+          minimized: [] as string[],
           frames: [] as unknown[],
         }
         Object.assign(window, { watchedPanel: watched, watchedDone: false })
         root.addEventListener('transitionrun', (event) => {
           const target = event.target as Element
-          if (!target.classList.contains('panel')) return
           const name = (event as TransitionEvent).propertyName
-          if (target.getAttribute('data-part') === 'panel') watched.live.push(name)
+          if (target.getAttribute('data-part') === 'minimized') {
+            watched.minimized.push(name)
+            return
+          }
+          if (!target.classList.contains(part)) return
+          if (target.getAttribute('data-part') === part) watched.live.push(name)
           else watched.leaving.push(name)
         })
         const drawn = (node: Element | null) => {
@@ -168,23 +189,29 @@ async function watchPanel(page: Page, gesture: () => Promise<void>): Promise<Wat
           return {
             opacity: Number(style.opacity),
             scale: matrix ? matrix.a : 1,
+            scaleY: matrix ? matrix.d : 1,
             top: rect.top,
             left: rect.left,
+            width: rect.width,
+            height: rect.height,
             placedTop: Number.parseFloat(style.top),
             note: node.querySelector('textarea')?.value ?? null,
           }
         }
         const frame = () => {
           watched.frames.push({
-            panel: drawn(root.querySelector('[data-part="panel"]')),
-            leaving: drawn(root.querySelector('.panel:not([data-part="panel"])')),
+            panel: drawn(root.querySelector(`[data-part="${part}"]`)),
+            leaving: drawn(root.querySelector(`.${part}:not([data-part="${part}"])`)),
+            minimized: drawn(
+              [...root.querySelectorAll('[data-part="minimized"]')].at(-1) ?? null,
+            ),
           })
           if (watched.frames.length < frames) requestAnimationFrame(frame)
           else Object.assign(window, { watchedDone: true })
         }
         requestAnimationFrame(frame)
       },
-      { tag: HOST, frames: FRAMES },
+      { tag: HOST, frames: FRAMES, part: surface },
     )
     await gesture()
     await page.waitForFunction(
@@ -210,6 +237,26 @@ async function originOf(page: Page): Promise<{ x: number; y: number }> {
     .evaluate((panel) => getComputedStyle(panel).transformOrigin)
   const [x, y] = origin.split(' ').map((length) => Number.parseFloat(length))
   return { x: x ?? Number.NaN, y: y ?? Number.NaN }
+}
+
+/** Open a Pick on `PICKED`, write `note`, and let everything settle before Send. */
+async function writeOn(page: Page, note: string): Promise<Box> {
+  await arm(page)
+  const at = await hoverAndSettle(page, PICKED)
+  await page.mouse.click(at.x, at.y)
+  await expect(page.locator(PANEL)).toBeVisible()
+  await page.keyboard.type(note)
+  await settled(page)
+  return boxOf(page, PANEL)
+}
+
+/** Write a Pick on `PICKED` and send it, and let the Stack settle. */
+async function sendOne(page: Page, note: string): Promise<Box> {
+  await writeOn(page, note)
+  await page.keyboard.press('Enter')
+  await expect(page.locator(MINIMIZED)).toHaveCount(1)
+  await settled(page)
+  return boxOf(page, MINIMIZED)
 }
 
 test.describe('with motion allowed', () => {
@@ -362,6 +409,108 @@ test.describe('with motion allowed', () => {
     await expect(page.locator(PANEL)).toHaveCount(1)
     await expect(page.locator(NOTE)).toHaveValue(`carried ${token}`)
   })
+
+  test('Send shrinks the Panel into its slot in the Stack, in one motion', async ({
+    page,
+  }) => {
+    const token = probe('send')
+    await open(page, token)
+    const stood = await writeOn(page, `shrinks ${token}`)
+
+    const watched = await watchPanel(page, () => page.keyboard.press('Enter'))
+
+    await expect(page.locator(PANEL)).toHaveCount(0)
+    await expect(page.locator(MINIMIZED)).toHaveCount(1)
+    await settled(page)
+    const slot = await boxOf(page, MINIMIZED)
+
+    // What leaves is a copy of the open Panel, and it goes somewhere: a
+    // transform that takes it from its own box toward the minimized one.
+    expect(watched.leaving).toContain('transform')
+    expect(watched.leaving).toContain('opacity')
+    const leaving = watched.frames.flatMap((frame) =>
+      frame.leaving ? [frame.leaving] : [],
+    )
+    expect(leaving.length).toBeGreaterThan(3)
+    expect(Math.abs((leaving[0]?.top ?? Number.NaN) - stood.y)).toBeLessThan(12)
+    // On its way, frame after frame: somewhere between the open box and the
+    // slot, and smaller than it started, both across and down.
+    const later = leaving.slice(1)
+    const middles = later.map((frame) => frame.top + frame.height / 2)
+    expect(
+      between(middles, stood.y + stood.height / 2, slot.y + slot.height / 2).length,
+    ).toBeGreaterThan(0)
+    expect(
+      between(
+        later.map((frame) => frame.scale),
+        slot.width / stood.width,
+        1,
+      ).length,
+    ).toBeGreaterThan(0)
+    expect(
+      between(
+        later.map((frame) => frame.scaleY),
+        slot.height / stood.height,
+        1,
+      ).length,
+    ).toBeGreaterThan(0)
+    // It ends on the slot, not short of it.
+    const last = leaving.at(-1)
+    expect(Math.abs((last?.top ?? Number.NaN) - slot.y)).toBeLessThan(4)
+    expect(Math.abs((last?.left ?? Number.NaN) - slot.x)).toBeLessThan(4)
+    expect(Math.abs((last?.width ?? Number.NaN) - slot.width)).toBeLessThan(4)
+    // The minimized Panel fades in where it rests, and nothing of it moves.
+    expect(watched.minimized).toEqual(['opacity'])
+    await expect(page.locator(`${HOST} .panel`)).toHaveCount(0)
+  })
+
+  test('a submitted Panel grows up out of its slot, and shrinks back into it', async ({
+    page,
+  }) => {
+    const token = probe('expand')
+    await open(page, token)
+    const slot = await sendOne(page, `opened ${token}`)
+    // By where it is, so nothing but the press itself happens while it is watched.
+    const line = await centre(page, MINIMIZED_LINE)
+    const press = () => page.mouse.click(line.x, line.y)
+
+    const opening = await watchPanel(page, press, 'expanded')
+
+    expect(opening.live).toContain('opacity')
+    expect(opening.live).toContain('transform')
+    expect(opening.live.filter((name) => !FADES.includes(name))).toEqual(['transform'])
+    await settled(page)
+    const opened = await boxOf(page, EXPANDED)
+    expect(opened.y + opened.height).toBeLessThan(slot.y)
+    // It starts on the slot and grows from it, frame after frame: a height
+    // somewhere between the two, and nothing drawn below the slot's top edge
+    // rising past where it ends.
+    const drawn = opening.frames.flatMap((frame) => (frame.panel ? [frame.panel] : []))
+    expect(drawn.length).toBeGreaterThan(4)
+    expect(Math.abs((drawn[0]?.top ?? Number.NaN) - slot.y)).toBeLessThan(4)
+    expect(Math.abs((drawn[0]?.height ?? Number.NaN) - slot.height)).toBeLessThan(4)
+    expect(
+      between(
+        drawn.slice(1).map((frame) => frame.height),
+        slot.height,
+        opened.height,
+      ).length,
+    ).toBeGreaterThan(0)
+
+    const closing = await watchPanel(page, press, 'expanded')
+
+    await expect(page.locator(EXPANDED)).toHaveCount(0)
+    expect(closing.leaving).toContain('transform')
+    const leaving = closing.frames.flatMap((frame) =>
+      frame.leaving ? [frame.leaving] : [],
+    )
+    expect(leaving.length).toBeGreaterThan(3)
+    expect(Math.abs((leaving[0]?.top ?? Number.NaN) - opened.y)).toBeLessThan(4)
+    const last = leaving.at(-1)
+    expect(Math.abs((last?.top ?? Number.NaN) - slot.y)).toBeLessThan(4)
+    expect(Math.abs((last?.height ?? Number.NaN) - slot.height)).toBeLessThan(4)
+    await expect(page.locator(`${HOST} .expanded`)).toHaveCount(0)
+  })
 })
 
 test.describe('with motion allowed, interrupted', () => {
@@ -495,5 +644,73 @@ test.describe('for a developer who asked for less motion', () => {
     expect(left.every((top) => Math.abs(top - from.y) < 2)).toBe(true)
     await expect(page.locator(NOTE)).toHaveValue(`carried ${token}`)
     await expect(page.locator(`${HOST} .panel`)).toHaveCount(1)
+  })
+  test('Send fades the Panel out where it stood, and the minimized one in at its slot', async ({
+    page,
+  }) => {
+    const token = probe('send-reduced')
+    await open(page, token)
+    const stood = await writeOn(page, `fades ${token}`)
+
+    const watched = await watchPanel(page, () => page.keyboard.press('Enter'))
+
+    await expect(page.locator(MINIMIZED)).toHaveCount(1)
+    expect(watched.leaving).toEqual(['opacity'])
+    expect(watched.minimized).toEqual(['opacity'])
+    const leaving = watched.frames.flatMap((frame) =>
+      frame.leaving ? [frame.leaving] : [],
+    )
+    expect(leaving.length).toBeGreaterThan(0)
+    expect(leaving.every((frame) => frame.scale === 1 && frame.scaleY === 1)).toBe(true)
+    expect(leaving.every((frame) => Math.abs(frame.top - stood.y) < 2)).toBe(true)
+    const minimized = watched.frames.flatMap((frame) =>
+      frame.minimized ? [frame.minimized] : [],
+    )
+    expect(
+      between(
+        minimized.map((frame) => frame.opacity),
+        0,
+        1,
+      ).length,
+    ).toBeGreaterThan(0)
+    const tops = minimized.map((frame) => frame.top)
+    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThan(1)
+    await expect(page.locator(`${HOST} .panel`)).toHaveCount(0)
+  })
+  test('a submitted Panel fades in above the Stack and out where it stood', async ({
+    page,
+  }) => {
+    const token = probe('expand-reduced')
+    await open(page, token)
+    await sendOne(page, `opened ${token}`)
+    // By where it is, so nothing but the press itself happens while it is watched.
+    const line = await centre(page, MINIMIZED_LINE)
+    const press = () => page.mouse.click(line.x, line.y)
+
+    const opening = await watchPanel(page, press, 'expanded')
+
+    expect(opening.live).toEqual(['opacity'])
+    const drawn = opening.frames.flatMap((frame) => (frame.panel ? [frame.panel] : []))
+    expect(drawn.every((frame) => frame.scale === 1 && frame.scaleY === 1)).toBe(true)
+    expect(
+      between(
+        drawn.slice(1).map((frame) => frame.opacity),
+        0,
+        1,
+      ).length,
+    ).toBeGreaterThan(0)
+    await settled(page)
+    const opened = await boxOf(page, EXPANDED)
+
+    const closing = await watchPanel(page, press, 'expanded')
+
+    expect(closing.leaving).toEqual(['opacity'])
+    const leaving = closing.frames.flatMap((frame) =>
+      frame.leaving ? [frame.leaving] : [],
+    )
+    expect(leaving.length).toBeGreaterThan(0)
+    expect(leaving.every((frame) => Math.abs(frame.top - opened.y) < 2)).toBe(true)
+    expect(leaving.every((frame) => frame.scale === 1 && frame.scaleY === 1)).toBe(true)
+    await expect(page.locator(`${HOST} .expanded`)).toHaveCount(0)
   })
 })

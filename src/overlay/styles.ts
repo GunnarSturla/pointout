@@ -20,12 +20,14 @@ export const HOST_STYLE = [
 
 /**
  * Every Overlay control but the Picker, which has rules of its own: Send,
- * Cancel, the camera toggle, the Target row, the Session list rows and the
- * offer's answers. The plan's states table (docs/overlay-design.md) applies to
- * each, so each state's rule is written once, for the whole list.
+ * Cancel, the camera toggle, the Target row, the Session list rows, the
+ * offer's answers and a minimized Panel's first line, which opens it. The
+ * plan's states table (docs/overlay-design.md) applies to each, so each
+ * state's rule is written once, for the whole list.
  */
 const CONTROLS = [
   '.cancel',
+  '.minimized-line',
   '.offer-elsewhere',
   '.offer-leave',
   '.camera',
@@ -163,7 +165,8 @@ export const OVERLAY_STYLESHEET = `
 
 .stack,
 .picker-peek,
-.panel { z-index: 4 }
+.panel,
+.expanded { z-index: 4 }
 
 /* The element this was on has left the page (spec §5), or this was the live
    mark and it has been let go of. The box fades where it stood — it never
@@ -374,6 +377,7 @@ export const OVERLAY_STYLESHEET = `
    card one step in — 8 px radius and the resting shadow — one line 28 px high,
    and a second, small line under it only when there is something to read. */
 .minimized {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -390,15 +394,42 @@ export const OVERLAY_STYLESHEET = `
   cursor: default;
 }
 
+/* Its slot, while the Panel is open above the Stack: an accent edge down its
+   start side, over the border, so the slot is still there and says whose it
+   is (docs/overlay-design.md, decision 3). */
+.minimized[data-open]::before {
+  content: '';
+  position: absolute;
+  inset-block: -1px;
+  inset-inline-start: -1px;
+  width: 3px;
+  border-start-start-radius: 8px;
+  border-end-start-radius: 8px;
+  background-color: var(--accent);
+}
+
 /* Traffic light, component (600), the Note's first line (muted), camera. The
    Note gives way first, with an ellipsis; a long component name gives way too,
    but never to nothing. Nothing here clips the light: a held Pick's rings
-   reach 5 px past its dot. */
+   reach 5 px past its dot.
+
+   It is the button that opens the Panel, so it fills the card to its border,
+   drawn where the card's padding was: pressed or hovered, the whole line
+   answers, and the card is the size it was. */
 .minimized-line {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
+  margin: -5px -10px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  background-color: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
 }
 
 .light {
@@ -518,6 +549,71 @@ export const OVERLAY_STYLESHEET = `
   font: var(--type-small);
   text-align: end;
 }
+
+/* A submitted Panel opened above the Stack (docs/overlay-design.md): the same
+   card as the open Panel, read-only. It stands on the Stack, 8 px above it,
+   out of the Stack's flow, so no slot moves and the Stack is no wider for it. */
+.expanded {
+  position: absolute;
+  inset-block-end: calc(100% + 8px);
+  inset-inline-end: 0;
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background-color: var(--surface);
+  color: var(--ink);
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 10%),
+    0 12px 32px -8px rgb(0 0 0 / 28%);
+  font: var(--type-ui);
+  outline: none;
+}
+
+/* The light and its word, then the component and the camera at the end. */
+.expanded-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.expanded-state {
+  flex: 1 1 auto;
+  color: var(--ink-muted);
+}
+
+.expanded-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.expanded-camera {
+  flex: none;
+  display: grid;
+  color: var(--ink-muted);
+}
+
+/* The whole Note, as it was written, in the Note's own step. Past twelve
+   lines it scrolls. */
+.expanded-note {
+  max-height: 12lh;
+  overflow-y: auto;
+  font: var(--type-note);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.expanded-note[data-empty] { color: var(--ink-muted) }
+
+.expanded-target { color: var(--ink-muted) }
 
 /* The open Panel: the floating card (docs/overlay-design.md), the outermost
    radius, and the shadow of a thing furthest from the page. */
@@ -970,10 +1066,37 @@ ${each('')} {
 
 .panel[data-arriving] { opacity: 0 }
 
+/* A submitted Panel opening above the Stack and closing back into its slot
+   (overlay-polish ticket 09), and the minimized Panel a sent one becomes.
+   For every developer these are fades: the opened Panel fades in above the
+   Stack, from \`data-arriving\`, and its copy fades out where it stood; the
+   minimized Panel fades in at its slot. Where movement is allowed, the block
+   below takes each from the one box to the other. */
+.expanded { transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1) }
+
+.expanded[data-arriving] { opacity: 0 }
+
+.expanded[data-leaving] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@starting-style {
+  .expanded[data-leaving] { opacity: 1 }
+}
+
+.minimized { transition: opacity 180ms cubic-bezier(0.23, 1, 0.32, 1) }
+
+@starting-style {
+  .minimized { opacity: 0 }
+}
+
 /* The Panel drawn once where a change of place starts from: back where it
    was, or unseen where it now is. Nothing eases into that; only out of it. */
 .panel[data-placing],
-.panel[data-arriving] { transition: none }
+.panel[data-arriving],
+.expanded[data-arriving] { transition: none }
 
 /* The box is being placed rather than moved — a first appearance, or the
    element it is already on measured again after a scroll, a resize or a hot
@@ -1117,6 +1240,51 @@ ${each('')} {
   @starting-style {
     .panel[data-leaving] { transform: none }
   }
+
+  /* One box into another, in 240 ms (overlay-polish ticket 09): a sent Panel
+     into its slot in the Stack, and a submitted one out of its slot and back.
+     Script says which box (\`presence.ts\`): \`--land\` on a copy that goes
+     into one, and a transform the growing Panel is let go from. Both are
+     measured from the top left corner. What is inside the card fades first,
+     so the card goes as a card rather than as its words squeezed, and the
+     card itself fades only in the second half, as it gets there, while the
+     minimized Panel fades in under it. */
+  .panel[data-leaving][data-landing],
+  .expanded[data-leaving] {
+    transform-origin: 0 0;
+    transform: var(--land, none);
+    transition:
+      opacity 120ms cubic-bezier(0.23, 1, 0.32, 1) 120ms,
+      transform 240ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .panel[data-landing] > *,
+  .expanded[data-leaving] > * {
+    opacity: 0;
+    transition: opacity 90ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @starting-style {
+    .panel[data-landing] > *,
+    .expanded[data-leaving] > * { opacity: 1 }
+  }
+
+  .minimized {
+    transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1) 120ms;
+  }
+
+  .expanded {
+    transform-origin: 0 0;
+    transition:
+      opacity 180ms cubic-bezier(0.23, 1, 0.32, 1),
+      transform 240ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .expanded > * {
+    transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1) 120ms;
+  }
+
+  .expanded[data-arriving] > * { opacity: 0 }
 
   /* A session's health, beside its word in the Target row and the Session
      list. Quiet by default, loud only when it is waiting on the developer:

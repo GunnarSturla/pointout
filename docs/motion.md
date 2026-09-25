@@ -53,8 +53,12 @@ stylesheet says how each is drawn.
 | the report-back countdown line, each one-second step | 1000 ms, `transform` (`scaleX`), linear | no-preference only |
 | the Panel arriving | 180 ms, `opacity` 0 to 1, where it opens, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
 | the Panel growing as it arrives, out of the edge that faces its element | 180 ms, `transform: scale(0.96)` to none, `transform-origin` on its top edge when below the element and its bottom edge when above, at the point nearest the element's middle, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
-| the Panel leaving (`Escape`, a discard, a new Pick, a Send until ticket 09 shrinks it into the Stack): a still copy of it, where it stood | 120 ms, `opacity` to 0, `cubic-bezier(0.23, 1, 0.32, 1)`; and `transform: scale(0.96)` back into the same edge under no-preference | the fade for every developer; the shrink no-preference only |
+| the Panel leaving (`Escape`, a discard, a new Pick): a still copy of it, where it stood | 120 ms, `opacity` to 0, `cubic-bezier(0.23, 1, 0.32, 1)`; and `transform: scale(0.96)` back into the same edge under no-preference | the fade for every developer; the shrink no-preference only |
 | the Panel travelling to the element an Alt-click moved its Pick to | 200 ms, `translate` from the old place to none, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only; under reduce the old place fades out (a copy, 120 ms) while the Panel fades in at the new one (180 ms) |
+| a sent Panel going into its slot in the Stack: a still copy of it | 240 ms, `transform` from its own box to the slot's, a `translate` and a `scale` across and down, from its top left corner; what is inside the card fades in 90 ms, and the card's `opacity` fades over the second 120 ms, all on `cubic-bezier(0.23, 1, 0.32, 1)` | the travel no-preference only; under reduce the copy fades out where it stood in 120 ms |
+| the minimized Panel a sent one becomes | `opacity` 0 to 1, where it rests: 180 ms, and under no-preference 120 ms after a 120 ms delay, so it fades in as the copy arrives, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
+| a submitted Panel opening above the Stack | 240 ms, `transform` from its slot's box to its own, and `opacity` 0 to 1 over 180 ms; what is inside it fades in over the second 120 ms, `cubic-bezier(0.23, 1, 0.32, 1)` | the growing no-preference only; under reduce it fades in above the Stack in 180 ms |
+| a submitted Panel closing (pressed again, `Escape`, another opened, its Pick over): a still copy of it | as a sent Panel going into its slot, into its own slot | the travel no-preference only; under reduce the copy fades out where it stood in 120 ms |
 | a Working session's dot, in the Target row and the Session list, and a `working` Pick's traffic light | a 2000 ms loop, `scale` to 0.8 and `opacity` to 0.5 at its midpoint and back, `ease-in-out` | no-preference only; under reduce it holds still |
 | a Needs you session's dot, and a `held` Pick's traffic light: two rings, one second apart | a 2000 ms loop per ring, a 1.5 px `--needs` circle from `scale` 1 at 0.8 opacity to `scale` 2.25 at 0, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only; under reduce there are no rings |
 
@@ -181,6 +185,38 @@ it.
 A move that lands while the Panel is still growing finishes the growth at once,
 because `data-placing` turns every transition off for that one frame. It is rare and
 it is not wrong, so it is left.
+
+### A Panel going into the Stack, and coming out of it
+
+Overlay-polish ticket 09. A Pick's Panel is one Panel for its whole life (`CONTEXT.md`), so
+sending it should look like the Panel going into the Stack, and opening it there like the
+same Panel coming back out.
+
+- **Send.** The open Panel leaves by `leaveBehind`, as any Panel does, but its copy is
+  marked `data-landing`. Its slot is drawn in the same React render that takes the Panel
+  away, so `surfaces.tsx` waits for that render to be in the page, measures the minimized
+  Panel, and hands the copy its box as `--land` (`presence.ts`'s `landIn`): a `translate`
+  and a `scale` from the copy's top left corner onto the slot. The stylesheet eases that
+  over 240 ms under no-preference. The card's contents fade first, in 90 ms, so what
+  shrinks is a card rather than its words squeezed out of shape, and the card itself
+  fades over the second half, as the minimized Panel fades in under it. The copy is taken
+  out after 320 ms. Keep `LANDING_FOR_MS` in step.
+- **Opening.** A minimized Panel's first line is a button. Pressed, the Panel opens above
+  the Stack, out of the Stack's flow, and `growFrom` draws it once over its slot, unseen
+  and with transitions off (`data-arriving`), then lets it go: it grows into its own box
+  over 240 ms and fades in over 180 ms, and its contents fade in after it. Under reduce
+  only the fade runs.
+- **Closing.** However it closes, the open Panel's copy lands back in its slot, the same
+  way a sent Panel does. It is taken when the Panel leaves React's tree, while the Panel is
+  still in the page. A copy of a surface drawn inside another one is pinned on the
+  viewport where it was laid out, because the copy goes outside everything React draws.
+- **The minimized Panel keeps its place across a retarget.** It is keyed by its slot, the
+  id its Pick was first accepted under, so an offer that sends the Pick on as a new one
+  neither remounts it nor fades it in again (ticket 08 took its fade-in out for that).
+
+`scale` distorts a card's border and corners, and the Highlight's morph refuses it for
+that. Here it is accepted: the card is fading while it shrinks, its contents are gone
+before the distortion shows, and a Panel going somewhere smaller has to get smaller.
 
 ## The shutter
 
@@ -417,7 +453,8 @@ never `scale`), that the box's border and radius are unchanged in a mid-morph fr
 that the morph is still under way frames after the hover that started it, the two
 marks' preview, release and Alt-click, and that under emulated reduced motion nothing
 but a fade runs while every position still updates. `test/seam2/panel-motion.spec.ts`
-watches the Panel frame by frame as it arrives, leaves and travels, in both modes.
+watches the Panel frame by frame as it arrives, leaves and travels, as it is sent into the
+Stack, and as a submitted one opens above the Stack and closes, in both modes.
 `test/seam2/capture.spec.ts` holds
 the shutter: the outline on and the fill and chip off while it is closed, and the Stack
 and the Picker never hidden.

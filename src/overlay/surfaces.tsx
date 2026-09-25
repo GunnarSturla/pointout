@@ -5,14 +5,15 @@
 // being written, the chip words last polled. The Highlight is not here: it is
 // placed by hand on every pointer move, and stays imperative.
 
+import { useLayoutEffect } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Panel } from './panel.js'
 import type { PanelProps } from './panel.js'
 import { Picker } from './picker.js'
 import type { PickerProps } from './picker.js'
-import { leaveBehind } from './presence.js'
+import { landIn, leaveBehind } from './presence.js'
 import { part } from './root.js'
-import { Stack } from './stack.js'
+import { Stack, slotIn } from './stack.js'
 import type { StackProps } from './stack.js'
 
 export interface SurfacesProps {
@@ -23,6 +24,11 @@ export interface SurfacesProps {
    * re-anchored with the Note it already holds (spec §7).
    */
   panel: { key: string; props: PanelProps } | null
+  /**
+   * The Stack slot the Panel going away in this render is sent into, because
+   * it was sent: null for any other way a Panel goes.
+   */
+  landing: string | null
   stack: StackProps
 }
 
@@ -39,6 +45,10 @@ export interface Surfaces {
  * gone from the tree at once, and leaves a still copy of itself behind for a
  * moment where it stood (`presence.ts`). The copy is taken here, while React
  * has yet to render the change and the Panel is still in the page.
+ *
+ * A Panel that goes because it was sent goes into its slot in the Stack. The
+ * slot is drawn in the same render that takes the Panel away, so where the
+ * copy goes is only known once React has put it in the page.
  */
 export function mountSurfaces(document: Document, shadow: ShadowRoot): Surfaces {
   const view = document.defaultView
@@ -47,15 +57,27 @@ export function mountSurfaces(document: Document, shadow: ShadowRoot): Surfaces 
   shadow.append(container)
   const root = createRoot(container)
   let panelKey: string | null = null
+  /** A sent Panel's copy, waiting for its slot to be drawn. */
+  let landing: { copy: HTMLElement; slot: string } | null = null
+  const drawn = () => {
+    if (!landing) return
+    const { copy, slot } = landing
+    landing = null
+    const into = slotIn(container, slot)
+    if (into) landIn(copy, into.getBoundingClientRect())
+  }
   return {
-    render(props) {
+    render({ landing: slot, ...props }) {
       const key = props.panel?.key ?? null
       if (panelKey !== null && key !== panelKey) {
         const panel = container.querySelector<HTMLElement>(':scope > [data-part="panel"]')
-        if (panel) leaveBehind(panel, view)
+        if (panel) {
+          const copy = leaveBehind(panel, view, { landing: slot !== null })
+          if (slot !== null) landing = { copy, slot }
+        }
       }
       panelKey = key
-      root.render(<SurfacesView {...props} />)
+      root.render(<SurfacesView {...props} onDrawn={drawn} />)
     },
   }
 }
@@ -63,7 +85,14 @@ export function mountSurfaces(document: Document, shadow: ShadowRoot): Surfaces 
 // The Highlights paint by role (`styles.ts`), under every surface. Among the
 // surfaces paint order is DOM order: the Panel last, so it is above the Picker
 // and the Stack.
-function SurfacesView({ picker, panel, stack }: SurfacesProps) {
+function SurfacesView({
+  picker,
+  panel,
+  stack,
+  onDrawn,
+}: Omit<SurfacesProps, 'landing'> & { onDrawn(): void }) {
+  // After every render is in the page, and before it is painted.
+  useLayoutEffect(onDrawn)
   return (
     <>
       <Stack {...stack} />

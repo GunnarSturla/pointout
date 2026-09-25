@@ -138,6 +138,16 @@ export const CONFIRM = 'Confirm'
  */
 export const NEXT_PROMPT = 'arrives when you next prompt Claude in this repo'
 
+/**
+ * The foot of a submitted Panel opened above the Stack: where its Pick went.
+ * A Pick nobody is addressed to says when it will arrive instead, in the
+ * words its minimized Panel uses.
+ */
+export function sentTo(name: string): string {
+  if (name) return `To ${name}`
+  return NEXT_PROMPT.charAt(0).toUpperCase() + NEXT_PROMPT.slice(1)
+}
+
 /** The next action a `failed` Pick names: both halves of it, in one line. */
 export const SEND_AGAIN = 'send it again, or pick another session'
 
