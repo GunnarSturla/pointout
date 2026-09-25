@@ -45,8 +45,9 @@ export function mountSurfaces(document: Document, shadow: ShadowRoot): Surfaces 
   }
 }
 
-// Paint order is DOM order inside the host: the Stack's resting boxes first, so
-// nothing draws over a Panel; the Panel last, so it is above the Picker too.
+// The Highlights paint by role (`styles.ts`), under every surface. Among the
+// surfaces paint order is DOM order: the Panel last, so it is above the Picker
+// and the Stack.
 function SurfacesView({ picker, panel, stack }: SurfacesProps) {
   return (
     <>

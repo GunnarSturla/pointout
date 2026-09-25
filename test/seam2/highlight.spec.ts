@@ -31,6 +31,8 @@ const ELEMENT_GONE = 'This element is gone from the page. The pick still sends.'
 /** Two elements of the same card, different enough in size to morph between. */
 const FIRST = '[data-fixture="card-heading"]'
 const SECOND = '[data-fixture="passed-down-badge"]'
+/** Above both, so a Panel opened below either never covers it. */
+const THIRD = 'h1'
 
 const SCROLL_CONTAINER = '[data-fixture="scroll-container"]'
 const SCROLL_TARGET = '[data-fixture="scroll-target"]'
@@ -92,20 +94,29 @@ async function offFrom(page: Page, selector: string): Promise<Record<string, num
   }
 }
 
-/** Record every transition the Highlight starts, whether or not it finishes. */
+/**
+ * Record every transition any Highlight starts, or its chip, whether or not it
+ * finishes. Listened for on the shadow root, because a Highlight that is not
+ * shown is not in the page to be listened to.
+ */
 async function watchMotion(page: Page): Promise<void> {
   await page.evaluate((host) => {
-    const box = document
-      .querySelector(host)
-      ?.shadowRoot?.querySelector('[data-part="highlight"]')
-    if (!box) throw new Error('the Overlay draws no Highlight')
+    const root = document.querySelector(host)?.shadowRoot
+    if (!root) throw new Error('the Overlay is not mounted')
     const seen: string[] = []
     Object.assign(window, { seenMotion: seen })
-    box.addEventListener('transitionrun', (event) => {
+    root.addEventListener('transitionrun', (event) => {
+      const target = event.target as Element
+      if (!target.closest('[data-part="highlight"]')) return
       seen.push((event as TransitionEvent).propertyName)
     })
   }, HOST)
 }
+
+/** What a fade may ease: nothing of it travels or changes size. */
+const FADES = ['opacity', 'color', 'background-color', 'border-color', 'outline-color']
+
+const moving = (seen: string[]) => seen.filter((name) => !FADES.includes(name))
 
 async function motionSeen(page: Page): Promise<string[]> {
   return page.evaluate(
@@ -388,6 +399,233 @@ test('the morph animates translate, width and height, and distorts no edge of it
   expect(morph.midway.scale).toBe('none')
 })
 
+test('the morph is still under way frames after the hover that started it', async ({
+  page,
+}) => {
+  // The morph above is read paused inside the hover's own task, which cannot
+  // see what the next frames do to it. This watches it run: the drawn width,
+  // once a frame, from the hover on. A morph cancelled a couple of frames in
+  // — which is what a stray re-measure does — reaches the destination width
+  // early and stays there, and no later frame is anywhere in between.
+  await open(page, probe('frames'))
+  await armWithAlt(page)
+  await hover(page, FIRST)
+  await expect(page.locator(HIGHLIGHT)).toBeVisible()
+  await expect.poll(() => runningOnHighlight(page)).toBe(0)
+
+  const from = (await boxOf(page, FIRST)).width
+  const to = (await boxOf(page, SECOND)).width
+  const at = await centre(page, SECOND)
+
+  const widths = await page.evaluate(
+    ({ host, x, y }) =>
+      new Promise<number[]>((resolve) => {
+        const box = document
+          .querySelector(host)
+          ?.shadowRoot?.querySelector('[data-part="highlight"]')
+        if (!box) throw new Error('the Overlay draws no Highlight')
+        const drawn: number[] = []
+        const frame = () => {
+          drawn.push(box.getBoundingClientRect().width)
+          if (drawn.length < 8) requestAnimationFrame(frame)
+          else resolve(drawn)
+        }
+        window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y }))
+        requestAnimationFrame(frame)
+      }),
+    { host: HOST, x: at.x, y: at.y },
+  )
+
+  // The two elements differ by far more than a morph's last frames cover.
+  expect(Math.abs(from - to)).toBeGreaterThan(40)
+  const low = Math.min(from, to) + 1
+  const high = Math.max(from, to) - 1
+  const between = widths.slice(2).filter((width) => width > low && width < high)
+  expect(`${between.length} of ${JSON.stringify(widths)}`).not.toMatch(/^0 of/)
+})
+
+/** The second mark: the one that follows the pointer while Alt is held over a Panel. */
+const LIVE = '[data-part="highlight"][data-mark="live"]'
+/** The open Pick's own mark. */
+const CURRENT = '[data-part="highlight"][data-mark="current"]'
+
+/** How far a mark is from an element, the same way `offFrom` measures. */
+async function markOff(
+  page: Page,
+  mark: string,
+  selector: string,
+): Promise<Record<string, number>> {
+  const element = await boxOf(page, selector)
+  const box = await boxOf(page, mark)
+  const rounded = (drift: number) => (Math.abs(drift) <= 1 ? 0 : Math.round(drift))
+  return {
+    left: rounded(box.x - element.x),
+    top: rounded(box.y - element.y),
+    width: rounded(box.width - element.width),
+    height: rounded(box.height - element.height),
+  }
+}
+
+/** Whether a mark wears the live treatment: a fill, and a chip that shows. */
+async function treatmentOf(page: Page, mark: string): Promise<string> {
+  return page.locator(mark).evaluate((box: HTMLElement) => {
+    const chip = box.querySelector('[data-part="chip"]')
+    const fill = getComputedStyle(box).backgroundColor !== 'rgba(0, 0, 0, 0)'
+    const chipShown = chip !== null && getComputedStyle(chip).opacity === '1'
+    return box.hasAttribute('data-resting') || !fill || !chipShown ? 'resting' : 'lit'
+  })
+}
+
+test.describe('Alt held over an open Panel', () => {
+  test('shows a live Highlight where the pointer is, and rests the Pick’s own', async ({
+    page,
+  }) => {
+    await open(page, probe('alt-preview'))
+    await page.locator(PICKER).click()
+    await pick(page, SECOND)
+    await expect(page.locator(CURRENT)).toBeVisible()
+    await expect(page.locator(LIVE)).toHaveCount(0)
+
+    await page.keyboard.down('Alt')
+    await hover(page, FIRST)
+
+    await expect(page.locator(LIVE)).toBeVisible()
+    await expect.poll(() => markOff(page, LIVE, FIRST)).toEqual(ON_IT)
+    await expect.poll(() => treatmentOf(page, LIVE)).toBe('lit')
+    await expect(page.locator(LIVE).locator('[data-part="chip"]')).toBeVisible()
+    // The Pick is still where it was, dropped to the resting treatment.
+    await expect.poll(() => markOff(page, CURRENT, SECOND)).toEqual(ON_IT)
+    await expect(page.locator(CURRENT)).toHaveAttribute('data-resting', '')
+    await expect.poll(() => treatmentOf(page, CURRENT)).toBe('resting')
+    // Painted apart: the live one over the Pick's, and the Pick's over the
+    // resting marks of Picks already sent.
+    const layers = await page.evaluate((tag) => {
+      const root = document.querySelector(tag)?.shadowRoot
+      const layer = (selector: string) => {
+        const box = root?.querySelector(selector)
+        return box ? Number(getComputedStyle(box).zIndex) : Number.NaN
+      }
+      return {
+        live: layer('[data-mark="live"]'),
+        current: layer('[data-mark="current"]'),
+        panel: layer('[data-part="panel"]'),
+      }
+    }, HOST)
+    expect(layers.live).toBeGreaterThan(layers.current)
+    expect(layers.current).toBeGreaterThan(1)
+    expect(layers.panel).toBeGreaterThan(layers.live)
+
+    // Let go of Alt: the live one fades where it stands, the Pick's relights.
+    await page.keyboard.up('Alt')
+    await expect(page.locator(LIVE)).toHaveCount(0)
+    await expect(page.locator(CURRENT)).not.toHaveAttribute('data-resting', '')
+    await expect.poll(() => treatmentOf(page, CURRENT)).toBe('lit')
+    await expect.poll(() => markOff(page, CURRENT, SECOND)).toEqual(ON_IT)
+    await expect(page.locator(PANEL)).toHaveCount(1)
+  })
+
+  test('the live one fades rather than vanishing when Alt is let go', async ({
+    page,
+  }) => {
+    await open(page, probe('alt-release'))
+    await page.locator(PICKER).click()
+    await pick(page, SECOND)
+    await page.keyboard.down('Alt')
+    await hover(page, FIRST)
+    await expect(page.locator(LIVE)).toBeVisible()
+    await expect.poll(() => runningInOverlay(page)).toBe(0)
+    await watchMotion(page)
+
+    await page.keyboard.up('Alt')
+    await expect(page.locator(LIVE)).toHaveCount(0)
+    expect(await motionSeen(page)).toContain('opacity')
+    expect(moving(await motionSeen(page))).toEqual([])
+  })
+
+  test('Alt-click makes the live one the Pick, and the old mark fades', async ({
+    page,
+  }) => {
+    await open(page, probe('alt-move'))
+    await page.locator(PICKER).click()
+    await pick(page, SECOND)
+    const panelBefore = await boxOf(page, PANEL)
+
+    await page.keyboard.down('Alt')
+    await hover(page, FIRST)
+    await expect(page.locator(LIVE)).toBeVisible()
+    await expect.poll(() => runningInOverlay(page)).toBe(0)
+    await watchMotion(page)
+    const at = await centre(page, FIRST)
+    await page.mouse.click(at.x, at.y)
+
+    // The mark that was following the pointer is the Pick's now, lit and on
+    // the element it was on; the one left behind is the live one until it
+    // has faded, and then it is gone.
+    await expect.poll(() => markOff(page, CURRENT, FIRST)).toEqual(ON_IT)
+    await expect.poll(() => treatmentOf(page, CURRENT)).toBe('lit')
+    await expect(page.locator(LIVE)).toHaveCount(0)
+    expect(await motionSeen(page)).toContain('opacity')
+    expect(moving(await motionSeen(page))).toEqual([])
+
+    // Alt still held: the next element pointed at gets a live mark, lit — not
+    // the resting treatment the box it is made of wore a moment ago.
+    await hover(page, THIRD)
+    await expect(page.locator(LIVE)).toBeVisible()
+    await expect.poll(() => markOff(page, LIVE, THIRD)).toEqual(ON_IT)
+    await expect.poll(() => treatmentOf(page, LIVE)).toBe('lit')
+    await page.keyboard.up('Alt')
+    await expect(page.locator(LIVE)).toHaveCount(0)
+
+    // One Panel, moved to the new element at once (ticket 07 animates it).
+    await expect(page.locator(PANEL)).toHaveCount(1)
+    await expect.poll(async () => (await boxOf(page, PANEL)).y).not.toBe(panelBefore.y)
+    await expect(page.locator(CURRENT)).toHaveCount(1)
+  })
+
+  test('over a submitted Panel, the live one is lit and paints over the resting mark', async ({
+    page,
+  }) => {
+    const token = probe('alt-submitted')
+    await open(page, token)
+    await page.locator(PICKER).click()
+    await pick(page, FIRST)
+    await page.keyboard.type(`rest here ${token}`)
+    await page.keyboard.press('Enter')
+    await expect(page.locator(STATUS)).toHaveText('Sent')
+    await expect(page.locator(CURRENT)).toHaveCount(0)
+
+    // Over the element the sent Pick rests on: both marks on one element, and
+    // the live one is the one on top.
+    await page.keyboard.down('Alt')
+    await hover(page, FIRST)
+    await expect(page.locator(LIVE)).toBeVisible()
+    await expect.poll(() => treatmentOf(page, LIVE)).toBe('lit')
+    const layers = await page.evaluate((tag) => {
+      const root = document.querySelector(tag)?.shadowRoot
+      const layer = (selector: string) => {
+        const box = root?.querySelector(selector)
+        return box ? Number(getComputedStyle(box).zIndex) : Number.NaN
+      }
+      return {
+        live: layer('[data-mark="live"]'),
+        resting: layer('[data-part="highlight"][data-resting]:not([data-mark])'),
+      }
+    }, HOST)
+    expect(layers.live).toBeGreaterThan(layers.resting)
+
+    // Alt-click starts a new Pick there, and with Alt still held the next
+    // element pointed at gets a lit live mark too.
+    const at = await centre(page, FIRST)
+    await page.mouse.click(at.x, at.y)
+    await expect.poll(() => markOff(page, CURRENT, FIRST)).toEqual(ON_IT)
+    await hover(page, THIRD)
+    await expect(page.locator(LIVE)).toBeVisible()
+    await expect.poll(() => treatmentOf(page, LIVE)).toBe('lit')
+    await page.keyboard.up('Alt')
+    await expect(page.locator(LIVE)).toHaveCount(0)
+  })
+})
+
 test('a picked element that unmounts fades, says so, and is still sent', async ({
   page,
 }) => {
@@ -438,7 +676,7 @@ test.describe('with reduced motion asked for', () => {
     // The pick closes and reopens the Screen Capture shutter, and its reopening
     // is a fade: the one thing that eases under reduce (the review-animations
     // gate). Nothing travelled or changed size.
-    expect((await motionSeen(page)).filter((name) => name !== 'opacity')).toEqual([])
+    expect(moving(await motionSeen(page))).toEqual([])
     await expect.poll(() => runningInOverlay(page)).toBe(0)
   })
 
@@ -456,7 +694,43 @@ test.describe('with reduced motion asked for', () => {
     await expect(page.locator(HIGHLIGHT)).toHaveCSS('opacity', '0')
     // A fade is not movement, so it is kept for a developer who asked for less
     // of it; nothing else runs.
-    expect((await motionSeen(page)).filter((name) => name !== 'opacity')).toEqual([])
+    expect(moving(await motionSeen(page))).toEqual([])
+    await expect.poll(() => runningInOverlay(page)).toBe(0)
+  })
+
+  test('Alt over an open Panel previews, rests, relights and moves, with nothing but fades', async ({
+    page,
+  }) => {
+    await open(page, probe('reduce-alt'))
+    await page.locator(PICKER).click()
+    await pick(page, SECOND)
+    await watchMotion(page)
+
+    await page.keyboard.down('Alt')
+    await hover(page, FIRST)
+    await expect(page.locator(LIVE)).toBeVisible()
+    await expect.poll(() => markOff(page, LIVE, FIRST)).toEqual(ON_IT)
+    await expect(page.locator(CURRENT)).toHaveAttribute('data-resting', '')
+
+    // Across to another element: the live mark jumps there, it does not travel.
+    await hover(page, SECOND)
+    await expect.poll(() => markOff(page, LIVE, SECOND)).toEqual(ON_IT)
+    await hover(page, FIRST)
+    await expect.poll(() => markOff(page, LIVE, FIRST)).toEqual(ON_IT)
+
+    await page.keyboard.up('Alt')
+    await expect(page.locator(LIVE)).toHaveCount(0)
+    await expect(page.locator(CURRENT)).not.toHaveAttribute('data-resting', '')
+
+    await page.keyboard.down('Alt')
+    await hover(page, FIRST)
+    const at = await centre(page, FIRST)
+    await page.mouse.click(at.x, at.y)
+    await page.keyboard.up('Alt')
+    await expect.poll(() => markOff(page, CURRENT, FIRST)).toEqual(ON_IT)
+    await expect(page.locator(LIVE)).toHaveCount(0)
+
+    expect(moving(await motionSeen(page))).toEqual([])
     await expect.poll(() => runningInOverlay(page)).toBe(0)
   })
 })

@@ -306,11 +306,16 @@ test('a submitted Pick rests as a thin outline, and its chip re-lights it', asyn
 
   await chipFor(page, 0).hover()
   await expect(page.locator(RESTING)).toHaveCount(0)
-  const lit = await page
-    .locator(HIGHLIGHT)
-    .last()
-    .evaluate((box: HTMLElement) => getComputedStyle(box).backgroundColor)
-  expect(lit).not.toBe('rgba(0, 0, 0, 0)')
+  // Polled: the Stack stays up through the Screen Capture shutter now, so the
+  // chip can be hovered while the shutter still holds every fill off the page.
+  await expect
+    .poll(() =>
+      page
+        .locator(HIGHLIGHT)
+        .last()
+        .evaluate((box: HTMLElement) => getComputedStyle(box).backgroundColor),
+    )
+    .not.toBe('rgba(0, 0, 0, 0)')
 })
 
 test('Alt-click moves an unsubmitted Pick and starts a new one from a submitted Panel', async ({
@@ -423,8 +428,8 @@ test.describe('the reveal', () => {
     await page.emulateMedia({ reducedMotion: 'no-preference' })
     await open(page, probe('motion'))
 
-    // The reveal is the `translate` entry. The Picker also eases its opacity,
-    // which is the Screen Capture shutter reopening (ticket 18), not the reveal.
+    // The reveal is the `translate` entry, read by name so that a fade added
+    // beside it one day does not move it.
     const moving = await page.locator(PEEK).evaluate((peeked: HTMLElement) => {
       const style = getComputedStyle(peeked)
       const at = style.transitionProperty.split(', ').indexOf('translate')
@@ -443,11 +448,13 @@ test.describe('the reveal', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await open(page, probe('reduce'))
 
-    // Only its fade is eased, which is the shutter reopening; the reveal is not.
-    const properties = await page
+    // Nothing of it is eased: the reveal is movement, and the Picker has no
+    // fade since the Screen Capture shutter stopped hiding it (overlay-polish
+    // ticket 03).
+    const durations = await page
       .locator(PEEK)
-      .evaluate((peeked: HTMLElement) => getComputedStyle(peeked).transitionProperty)
-    expect(properties).toBe('opacity')
+      .evaluate((peeked: HTMLElement) => getComputedStyle(peeked).transitionDuration)
+    expect(durations.split(', ').every((duration) => duration === '0s')).toBe(true)
 
     // Still the two positions, still reached: the Picker comes out, at once.
     const seen = await viewport(page)

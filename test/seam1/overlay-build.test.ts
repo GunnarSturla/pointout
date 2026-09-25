@@ -14,7 +14,8 @@ import { repoRoot } from '../harness/paths.js'
 // that moves inside one `prefers-reduced-motion: no-preference` block, and
 // nothing anywhere that a developer who asked for less motion has to opt out of
 // (spec §9). A fade is not movement: since the review-animations gate, opacity
-// alone may ease outside that block, for everyone.
+// may ease outside that block, for everyone, and since overlay-polish ticket 03
+// so may a colour.
 
 const overlayDir = join(repoRoot, 'dist', 'overlay')
 
@@ -29,6 +30,21 @@ const MOVING = ['transition', 'animation', '@keyframes']
 
 /** What may never appear outside the opt-in block, not even as a fade. */
 const NEVER_OUTSIDE = ['animation', '@keyframes']
+
+/**
+ * What a fade may ease, outside the opt-in block, for every developer: how
+ * opaque something is and what colour it is. Nothing here travels or changes
+ * size — `outline-width` and the `background` shorthand are not on it.
+ */
+const FADES = ['opacity', 'color', 'background-color', 'border-color', 'outline-color']
+
+/** A transition value that only fades, or stops one. */
+function onlyFades(value: string): boolean {
+  if (value === 'none') return true
+  return value
+    .split(/,(?![^(]*\))/)
+    .every((entry) => FADES.includes(entry.trim().split(/\s+/)[0] ?? ''))
+}
 
 /**
  * A frame callback is not motion. It is how the Overlay coalesces a burst of
@@ -142,15 +158,31 @@ describe('the built Overlay moves only where it said it would', () => {
       .map((match) => (match[1] ?? '').trim())
     expect(declarations.length).toBeGreaterThan(0)
     for (const value of declarations) {
-      const fades =
-        value === 'none' ||
-        value.split(/,(?![^(]*\))/).every((entry) => entry.trim().startsWith('opacity '))
-      expect(`${value}: ${fades}`).toBe(`${value}: true`)
+      expect(`${value}: ${onlyFades(value)}`).toBe(`${value}: true`)
     }
   })
 
-  it('moves nothing but opacity for a developer who asked for less motion', () => {
-    // Every property the block transitions that is not opacity is movement, and
+  it('tells a fade from movement', () => {
+    // The rule above, held against values rather than against today's sheet,
+    // so that it is known to bite: a colour eases for everyone, anything that
+    // travels or resizes still fails.
+    expect(onlyFades('none')).toBe(true)
+    expect(onlyFades('opacity 120ms cubic-bezier(0.23, 1, 0.32, 1)')).toBe(true)
+    expect(
+      onlyFades(
+        'background-color 120ms cubic-bezier(0.23, 1, 0.32, 1), outline-color 120ms linear',
+      ),
+    ).toBe(true)
+    expect(onlyFades('color 120ms ease-out, border-color 90ms')).toBe(true)
+    expect(onlyFades('translate 120ms cubic-bezier(0.23, 1, 0.32, 1)')).toBe(false)
+    expect(onlyFades('opacity 120ms, translate 120ms')).toBe(false)
+    expect(onlyFades('outline-width 120ms')).toBe(false)
+    expect(onlyFades('background 120ms')).toBe(false)
+    expect(onlyFades('all 120ms')).toBe(false)
+  })
+
+  it('moves nothing but a fade for a developer who asked for less motion', () => {
+    // Every property the block transitions that is not a fade is movement, and
     // it is declared there and nowhere else.
     const sheet = stylesheet()
     const block = optIn(sheet)

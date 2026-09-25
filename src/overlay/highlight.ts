@@ -23,6 +23,10 @@
 //     element — the morph, spec §5 — is animated, and only under
 //     `prefers-reduced-motion: no-preference`.
 //
+// A box that is not shown is not in the page at all: `hide` takes it out of the
+// layer it is drawn in and `show` puts it back. The Overlay has two of these
+// (`marks.ts`), and a mark nobody can see has no business being found.
+//
 // The motion itself is declared in `styles.ts` and nowhere else.
 
 import { viewportBox } from './deep-element.js'
@@ -33,12 +37,38 @@ import { part } from './root.js'
 /** Room the chip needs above the box before it drops below it. */
 const CHIP_CLEARANCE = 22
 
+/**
+ * How long a box that is fading out stays in the page before it is taken out.
+ * Longer than the fade `styles.ts` declares, so the fade is always seen through.
+ */
+const FADED_AFTER_MS = 200
+
+/**
+ * Which of the Overlay's two marks a box is being, which decides what it paints
+ * over (`styles.ts`). `current` is the open Pick's mark, or while armed the one
+ * that will become it; `live` follows the pointer while Alt is held over an
+ * open Panel.
+ */
+export type MarkRole = 'current' | 'live'
+
 export interface Highlight {
   /** Draw the box on this element, with the chip those facts describe. */
   show(element: Element, owner: OwnerFacts): void
   /** Re-measure the element the box is already on, after a scroll or a resize. */
   remeasure(): void
+  /** Take the box out of the page at once. */
   hide(): void
+  /** Fade the box out where it stands, then take it out of the page. */
+  fade(): void
+  /**
+   * Drop to the resting treatment — a thin outline, no fill, no chip — or come
+   * back from it. The box stays on its element either way.
+   */
+  rest(resting: boolean): void
+  /** Which mark this box is being now. */
+  play(role: MarkRole): void
+  /** True while the box is in the page and not fading out of it. */
+  shown(): boolean
   /**
    * Where the element the box is on last was. A Pick whose element has since
    * left the page carries this rather than the zeroes a detached element
@@ -59,7 +89,8 @@ export interface Highlight {
   whenMoved(listener: () => void): void
 }
 
-export function createHighlight(document: Document, shadow: ShadowRoot): Highlight {
+/** A Highlight drawn into `layer`, which is where it goes whenever it is shown. */
+export function createHighlight(document: Document, layer: Element): Highlight {
   const box = part(document, 'div', 'highlight')
   const chip = part(document, 'div', 'chip')
   const name = part(document, 'span', 'chip-name')
@@ -67,8 +98,6 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
 
   chip.append(name, file)
   box.append(chip)
-  box.hidden = true
-  shadow.append(box)
 
   /** The element the box is on. */
   let on: Element | null = null
@@ -76,6 +105,10 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
   let seen: ViewportBox | null = null
   /** True once that element has left the page. Cleared by the next `show`. */
   let gone = false
+  /** True while the box is fading out, and until it has been taken out. */
+  let fading = false
+  /** The timer that takes a faded box out of the page. */
+  let fadedAt = 0
   let toldGone: (() => void) | null = null
   let toldMoved: (() => void) | null = null
 
@@ -85,6 +118,8 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
   let watched: Element | null = null
   /** The pending re-measure, so a burst of mutations costs one measurement. */
   let scheduled = 0
+
+  const inPage = () => box.isConnected
 
   const place = (element: Element, instant: boolean) => {
     // The box is fixed in the top document, and the element may be inside a
@@ -109,7 +144,7 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
 
   /** Measure again, or notice that there is nothing left to measure. */
   const track = () => {
-    if (!on || gone || box.hidden) return
+    if (!on || gone || !inPage()) return
     if (!on.isConnected) {
       leave()
       return
@@ -142,6 +177,13 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
     watched = null
   }
 
+  /** Stop a fade that has not finished taking the box out. */
+  const unfade = () => {
+    fading = false
+    document.defaultView?.clearTimeout(fadedAt)
+    box.removeAttribute('data-fading')
+  }
+
   /**
    * Watch the page the element is in, not the page the Overlay is drawn on: an
    * element inside a same-origin frame is moved by that frame's own reflows.
@@ -163,7 +205,20 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
     const view = inside.defaultView
     if (!view) return
 
-    watchingSize = new view.ResizeObserver(schedule)
+    // A size observer reports every target once as it starts observing it,
+    // whether or not anything changed. That report is not the page moving
+    // anything: taken for one, it re-placed the box a frame into the morph that
+    // brought it here and cancelled the morph. So each target's first report
+    // is skipped, and only a later one is a change.
+    const reported = new Set<Element>()
+    watchingSize = new view.ResizeObserver((entries) => {
+      let changed = false
+      for (const { target } of entries) {
+        if (reported.has(target)) changed = true
+        else reported.add(target)
+      }
+      if (changed) schedule()
+    })
     watchingSize.observe(element)
     watchingSize.observe(inside.documentElement)
 
@@ -171,13 +226,25 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
     watchingMutations.observe(inside, { childList: true, subtree: true })
   }
 
+  const hide = () => {
+    unfade()
+    on = null
+    seen = null
+    gone = false
+    unwatch()
+    box.removeAttribute('data-gone')
+    box.removeAttribute('data-resting')
+    box.remove()
+  }
+
   return {
     show(element, owner) {
       // A box already on another element travels to this one. Everything else —
       // a first appearance, the same element re-measured, a box that had faded
-      // — is placed where it belongs with nothing running.
-      const travelling = !box.hidden && !gone && on !== null && on !== element
+      // or was fading — is placed where it belongs with nothing running.
+      const travelling = inPage() && !fading && !gone && on !== null && on !== element
 
+      unfade()
       on = element
       gone = false
       box.removeAttribute('data-gone')
@@ -185,7 +252,7 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
       // for want of a fiber (spec §4), so the chip falls back to the tag.
       name.textContent = owner.name ?? element.tagName.toLowerCase()
       file.textContent = owner.file ?? ''
-      box.hidden = false
+      if (!inPage()) layer.append(box)
       place(element, !travelling)
       watch(element)
     },
@@ -194,13 +261,29 @@ export function createHighlight(document: Document, shadow: ShadowRoot): Highlig
       track()
     },
 
-    hide() {
-      on = null
-      seen = null
-      gone = false
+    hide,
+
+    fade() {
+      if (!inPage() || fading) return
+      fading = true
       unwatch()
-      box.removeAttribute('data-gone')
-      box.hidden = true
+      box.setAttribute('data-fading', '')
+      const view = document.defaultView
+      if (view) fadedAt = view.setTimeout(hide, FADED_AFTER_MS)
+      else hide()
+    },
+
+    rest(resting) {
+      if (resting) box.setAttribute('data-resting', '')
+      else box.removeAttribute('data-resting')
+    },
+
+    play(role) {
+      box.setAttribute('data-mark', role)
+    },
+
+    shown() {
+      return inPage() && !fading
     },
 
     lastBox() {
