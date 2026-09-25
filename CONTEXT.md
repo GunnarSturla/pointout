@@ -134,7 +134,9 @@ _Avoid_: button, dock, toolbar (each fixes a form this project has not chosen ye
 **Highlight**:
 The mark the Overlay draws on an element: live and morphing while the Picker is armed, frozen
 on the element once it is picked. Anchored to the element rather than to the viewport, so it
-travels with the page.
+travels with the page. While the developer is choosing a new element for an unsubmitted Pick,
+there are two: the **current** Highlight, resting on the element the Pick is about, and the
+**live** one following the pointer to what would replace it.
 _Avoid_: outline, box, selection (the last means the element itself)
 
 **Panel**:

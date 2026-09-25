@@ -46,7 +46,7 @@ Every shape that crosses HTTP is written once in `src/wire.ts`. See
 
 No movement by default: all of it lives in one `prefers-reduced-motion: no-preference`
 block in `src/overlay/styles.ts`, and a seam-1 test reads the built Overlay to keep it
-there. A fade is not movement: opacity alone may ease outside that block, for everyone.
+there. A fade is not movement: opacity and colour may ease outside that block, for everyone.
 The `review-animations` gate has run; the armed-hover Highlight morph is an accepted
 deviation from it. See `docs/motion.md` — read it before adding anything that moves.
 
