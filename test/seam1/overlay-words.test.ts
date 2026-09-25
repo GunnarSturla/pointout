@@ -49,6 +49,15 @@ describe('the built Overlay', () => {
     )
     // Not vacuous: the floor sentence for a refusal with no words is in there.
     expect(said).toContain('words.js: Not delivered.')
-    expect(said.filter((text) => !/not delivered/i.test(text))).toEqual([])
+    // One sentence says delivered and claims no more than was seen: a Pick the
+    // hook floor drained, withdrawn afterwards. The drain answered, so a
+    // prompt was handed it; that is evidence rather than an accept's silence,
+    // and the sentence names no session because the drain cannot. Its words
+    // are the developer's (overlay-polish ticket 10, settled 2026-09-25).
+    const drained = 'words.js: Already delivered to a session — it may still act on it'
+    expect(said).toContain(drained)
+    expect(
+      said.filter((text) => text !== drained && !/not delivered/i.test(text)),
+    ).toEqual([])
   })
 })

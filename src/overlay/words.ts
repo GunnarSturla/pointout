@@ -221,6 +221,27 @@ export function noneAcknowledgedYet(sent: number): string {
   return `${sent} sent, none acknowledged yet`
 }
 
+/**
+ * The × on a minimized Panel, by name: what a screen reader announces, and the
+ * pointer's `title` (`CONTEXT.md`: Withdraw).
+ */
+export const WITHDRAW = 'Withdraw this pick'
+
+/**
+ * A withdrawn Pick that a session was already written: the server has let go
+ * of it, and nothing can take it back from there (spec §21). So the Panel says
+ * who has it before it goes, rather than implying it was recalled.
+ */
+export function alreadySentTo(name: string): string {
+  return `Already sent to ${name} — it may still act on it`
+}
+
+/**
+ * The same, for a Pick the hook floor drained into a prompt: the drain does
+ * not know which session was prompted, only that one was handed it.
+ */
+export const ALREADY_DELIVERED = 'Already delivered to a session — it may still act on it'
+
 /** The camera toggle's name, which is what a screen reader announces (spec §7). */
 export const SCREEN_CAPTURE = 'Screen Capture'
 

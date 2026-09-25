@@ -12,8 +12,9 @@ import {
   SESSIONS_PATH,
   STATUS_PATH,
   reportPath,
+  withdrawPath,
 } from '../api.js'
-import { CAPTURE_DISABLED, UNKNOWN_CAPTURE } from '../wire.js'
+import { CAPTURE_DISABLED, UNKNOWN_CAPTURE, UNKNOWN_PICK } from '../wire.js'
 import type {
   CaptureCoordinates,
   CaptureDeleted,
@@ -28,6 +29,7 @@ import type {
   ReportBody,
   SessionsResponse,
   StatusResponse,
+  WithdrawAnswer,
 } from '../wire.js'
 
 export type { Candidate, NamedTarget, PickBody, PickStatus }
@@ -167,6 +169,39 @@ export async function resolveOffer(
     return { ok: false, reason: 'the dev server resolved the offer and named no pick.' }
   }
   return { ok: true, answer: answer.body }
+}
+
+/** What a withdraw came back with, as the Stack acts on it. */
+export type Withdrawn =
+  /** Taken back. Whether a session already has it is the answer's to say. */
+  | { ok: true; answer: WithdrawAnswer }
+  /**
+   * The server is not holding it — withdrawn already, or the dev server
+   * restarted. What was asked is so, and there is nothing to say about it.
+   */
+  | { ok: true; answer: null }
+  /** Refused, in the server's words: past taking back, or the guard's. */
+  | { ok: false; reason: string }
+
+/**
+ * Withdraw a submitted Pick (`CONTEXT.md`: Withdraw; spec §20). The browser's
+ * own Origin is what the guard reads, so nothing else is sent.
+ */
+export async function withdrawPick(pickId: string): Promise<Withdrawn> {
+  const answer = await request<WithdrawAnswer>(withdrawPath(pickId), { method: 'DELETE' })
+  if (answer.ok) {
+    const { alreadyWritten, targetName } = answer.body
+    return {
+      ok: true,
+      answer: {
+        pickId,
+        alreadyWritten: alreadyWritten === true,
+        targetName: typeof targetName === 'string' ? targetName : null,
+      },
+    }
+  }
+  if (answer.refusal.error === UNKNOWN_PICK) return { ok: true, answer: null }
+  return { ok: false, reason: answer.reason }
 }
 
 /**

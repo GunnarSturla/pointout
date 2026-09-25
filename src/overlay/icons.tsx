@@ -13,6 +13,10 @@ const CROSSHAIR_LINE =
 const CAMERA_LINE =
   'M9.82843 5L7.82843 7H4V19H20V7H16.1716L14.1716 5H9.82843ZM9 3H15L17 5H21C21.5523 5 22 5.44772 22 6V20C22 20.5523 21.5523 21 21 21H3C2.44772 21 2 20.5523 2 20V6C2 5.44772 2.44772 5 3 5H7L9 3ZM12 18C8.96243 18 6.5 15.5376 6.5 12.5C6.5 9.46243 8.96243 7 12 7C15.0376 7 17.5 9.46243 17.5 12.5C17.5 15.5376 15.0376 18 12 18ZM12 16C13.933 16 15.5 14.433 15.5 12.5C15.5 10.567 13.933 9 12 9C10.067 9 8.5 10.567 8.5 12.5C8.5 14.433 10.067 16 12 16Z'
 
+/** Remix Icon `close-line`, from `icons/System/close-line.svg`. */
+const CLOSE_LINE =
+  'M11.9997 10.5865L16.9495 5.63672L18.3637 7.05093L13.4139 12.0007L18.3637 16.9504L16.9495 18.3646L11.9997 13.4149L7.04996 18.3646L5.63574 16.9504L10.5855 12.0007L5.63574 7.05093L7.04996 5.63672L11.9997 10.5865Z'
+
 // --- end of borrowed code ---
 
 // The Overlay's icons, all of them Remix Icon artwork: one icon set per file,
@@ -47,4 +51,9 @@ export function CrosshairIcon() {
 /** A Screen Capture went with this Pick: drawn small, beside a line of words. */
 export function CameraIcon() {
   return <Icon path={CAMERA_LINE} size={14} />
+}
+
+/** Withdraw, on a minimized Panel: drawn small, beside a line of words. */
+export function CloseIcon() {
+  return <Icon path={CLOSE_LINE} size={14} />
 }

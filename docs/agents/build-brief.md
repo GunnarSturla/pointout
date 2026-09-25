@@ -44,6 +44,12 @@ opens it above the Stack (`Expanded` in `stack.tsx`, part `expanded`): at most o
 slot marked `data-open`, and it closes back into the slot. A submitted Panel's `Escape` is
 its own; the controller leaves it alone (`inSubmittedPanel`). `Submitted.slot` is the
 Stack's key, and survives a retarget.
+A minimized Panel carries a Withdraw × exactly where `isWithdrawable(state, reportBack)`
+holds (overlay-polish 10): a button beside the line's, in `minimized-head`, never inside
+it. The DELETE's answer is said in place: *Already sent to `<name>`* or *Already delivered
+to a session* (`minimized-withdrawn`) for four seconds, then the Panel leaves a fading copy
+(`presence.ts`); nothing written just leaves; a 404 is gone; any other refusal stays on
+the Panel (`minimized-refusal`).
 
 The Panel footer has the camera toggle, and a pick closes the Shutter for the
 capture frame whatever the toggle says (ticket 18, `src/overlay/capture.ts`). A Pick
@@ -160,6 +166,12 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 - **A lone Candidate is preselected**, so a Pick with no Target never stays
   `queued-unaddressed`; a hook canary needs a second, bystander session.
 - **`manual` is today's CLI name** for the spec's "default" permission mode.
+- **A drain takes every `queued-unaddressed` Pick on the seam-2 server**, whichever worker
+  or engine made it. A journey that drains, or that holds a Pick in that queue while it
+  reads what became of it, takes `apartFromDrains` (`test/harness/drain-lock.ts`). The
+  drain's secret is at `SEAM2_DISCOVERY_ENTRY`, set by `globalSetup`. A null-Target Pick
+  cannot make a queued one there: the server preselects the started-this-server session;
+  an offer left for the next prompt does.
 - **A Playwright route that holds an answer must be unrouted before its test ends**
   (`page.unrouteAll({ behavior: 'ignoreErrors' })`), or it throws into the next test on
   that worker, which never runs; Playwright exits 1 with *1 error was not a part of any

@@ -23,6 +23,14 @@
 // Note and where it went. It is still the same Panel, so its slot stays where
 // it is, marked, and closing it puts it back there. At most one is open, and
 // opening it never takes focus from an unsubmitted Panel's Note.
+//
+// A Pick that went wrong can be withdrawn from its minimized Panel, by the ×
+// at the end of its first line: exactly where the dev server would take it
+// back (`isWithdrawable`, the server's own rule). What the server answers is
+// said there before the Panel goes. A write cannot be recalled, so a Pick a
+// session already has says so for a moment rather than going quietly; one
+// nobody had just goes; and a refusal stays on the Panel, in the server's
+// words (spec §21).
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -39,6 +47,7 @@ import {
   SENT,
   UNKNOWN,
   WORKING,
+  isWithdrawable,
 } from '../wire.js'
 import type {
   Candidate,
@@ -48,13 +57,13 @@ import type {
   ReportBack,
   Target,
 } from '../wire.js'
-import { readSessions, readStatus, resolveOffer } from './client.js'
+import { readSessions, readStatus, resolveOffer, withdrawPick } from './client.js'
 import { growFrom, landIn, leaveBehind } from './presence.js'
 import type { Sessions } from './client.js'
 import type { Accepted } from './panel.js'
 import { viewportBox } from './deep-element.js'
 import { Dot } from './dot.js'
-import { CameraIcon } from './icons.js'
+import { CameraIcon, CloseIcon } from './icons.js'
 import { ReportBackOffer } from './report-back.js'
 import type { Reflow } from './reflow.js'
 import { partProps } from './root.js'
@@ -67,6 +76,12 @@ import type { Light } from './words.js'
  * seconds. Plain is the point — no condition, no hover to keep it alive.
  */
 const DISMISS_DONE_MS = 8000
+
+/**
+ * How long a withdrawn Pick that a session already has says so before its
+ * Panel goes: long enough to read one sentence, once, and no longer.
+ */
+const ALREADY_SENT_FOR_MS = 4000
 
 /** Nothing has acknowledged a Pick in any of these: what the summary counts. */
 const UNACKNOWLEDGED: readonly string[] = [SENT, QUEUED_UNADDRESSED, UNKNOWN]
@@ -113,6 +128,16 @@ interface Told {
   reportBack: ReportBack | null
 }
 
+/** A Withdraw as this page holds it, from the press until the Panel goes. */
+interface Withdrawal {
+  /** The DELETE has not been answered yet: a second press does nothing. */
+  pending: boolean
+  /** Who already has it, said for a moment before the Panel goes. */
+  said: string | null
+  /** The server would not take it back, in its own words. The Panel stays. */
+  refusal: string | null
+}
+
 /** One offer as this page holds it: the countdown and what has been done to it. */
 interface Offered {
   /** When this page first saw it (spec §17's thirty seconds start here). */
@@ -147,6 +172,13 @@ export const Stack = memo(function Stack({
   const close = useCallback(() => setOpen(null), [])
   /** The Picks whose dismissal timer is running: a second poll must not restart it. */
   const dismissing = useRef(new Set<string>())
+  const [withdrawals, setWithdrawals] = useState<ReadonlyMap<string, Withdrawal>>(
+    () => new Map(),
+  )
+  /** The same, read by a press: a second one must see the first at once. */
+  const withdrawing = useRef(new Set<string>())
+  /** Where the minimized Panels are drawn, so one that goes can leave a copy. */
+  const stack = useRef<HTMLDivElement>(null)
 
   // Spec §14: one tick, running only while something is outstanding. A poll
   // that could not be answered changes nothing: a Pick may only move on
@@ -271,6 +303,56 @@ export const Stack = memo(function Stack({
     [change, settle, onReplaced],
   )
 
+  const withdrawn = useCallback((pickId: string, withdrawal: Withdrawal | null) => {
+    setWithdrawals((previous) => {
+      const next = new Map(previous)
+      if (withdrawal) next.set(pickId, withdrawal)
+      else next.delete(pickId)
+      return next
+    })
+  }, [])
+
+  /**
+   * The Pick is gone from the dev server, and its Panel goes now: a still copy
+   * of it fades where it stood (`presence.ts`), as an unsubmitted Panel's does.
+   */
+  const goes = useCallback(
+    (pick: Submitted) => {
+      const node = stack.current && slotIn(stack.current, pick.slot)
+      if (node) leaveBehind(node, view)
+      withdrawing.current.delete(pick.pickId)
+      withdrawn(pick.pickId, null)
+      onDismiss(pick.pickId)
+    },
+    [view, withdrawn, onDismiss],
+  )
+
+  const withdraw = useCallback(
+    async (pick: Submitted) => {
+      const { pickId } = pick
+      if (withdrawing.current.has(pickId)) return
+      withdrawing.current.add(pickId)
+      withdrawn(pickId, { pending: true, said: null, refusal: null })
+      const answered = await withdrawPick(pickId)
+      if (!answered.ok) {
+        withdrawing.current.delete(pickId)
+        return withdrawn(pickId, { pending: false, said: null, refusal: answered.reason })
+      }
+      // Not held any more, or held by nobody who could act on it: nothing to say.
+      const answer = answered.answer
+      if (!answer?.alreadyWritten) return goes(pick)
+      withdrawn(pickId, {
+        pending: true,
+        said: answer.targetName
+          ? words.alreadySentTo(answer.targetName)
+          : words.ALREADY_DELIVERED,
+        refusal: null,
+      })
+      view.setTimeout(() => goes(pick), ALREADY_SENT_FOR_MS)
+    },
+    [view, withdrawn, goes],
+  )
+
   if (picks.length === 0) return null
 
   // Sent is what is known the moment the server accepted a Pick; the first poll
@@ -288,6 +370,8 @@ export const Stack = memo(function Stack({
       name,
       target: heard?.target ?? null,
       offer,
+      withdrawable: isWithdrawable(state, heard?.reportBack ?? null),
+      withdrawal: withdrawals.get(pick.pickId) ?? null,
       said: say(state, heard?.reason ?? null, name, offer !== null),
       // A `held` Pick already names the prompt; the footer is for the sent
       // ones stalled behind a Target's own.
@@ -313,7 +397,7 @@ export const Stack = memo(function Stack({
           lit={lit === pick.pickId}
         />
       ))}
-      <div {...partProps('stack')}>
+      <div ref={stack} {...partProps('stack')}>
         {opened && (
           <Expanded
             key={opened.pick.slot}
@@ -327,34 +411,39 @@ export const Stack = memo(function Stack({
         {rows.length >= 2 && unacknowledged > 0 && (
           <div {...partProps('summary')}>{words.noneAcknowledgedYet(unacknowledged)}</div>
         )}
-        {rows.map(({ pick, state, said, name, target, offer }) => (
-          <Minimized
-            key={pick.slot}
-            pick={pick}
-            state={state}
-            said={said}
-            open={pick.slot === open}
-            onHover={setLit}
-            onToggle={toggle}
-          >
-            {offer && (
-              <ReportBackOffer
-                view={view}
-                name={name}
-                startedAt={offer.startedAt}
-                cancelled={offer.cancelled}
-                choosing={offer.choosing}
-                sessions={sessions}
-                chosen={target}
-                refusal={offer.refusal}
-                onTouch={() => change(pick.pickId, { cancelled: true })}
-                onLeave={() => void leave(pick.pickId)}
-                onSendElsewhere={() => void sendElsewhere(pick.pickId)}
-                onChoose={(candidate) => void choose(pick.pickId, candidate)}
-              />
-            )}
-          </Minimized>
-        ))}
+        {rows.map(
+          ({ pick, state, said, name, target, offer, withdrawable, withdrawal }) => (
+            <Minimized
+              key={pick.slot}
+              pick={pick}
+              state={state}
+              said={said}
+              open={pick.slot === open}
+              withdrawable={withdrawable}
+              withdrawal={withdrawal}
+              onHover={setLit}
+              onToggle={toggle}
+              onWithdraw={withdraw}
+            >
+              {offer && (
+                <ReportBackOffer
+                  view={view}
+                  name={name}
+                  startedAt={offer.startedAt}
+                  cancelled={offer.cancelled}
+                  choosing={offer.choosing}
+                  sessions={sessions}
+                  chosen={target}
+                  refusal={offer.refusal}
+                  onTouch={() => change(pick.pickId, { cancelled: true })}
+                  onLeave={() => void leave(pick.pickId)}
+                  onSendElsewhere={() => void sendElsewhere(pick.pickId)}
+                  onChoose={(candidate) => void choose(pick.pickId, candidate)}
+                />
+              )}
+            </Minimized>
+          ),
+        )}
         {waitingOn.map((name) => (
           <div key={name} {...partProps('stack-waiting')}>
             <span {...partProps('stack-waiting-line')}>{words.pausedFor(name)}</span>
@@ -379,8 +468,11 @@ function Minimized({
   state,
   said,
   open,
+  withdrawable,
+  withdrawal,
   onHover,
   onToggle,
+  onWithdraw,
   children,
 }: {
   pick: Submitted
@@ -388,8 +480,13 @@ function Minimized({
   said: Said
   /** It is open above the Stack, and this is its slot. */
   open: boolean
+  /** The dev server would take it back now: the × is drawn. */
+  withdrawable: boolean
+  /** What a press on the × has come to so far, or null before one. */
+  withdrawal: Withdrawal | null
   onHover(pickId: string | null): void
   onToggle(slot: string): void
+  onWithdraw(pick: Submitted): void
   /** The offer, when there is one: the Panel expands into it in place (spec §8). */
   children?: ReactNode
 }) {
@@ -416,6 +513,11 @@ function Minimized({
   // The first line is what opens it. A press on it keeps focus wherever it
   // was, which is the Note, when one is being written; the keyboard reaches it
   // as any button, and Escape on it closes what it opened.
+  //
+  // The × is a button of its own beside it, never inside it, and pressing it
+  // opens nothing. It keeps focus where it was too. Once the server has said
+  // who already has the Pick, that is all the Panel says until it goes.
+  const already = withdrawal?.said ?? null
   return (
     <div
       ref={hover}
@@ -425,54 +527,75 @@ function Minimized({
       data-state={state}
       data-offered={children ? '' : undefined}
       data-open={open ? '' : undefined}
+      data-withdrawable={withdrawable && !already ? '' : undefined}
     >
-      <button
-        type="button"
-        {...partProps('minimized-line')}
-        aria-expanded={open}
-        aria-controls={open ? expandedId(pick.slot) : undefined}
-        onMouseDown={(event) => event.preventDefault()}
-        onClick={() => onToggle(pick.slot)}
-        onKeyDown={(event) => {
-          if (event.key !== 'Escape' || !open) return
-          event.preventDefault()
-          onToggle(pick.slot)
-        }}
-      >
-        <span
-          {...partProps('light')}
-          role="img"
-          aria-label={said.title}
-          title={said.title}
+      <div {...partProps('minimized-head')}>
+        <button
+          type="button"
+          {...partProps('minimized-line')}
+          aria-expanded={open}
+          aria-controls={open ? expandedId(pick.slot) : undefined}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => onToggle(pick.slot)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || !open) return
+            event.preventDefault()
+            onToggle(pick.slot)
+          }}
         >
-          <Dot light={said.light} />
-        </span>{' '}
-        <span {...partProps('minimized-name')}>{pick.name}</span>{' '}
-        <span {...partProps('minimized-note')}>
-          {firstLine(pick.note) ?? words.STAND_BY}
-        </span>
-        {pick.captured && (
-          <>
-            {' '}
-            <span
-              {...partProps('minimized-camera')}
-              role="img"
-              aria-label={words.CAPTURE_SENT}
-              title={words.CAPTURE_SENT}
-            >
-              <CameraIcon />
-            </span>
-          </>
+          <span
+            {...partProps('light')}
+            role="img"
+            aria-label={said.title}
+            title={said.title}
+          >
+            <Dot light={said.light} />
+          </span>{' '}
+          <span {...partProps('minimized-name')}>{pick.name}</span>{' '}
+          <span {...partProps('minimized-note')}>
+            {firstLine(pick.note) ?? words.STAND_BY}
+          </span>
+          {pick.captured && (
+            <>
+              {' '}
+              <span
+                {...partProps('minimized-camera')}
+                role="img"
+                aria-label={words.CAPTURE_SENT}
+                title={words.CAPTURE_SENT}
+              >
+                <CameraIcon />
+              </span>
+            </>
+          )}
+        </button>
+        {withdrawable && !already && (
+          <button
+            type="button"
+            {...partProps('minimized-withdraw')}
+            aria-label={words.WITHDRAW}
+            title={words.WITHDRAW}
+            aria-disabled={withdrawal?.pending ? true : undefined}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onWithdraw(pick)}
+          >
+            <CloseIcon />
+          </button>
         )}
-      </button>
-      {children ??
-        ((said.words || said.next) && (
-          <div {...partProps('minimized-said')}>
-            {said.words && <span {...partProps('minimized-words')}>{said.words}</span>}
-            {said.words && said.next && ' '}
-            {said.next && <span {...partProps('minimized-next')}>{said.next}</span>}
-          </div>
-        ))}
+      </div>
+      {already && <div {...partProps('minimized-withdrawn')}>{already}</div>}
+      {!already &&
+        (children ??
+          ((said.words || said.next) && (
+            <div {...partProps('minimized-said')}>
+              {said.words && <span {...partProps('minimized-words')}>{said.words}</span>}
+              {said.words && said.next && ' '}
+              {said.next && <span {...partProps('minimized-next')}>{said.next}</span>}
+            </div>
+          )))}
+      {withdrawal?.refusal && (
+        <div {...partProps('minimized-refusal')}>{withdrawal.refusal}</div>
+      )}
       {pick.reason && <div {...partProps('minimized-reason')}>{pick.reason}</div>}
       {pick.trimmed && <div {...partProps('trimmed')}>{pick.trimmed}</div>}
     </div>
