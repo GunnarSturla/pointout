@@ -51,6 +51,16 @@ and the model test file also refuses to run unless that mode set `SEAM3_TIER=mod
 server, with the plugin, against the real example app, so the module graph and the
 sourcemaps are real. Tests POST and GET against it.
 
+Seam 1 runs its files side by side, each in a forked process of its own
+(`pool: 'forks'`, `maxWorkers: 4`, in `vitest.config.ts`). A file owns `process.env`
+while it runs, and `advanceClock` moves the clock through it, so the pool is pinned:
+`threads` would share one environment between files and is never safe here. Tests
+within a file still run one at a time. A test and a hook each get 30 s; a test that
+really needs longer, such as the ones in `commands.test.ts` that run a whole command,
+says so beside itself. The harness server's `close()` has a deadline of its own, 20 s,
+and a close that hangs fails naming the server and how long it waited, rather than
+as whichever timeout the runner reached first.
+
 Four helpers sit beside it, all of them fixture code under the same rule:
 
 - `test/harness/temp-app.ts` builds a throwaway consumer in a temp directory — a
@@ -82,6 +92,28 @@ repo's Node floor cannot run it (type stripping is unflagged only from 22.18; th
 is 22.12). The port is bound strictly, so a dev server left over
 from an interrupted run fails seam 2 loudly with the port named, rather than being
 silently attached to.
+
+**One full seam 2 runs at a time on the machine.** Two browser suites side by side,
+from two worktrees, roughly double every test's time. So `globalSetup` first takes a
+lock, `vite-agent-inspect-seam2.lock` under the OS temp dir, holding its pid
+(`test/harness/seam2-lock.ts`), whatever `SEAM2_PORT` says. A second run prints
+*waiting for another seam-2 run, pid N* once, and waits for up to 10 minutes before it
+fails with that reason. A lock whose pid is dead, from a run that was killed, is taken
+over. The lock is released on teardown, and on exit if teardown never ran.
+Playwright's `globalTimeout` is 15 minutes plus that wait, since it counts
+`globalSetup`, so a stalled run fails instead of hanging.
+
+The page's own timers are moved rather than waited out: `page.clock.install()` before
+the page loads, then `runFor` or `fastForward`, or `pauseAt` so that only the test
+moves it (`report-back.spec.ts`, `surfaces.spec.ts`). A timer policy that is faked
+keeps one real-time test, in Chromium only, that proves its wall-clock length, and a
+comment says which one: `surfaces.spec.ts`'s two `on the wall clock` tests, for the
+done chip's ~8 s dismiss and the 1.5 s tick. CSS transitions do not run on that clock,
+so a wait for one to settle stays real.
+
+**Run the final full suite as `caffeinate -i npm test` on macOS.** Idle sleep has been
+measured stretching one seam-2 run to 18.6 minutes. `caffeinate -i` stops idle sleep
+for as long as the command runs; it does not stop a lid close.
 
 **Seam 3** exists because the first two fake the harness, and v0 depends on undocumented
 surfaces that have already churned. A suite that fakes them can pass forever against a
@@ -275,8 +307,10 @@ not a harness boundary but the server's own clock, read afresh on every call. Sp
 to take, so seam 1 moves the clock rather than waiting for it —
 `advanceClock(31 * 60 * 1000)` from `test/harness/fixture-env.ts`, and
 `advanceClock(0)` in `afterEach` to put it back. It is process-wide, so it moves
-every dev server the file has open; seam 1 runs one file at a time, which is what
-makes that safe. Like the four above, a consumer never sets it.
+every dev server the file has open. Seam 1 runs its files side by side, but each in a
+forked process of its own, so a file's clock never reaches another file; that is what
+makes it safe, and why the pool is pinned to `forks`. Like the four above, a consumer
+never sets it.
 
 ## Pretending to be another operating system
 

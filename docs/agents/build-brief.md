@@ -101,7 +101,16 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 - **`npx vitest` skips the `pretest` build hook**, and seam 1 exercises the emitted
   `dist/`. Run `npm run test:seam1`, or your test is grading the last build.
 - **Closing a Vite dev server while its optimizer runs never returns.**
-  `test/harness/dev-server.ts` awaits `waitForRequestsIdle()` before `close()`.
+  `test/harness/dev-server.ts` awaits `waitForRequestsIdle()` before `close()`, and
+  gives the two 20 s, failing with the server's root and port if they hang.
+- **Seam 1 runs its files in parallel, in forked workers** (`pool: 'forks'`, four at
+  a time). A file still owns `process.env` and `advanceClock`, because it owns its
+  process; never switch the pool to `threads`. Tests and hooks get 30 s; a test that
+  runs a whole command gives its own longer timeout beside itself.
+- **A hot update reaches every page on the seam-2 server**, in every worker and
+  engine, and re-measures each Highlight. `highlight.spec.ts` keeps its hot update
+  and its frame-by-frame morph apart with a lock; a new journey that watches frames
+  takes the same one.
 - **Every example-app fixture sits below the fold.** A seam-2 test must
   `scrollIntoViewIfNeeded` before measuring; `elementsFromPoint` outside the viewport
   answers nothing.
@@ -169,6 +178,21 @@ Several agents share one working tree. **`git add` only your own paths — never
 `git add -A` or `git add .`.** If a shared file holds someone else's changes too, stage
 your hunks rather than the file. If a commit lands under you, rebase your thinking onto
 it before committing. Your ticket names which files are yours.
+
+**Only one full seam 2 runs on the machine at a time.** Its `globalSetup` takes a
+lock under the OS temp dir; a second run prints *waiting for another seam-2 run,
+pid N* and waits, for up to 10 minutes, rather than doubling both runs' times. A
+lock left by a killed run is taken over. So a wait there is another agent, not a
+hang.
+
+**Run your final full suite as `caffeinate -i npm test` on macOS.** Idle sleep once
+stretched a seam-2 run to 18.6 minutes; `caffeinate -i` stops idle sleep while the
+command runs, though not a lid close.
+
+**Report the tree you proved green, and nothing is proved twice.** After your final
+green full run, report `git rev-parse HEAD^{tree}` beside your commit. The
+orchestrator reruns the full suite on main only when the merged tree differs from a
+tree an agent reported green, and then once per batch of merges, not once per merge.
 
 ## Known open items
 

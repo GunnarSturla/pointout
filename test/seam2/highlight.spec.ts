@@ -1,4 +1,6 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
@@ -46,6 +48,45 @@ const HOT_CSS = fileURLToPath(
 )
 const HOT_AT_REST = 'height: 3rem'
 const HOT_UPDATED = 'height: 7rem'
+
+/**
+ * A hot update reaches every page open on the dev server, in every worker and
+ * engine, and relays each of them out — which re-measures any Highlight on it.
+ * A journey that watches a morph frame by frame reads that as a morph cut
+ * short, so it and the hot update take this lock, and never overlap. It is a
+ * directory, because making one is atomic across the worker processes.
+ */
+const HOT_UPDATE_LOCK = join(
+  tmpdir(),
+  `vite-agent-inspect-seam2-hot-update-${process.env.SEAM2_PORT ?? 5178}.lock`,
+)
+
+async function apartFromHotUpdates<T>(work: () => Promise<T>): Promise<T> {
+  const until = Date.now() + 20_000
+  for (;;) {
+    try {
+      mkdirSync(HOT_UPDATE_LOCK)
+      break
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      // Left by a run that was killed while it held it: only one seam 2 runs
+      // at a time (seam2-lock.ts), and no holder keeps it this long.
+      if (Date.now() - statSync(HOT_UPDATE_LOCK).mtimeMs > 30_000) {
+        rmSync(HOT_UPDATE_LOCK, { recursive: true, force: true })
+        continue
+      }
+      if (Date.now() > until) {
+        throw new Error(`${HOT_UPDATE_LOCK} was held for 20 s`, { cause: error })
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }
+  try {
+    return await work()
+  } finally {
+    rmSync(HOT_UPDATE_LOCK, { recursive: true, force: true })
+  }
+}
 
 /** The Highlight sitting exactly on its element, measured both ways. */
 const ON_IT = { left: 0, top: 0, width: 0, height: 0 }
@@ -256,23 +297,30 @@ test.describe('the Highlight tracks its element', () => {
     const atRest = readFileSync(HOT_CSS, 'utf8')
     expect(atRest).toContain(HOT_AT_REST)
 
-    try {
-      await open(page, probe('hot'))
-      await page.locator(PICKER).click()
-      await pick(page, HOT_BOX)
-      const before = await boxOf(page, HOT_BOX)
+    await open(page, probe('hot'))
+    await page.locator(PICKER).click()
+    await pick(page, HOT_BOX)
+    const before = await boxOf(page, HOT_BOX)
 
-      writeFileSync(HOT_CSS, atRest.replace(HOT_AT_REST, HOT_UPDATED))
+    // From the first write until the page has the file back as it was: both
+    // hot updates, and every page they relay out.
+    await apartFromHotUpdates(async () => {
+      try {
+        writeFileSync(HOT_CSS, atRest.replace(HOT_AT_REST, HOT_UPDATED))
 
-      // The element grows where it stands, with nothing scrolled and nothing
-      // resized: the third way the page moves under a Highlight (spec §5).
+        // The element grows where it stands, with nothing scrolled and nothing
+        // resized: the third way the page moves under a Highlight (spec §5).
+        await expect
+          .poll(async () => Math.round((await boxOf(page, HOT_BOX)).height))
+          .not.toBe(Math.round(before.height))
+        await expect.poll(() => offFrom(page, HOT_BOX)).toEqual(ON_IT)
+      } finally {
+        writeFileSync(HOT_CSS, atRest)
+      }
       await expect
         .poll(async () => Math.round((await boxOf(page, HOT_BOX)).height))
-        .not.toBe(Math.round(before.height))
-      await expect.poll(() => offFrom(page, HOT_BOX)).toEqual(ON_IT)
-    } finally {
-      writeFileSync(HOT_CSS, atRest)
-    }
+        .toBe(Math.round(before.height))
+    })
   })
 })
 
@@ -417,23 +465,27 @@ test('the morph is still under way frames after the hover that started it', asyn
   const to = (await boxOf(page, SECOND)).width
   const at = await centre(page, SECOND)
 
-  const widths = await page.evaluate(
-    ({ host, x, y }) =>
-      new Promise<number[]>((resolve) => {
-        const box = document
-          .querySelector(host)
-          ?.shadowRoot?.querySelector('[data-part="highlight"]')
-        if (!box) throw new Error('the Overlay draws no Highlight')
-        const drawn: number[] = []
-        const frame = () => {
-          drawn.push(box.getBoundingClientRect().width)
-          if (drawn.length < 8) requestAnimationFrame(frame)
-          else resolve(drawn)
-        }
-        window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y }))
-        requestAnimationFrame(frame)
-      }),
-    { host: HOST, x: at.x, y: at.y },
+  const widths = await apartFromHotUpdates(() =>
+    page.evaluate(
+      ({ host, x, y }) =>
+        new Promise<number[]>((resolve) => {
+          const box = document
+            .querySelector(host)
+            ?.shadowRoot?.querySelector('[data-part="highlight"]')
+          if (!box) throw new Error('the Overlay draws no Highlight')
+          const drawn: number[] = []
+          const frame = () => {
+            drawn.push(box.getBoundingClientRect().width)
+            if (drawn.length < 8) requestAnimationFrame(frame)
+            else resolve(drawn)
+          }
+          window.dispatchEvent(
+            new PointerEvent('pointermove', { clientX: x, clientY: y }),
+          )
+          requestAnimationFrame(frame)
+        }),
+      { host: HOST, x: at.x, y: at.y },
+    ),
   )
 
   // The two elements differ by far more than a morph's last frames cover.
