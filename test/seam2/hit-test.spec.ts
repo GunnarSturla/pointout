@@ -24,8 +24,9 @@ const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const CHIP_NAME = '[data-part="chip-name"]'
 const PANEL = '[data-part="panel"]'
+const MINIMIZED = '[data-part="minimized"]'
+const LIGHT = '[data-part="light"]'
 const SHIELD = '[data-part="shield"]'
-const STATUS = '[data-part="status"]'
 
 const DECOY = '[data-fixture="full-viewport-decoy"]'
 
@@ -34,6 +35,18 @@ interface Box {
   y: number
   width: number
   height: number
+}
+
+/**
+ * Accepted: the Panel closes, and the Pick rests minimized in the Stack, its
+ * light titled Sent (overlay-polish 08).
+ */
+async function sent(page: Page): Promise<void> {
+  await expect(page.locator(PANEL)).toHaveCount(0)
+  await expect(page.locator(`${MINIMIZED} ${LIGHT}`).last()).toHaveAttribute(
+    'title',
+    'Sent',
+  )
 }
 
 /** One probe token per test, carried in the url so its frame can be found. */
@@ -141,7 +154,7 @@ async function pickAt(page: Page, at: { x: number; y: number }): Promise<void> {
 async function send(page: Page, note: string): Promise<void> {
   await page.keyboard.type(note)
   await page.keyboard.press('Enter')
-  await expect(page.locator(STATUS)).toHaveText('Sent')
+  await sent(page)
 }
 
 test('a pointer-events: none element is pickable while armed and inert while not', async ({

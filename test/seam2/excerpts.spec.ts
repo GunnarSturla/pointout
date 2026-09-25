@@ -17,6 +17,8 @@ const FRAMES_LOG_ENV = 'SEAM2_FRAMES_LOG'
 
 const PICKER = '[data-part="picker"]'
 const PANEL = '[data-part="panel"]'
+const MINIMIZED = '[data-part="minimized"]'
+const LIGHT = '[data-part="light"]'
 const NOTE = '[data-part="note"]'
 const SEND = '[data-part="send"]'
 const STATUS = '[data-part="status"]'
@@ -36,6 +38,18 @@ const VALUE_CHARACTERS = 1500
 
 /** The password the fixture holds. It must appear nowhere in any payload. */
 const SECRET = 'correct-horse-battery-staple'
+
+/**
+ * Accepted: the Panel closes, and the Pick rests minimized in the Stack, its
+ * light titled Sent (overlay-polish 08).
+ */
+async function sent(page: Page): Promise<void> {
+  await expect(page.locator(PANEL)).toHaveCount(0)
+  await expect(page.locator(`${MINIMIZED} ${LIGHT}`).last()).toHaveAttribute(
+    'title',
+    'Sent',
+  )
+}
 
 function probe(name: string): string {
   return `${name}-${Math.random().toString(16).slice(2)}`
@@ -93,7 +107,7 @@ async function pick(page: Page, selector: string): Promise<void> {
 /** Send with no Note: a Pick without one is meaningful, and quicker to write. */
 async function send(page: Page): Promise<void> {
   await page.locator(SEND).click()
-  await expect(page.locator(STATUS)).toHaveText('Sent')
+  await sent(page)
 }
 
 /** What one Excerpt of this kind carries, or null when there is none. */
@@ -280,21 +294,27 @@ test('a Pick too big to send whole says so in one quiet line, not as a warning',
   await pick(page, '[data-fixture="excerpt-huge"]')
   await send(page)
 
-  const line = page.locator(TRIMMED)
+  // Said on the minimized Panel the Pick rests as, since Send closed the one it
+  // was written in.
+  const line = page.locator(`${MINIMIZED} ${TRIMMED}`)
   await expect(line).toHaveCount(1)
   await expect(line).toContainText('32 KiB')
 
-  // Information, not a warning: it is not painted in the refusal colour, and the
-  // status beside it is the plain confirmation (spec §7).
-  const refusalRed = await page.locator(STATUS).evaluate((status: HTMLElement) => {
-    status.setAttribute('data-refused', '')
-    const colour = getComputedStyle(status).color
-    status.removeAttribute('data-refused')
+  // Information, not a warning: it is not painted in the refusal colour — the
+  // colour a refused Send's line takes, read off one made to stand beside it —
+  // and the Pick's light is the plain confirmation (spec §7).
+  const refusalRed = await line.evaluate((element) => {
+    const refused = document.createElement('div')
+    refused.setAttribute('data-part', 'status')
+    refused.className = 'status'
+    refused.setAttribute('data-refused', '')
+    element.after(refused)
+    const colour = getComputedStyle(refused).color
+    refused.remove()
     return colour
   })
   const colour = await line.evaluate((element) => getComputedStyle(element).color)
   expect(colour).not.toBe(refusalRed)
-  await expect(page.locator(STATUS)).toHaveText('Sent')
 
   const content = await delivered(token)
   expect(Buffer.byteLength(content, 'utf8')).toBeLessThanOrEqual(32 * 1024)

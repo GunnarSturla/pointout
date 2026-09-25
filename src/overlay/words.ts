@@ -1,11 +1,11 @@
 // What the Overlay says about a Target and about a Pick (spec §7, §17), in one
 // module because one of these sentences belongs to three surfaces: the Target
-// row, the `held` chip and the paused report-back clock. One phrase, three
-// surfaces — so it is written once and imported, not retyped.
+// row, a `held` Pick's minimized Panel and the paused report-back clock. One
+// phrase, three surfaces — so it is written once and imported, not retyped.
 //
-// The chip words at the foot of this file are §17's table as far as the Overlay
-// draws it today: `sent`, `held`, `working`, `done` and `failed`. `unknown`
-// belongs here beside these when the report-back clock lands.
+// The words a minimized Panel says at the foot of this file are §17's table:
+// `sent`, `held`, `working`, `done`, `failed` and `unknown`, and the traffic
+// light's own word for each (overlay-polish ticket 08).
 
 /** Zero Candidates. The Note input is replaced by this, and there is no Target. */
 export const NO_SESSION = 'No Claude session is running in this folder'
@@ -93,24 +93,58 @@ export function idleAge(statusUpdatedAt: string | null, now: number): IdleAge | 
   return { short: `${days}d`, title: `Idle for ${days} ${days === 1 ? 'day' : 'days'}` }
 }
 
+/**
+ * The colour of a submitted Pick's traffic light: a session's three, and a
+ * steady red for a Pick that is over or stuck and asks for something to be
+ * done (`failed`, `unknown`, never picked up). Null is grey, for a Pick that
+ * is only sent.
+ */
+export type Light = Health | 'failed'
+
 /** Spec §17's `sent`: the socket write succeeded, and nothing more is claimed. */
 export const SENT = 'Sent'
 
 /**
+ * What each traffic light says in words, in its `title`: colour is never the
+ * only signal (docs/overlay-design.md). `SENT` and `NO_ACK_YET` are the other
+ * two.
+ */
+export const WAITING_FOR_PROMPT = 'Waiting for the next prompt'
+export const WORKING = 'Working'
+export const DONE = 'Done'
+export const NEEDS_APPROVAL = 'Needs your approval'
+export const FAILED = 'Failed'
+export const NEVER_PICKED_UP = 'Never picked up'
+
+/** The camera beside a minimized Panel's Note: a Screen Capture went with the Pick. */
+export const CAPTURE_SENT = 'Sent with a Screen Capture'
+
+/**
+ * Spec §7's two labels for the Panel's primary button. A Pick with no Note
+ * asks the agent to find the element and stand by, and a minimized Panel with
+ * no Note says so in place of its first line.
+ */
+export const SEND = 'Send'
+export const STAND_BY = 'Locate & stand by'
+
+/** The third: the button the re-resolve question relabels in place (spec §14). */
+export const CONFIRM = 'Confirm'
+
+/**
  * The sub-line under **Sent** for a Pick nobody is addressed to — requeued
  * unaddressed, or queued because the registry could not be read. The Pick is
- * real and the route is the hook floor's, so the chip says when it will arrive
+ * real and the route is the hook floor's, so its Panel says when it will arrive
  * rather than implying it already has (spec §17, §18).
  */
 export const NEXT_PROMPT = 'arrives when you next prompt Claude in this repo'
 
-/** The next action under a `failed` chip: both halves of it, in one line. */
+/** The next action a `failed` Pick names: both halves of it, in one line. */
 export const SEND_AGAIN = 'send it again, or pick another session'
 
 /**
- * A `failed` Pick's chip is the sentence the server wrote for it — §17 writes
+ * A `failed` Pick says the sentence the server wrote for it — §17 writes
  * every one of them. This stands in only when a refusal arrived with no words
- * at all, so that the chip still fails closed out loud (spec §21).
+ * at all, so that the Panel still fails closed out loud (spec §21).
  */
 export const NOT_DELIVERED = 'Not delivered.'
 
@@ -139,12 +173,12 @@ export function doneReportedBy(name: string): string {
  */
 export const NO_ACK_YET = 'No acknowledgement yet'
 
-/** The next action under an `unknown` chip. */
+/** The next action an `unknown` Pick names. */
 export const CHECK_TERMINAL = 'check your terminal'
 
 /**
- * The report-back offer (spec §17, story 46): the chip expands in place with
- * this, the question under it, and the two answers to it as buttons.
+ * The report-back offer (spec §17, story 46): the minimized Panel expands in
+ * place with this, the question under it, and the two answers to it as buttons.
  */
 export function neverPickedUp(name: string): string {
   return `${name} never picked this up.`
@@ -171,7 +205,7 @@ export function pausedFor(name: string): string {
 /**
  * The Stack's summary line (spec §17, story 49). It counts the Picks that are
  * still only *sent* and attributes nothing to any one of them: session status
- * never reaches a chip, and silence is never promoted to *delivered*.
+ * never reaches a Pick's Panel, and silence is never promoted to *delivered*.
  */
 export function noneAcknowledgedYet(sent: number): string {
   return `${sent} sent, none acknowledged yet`

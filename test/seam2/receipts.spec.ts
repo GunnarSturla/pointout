@@ -4,14 +4,14 @@ import type { Page } from '@playwright/test'
 import { replyTo } from '../harness/session-socket.js'
 
 // Seam 2: what the harness said about a Pick, as a developer reads it on the
-// Pick's chip (spec §16, §17, §21). The Receipts are real frames sent to the
+// Pick's minimized Panel in the Stack (spec §16, §17, §21). The Receipts are real frames sent to the
 // dev server's real reply address — the one the delivered Pick published in its
 // own `from` — by a connection that stands in for the harness. Nothing here
-// fakes `/status`: the sentence travels server → poll → chip, and it is read off
+// fakes `/status`: the sentence travels server → poll → Panel, and it is read off
 // the page.
 //
 // Every string is written out rather than imported: the frame fields are the
-// harness's, the chip words are §17's, and the part names are the Overlay's
+// harness's, the words are §17's, and the part names are the Overlay's
 // contract (docs/agents/testing.md).
 
 /** Where the fake session's inbox writes what it received (test/harness/serve.ts). */
@@ -29,15 +29,16 @@ const SECOND_PICKED = '[data-fixture="passed-down-badge"]'
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'
-const PANEL_STATUS = '[data-part="status"]'
 const TARGET = '[data-part="target"]'
 const TARGET_ACTION = '[data-part="target-action"]'
 const TARGETS = '[data-part="targets"]'
 const TARGET_ROW = '[data-part="target-row"]'
 const STACK = '[data-part="stack"]'
-const CHIP = '[data-part="stack-chip"]'
-const CHIP_WORDS = '[data-part="chip-words"]'
-const CHIP_NEXT = '[data-part="chip-next"]'
+const MINIMIZED = '[data-part="minimized"]'
+const LIGHT = '[data-part="light"]'
+const DOT = '[data-part="dot"]'
+const MINIMIZED_WORDS = '[data-part="minimized-words"]'
+const MINIMIZED_NEXT = '[data-part="minimized-next"]'
 
 /** Spec §17's words, written out because they are the contract. */
 const SENT = 'Sent'
@@ -45,12 +46,16 @@ const APPROVE = 'approve it in your terminal'
 const SEND_AGAIN = 'send it again, or pick another session'
 const asking = (name: string) => `${name} is asking you to approve this pick`
 
+/** The traffic light's words (overlay-polish 08). */
+const NEEDS_APPROVAL = 'Needs your approval'
+const FAILED = 'Failed'
+
 /** The seam-2 session blocked on a permission prompt (test/harness/serve.ts). */
 const WAITING_NAME = 'seam 2 waiting session'
 
 /**
  * Ticket 13's table, as the harness's machine values reach it. The sentence is
- * the server's; this suite's half is that it reaches the chip as it is.
+ * the server's; this suite's half is that it reaches the Panel as it is.
  */
 const REASON_TABLE: Array<{
   row: string
@@ -196,12 +201,14 @@ async function send(
   await pick(page, PICKED)
   await page.keyboard.type(`receipt ${token}`)
   await page.keyboard.press('Enter')
-  await expect(page.locator(PANEL_STATUS)).toHaveText(SENT)
-  await expect(page.locator(CHIP)).toHaveCount(1)
+  await expect(page.locator(MINIMIZED)).toHaveCount(1)
+  await expect(page.locator(PANEL)).toHaveCount(0)
+  await expect(light(page)).toHaveAttribute('title', SENT)
   return deliveredFrame(token)
 }
 
-const chip = (page: Page) => page.locator(CHIP).first()
+const minimized = (page: Page) => page.locator(MINIMIZED).first()
+const light = (page: Page) => minimized(page).locator(LIGHT)
 
 /** Put everything away: no Panel, not armed, and the pointer nowhere near the Overlay. */
 async function putAway(page: Page): Promise<void> {
@@ -242,39 +249,44 @@ test('a held Pick asks for approval in the terminal, and a release returns it to
 
   await receipt(delivered, { status: 'held' })
 
-  await expect(chip(page).locator(CHIP_WORDS)).toHaveText(asking(TARGET_NAME))
-  await expect(chip(page).locator(CHIP_NEXT)).toHaveText(APPROVE)
+  await expect(minimized(page).locator(MINIMIZED_WORDS)).toHaveText(asking(TARGET_NAME))
+  await expect(minimized(page).locator(MINIMIZED_NEXT)).toHaveText(APPROVE)
+  // Red, sending out rings where motion is allowed: the one state waiting on
+  // the developer, and its title says so in words.
+  await expect(light(page)).toHaveAttribute('title', NEEDS_APPROVAL)
+  await expect(light(page).locator(DOT)).toHaveAttribute('data-status', 'needs')
 
-  // The harness released it: the chip is Sent again, and stops asking.
+  // The harness released it: the Panel is Sent again, and stops asking.
   await receipt(delivered, { status: 'delivered' })
 
-  await expect(chip(page).locator(CHIP_WORDS)).toHaveText(SENT)
-  await expect(chip(page).locator(CHIP_NEXT)).toHaveCount(0)
+  await expect(light(page)).toHaveAttribute('title', SENT)
+  await expect(minimized(page).locator(MINIMIZED_WORDS)).toHaveCount(0)
+  await expect(minimized(page).locator(MINIMIZED_NEXT)).toHaveCount(0)
   // A return to Sent is the whole of what a release says (spec §17, §21).
   expect(await overlayText(page)).not.toMatch(/delivered/i)
 })
 
-test('the held chip and the waiting footer name the one action in the same words', async ({
+test('the held Panel and the waiting footer name the one action in the same words', async ({
   page,
 }) => {
   const token = probe('imperative')
   await open(page, token)
   const delivered = await send(page, token)
   await receipt(delivered, { status: 'held' })
-  await expect(chip(page).locator(CHIP_NEXT)).toHaveText(APPROVE)
+  await expect(minimized(page).locator(MINIMIZED_NEXT)).toHaveText(APPROVE)
 
   // A second Pick, addressed to the session blocked on a permission prompt:
-  // its footer names the same action, and the held chip is still asking.
+  // its footer names the same action, and the held Panel is still asking.
   await arm(page)
   await pick(page, SECOND_PICKED)
   await page.locator(TARGET).click()
   await page.locator(`${TARGETS} ${TARGET_ROW}`).filter({ hasText: WAITING_NAME }).click()
 
   await expect(page.locator(TARGET_ACTION)).toHaveText(APPROVE)
-  await expect(chip(page).locator(CHIP_NEXT)).toHaveText(APPROVE)
+  await expect(minimized(page).locator(MINIMIZED_NEXT)).toHaveText(APPROVE)
 })
 
-test('a held Pick keeps the Picker and its own chip out where the developer can see them', async ({
+test('a held Pick keeps the Picker and its own Panel out where the developer can see them', async ({
   page,
 }) => {
   const token = probe('pulled-out')
@@ -283,14 +295,15 @@ test('a held Pick keeps the Picker and its own chip out where the developer can 
   await putAway(page)
 
   await receipt(delivered, { status: 'held' })
-  await expect(chip(page).locator(CHIP_WORDS)).toHaveText(asking(TARGET_NAME))
+  await expect(minimized(page).locator(MINIMIZED_WORDS)).toHaveText(asking(TARGET_NAME))
 
   // Nothing is hovered, armed or open: the Picker is out of its tuck and the
-  // chip that asks is wholly on screen, because the one action it names is the
-  // developer's (spec §8). The chip held both out before the Receipt too: a
-  // `held` Pick is outstanding, and that is the rule that keeps it in view.
+  // minimized Panel that asks is wholly on screen, because the one action it
+  // names is the developer's (spec §8). The Panel held both out before the
+  // Receipt too: a `held` Pick is outstanding, and that is the rule that keeps
+  // it in view.
   await expect.poll(() => onScreen(page, PICKER)).toBe(true)
-  await expect.poll(() => onScreen(page, CHIP)).toBe(true)
+  await expect.poll(() => onScreen(page, MINIMIZED)).toBe(true)
   await expect(page.locator(STACK)).toBeVisible()
 })
 
@@ -302,9 +315,11 @@ for (const { row, receipt: fields, sentence } of REASON_TABLE) {
 
     await receipt(delivered, fields)
 
-    await expect(chip(page)).toHaveAttribute('data-state', 'failed')
-    await expect(chip(page).locator(CHIP_WORDS)).toHaveText(sentence)
-    await expect(chip(page).locator(CHIP_NEXT)).toHaveText(SEND_AGAIN)
+    await expect(minimized(page)).toHaveAttribute('data-state', 'failed')
+    await expect(light(page)).toHaveAttribute('title', FAILED)
+    await expect(light(page).locator(DOT)).toHaveAttribute('data-status', 'failed')
+    await expect(minimized(page).locator(MINIMIZED_WORDS)).toHaveText(sentence)
+    await expect(minimized(page).locator(MINIMIZED_NEXT)).toHaveText(SEND_AGAIN)
   })
 }
 
@@ -329,6 +344,7 @@ test('silence says nothing: a Pick no Receipt was sent for never reads as delive
     await answered
   }
 
-  await expect(chip(page).locator(CHIP_WORDS)).toHaveText(SENT)
+  await expect(light(page)).toHaveAttribute('title', SENT)
+  await expect(minimized(page).locator(MINIMIZED_WORDS)).toHaveCount(0)
   expect(await overlayText(page)).not.toMatch(/delivered/i)
 })

@@ -60,10 +60,16 @@ async function settled(page: Page): Promise<void> {
       page.evaluate((tag) => {
         const root = document.querySelector(tag)?.shadowRoot
         if (!root) return -1
-        return [...root.querySelectorAll('*')].reduce(
-          (count, element) => count + element.getAnimations().length,
-          0,
-        )
+        // A status dot's pulse and rings loop for as long as its state lasts,
+        // so they never settle: those two, by name, are left out of the count.
+        return root
+          .getAnimations()
+          .filter(
+            (animation) =>
+              !['dot-working', 'dot-needs'].includes(
+                (animation as CSSAnimation).animationName,
+              ),
+          ).length
       }, HOST),
     )
     .toBe(0)

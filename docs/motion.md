@@ -53,10 +53,10 @@ stylesheet says how each is drawn.
 | the report-back countdown line, each one-second step | 1000 ms, `transform` (`scaleX`), linear | no-preference only |
 | the Panel arriving | 180 ms, `opacity` 0 to 1, where it opens, `cubic-bezier(0.23, 1, 0.32, 1)` | every developer |
 | the Panel growing as it arrives, out of the edge that faces its element | 180 ms, `transform: scale(0.96)` to none, `transform-origin` on its top edge when below the element and its bottom edge when above, at the point nearest the element's middle, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only |
-| the Panel leaving (`Escape`, a discard, a new Pick): a still copy of it, where it stood | 120 ms, `opacity` to 0, `cubic-bezier(0.23, 1, 0.32, 1)`; and `transform: scale(0.96)` back into the same edge under no-preference | the fade for every developer; the shrink no-preference only |
+| the Panel leaving (`Escape`, a discard, a new Pick, a Send until ticket 09 shrinks it into the Stack): a still copy of it, where it stood | 120 ms, `opacity` to 0, `cubic-bezier(0.23, 1, 0.32, 1)`; and `transform: scale(0.96)` back into the same edge under no-preference | the fade for every developer; the shrink no-preference only |
 | the Panel travelling to the element an Alt-click moved its Pick to | 200 ms, `translate` from the old place to none, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only; under reduce the old place fades out (a copy, 120 ms) while the Panel fades in at the new one (180 ms) |
-| a Working session's dot, in the Target row and the Session list | a 2000 ms loop, `scale` to 0.8 and `opacity` to 0.5 at its midpoint and back, `ease-in-out` | no-preference only; under reduce it holds still |
-| a Needs you session's dot: two rings, one second apart | a 2000 ms loop per ring, a 1.5 px `--needs` circle from `scale` 1 at 0.8 opacity to `scale` 2.25 at 0, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only; under reduce there are no rings |
+| a Working session's dot, in the Target row and the Session list, and a `working` Pick's traffic light | a 2000 ms loop, `scale` to 0.8 and `opacity` to 0.5 at its midpoint and back, `ease-in-out` | no-preference only; under reduce it holds still |
+| a Needs you session's dot, and a `held` Pick's traffic light: two rings, one second apart | a 2000 ms loop per ring, a 1.5 px `--needs` circle from `scale` 1 at 0.8 opacity to `scale` 2.25 at 0, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only; under reduce there are no rings |
 
 The prototype's numbers were 170 ms on `cubic-bezier(0.77, 0, 0.175, 1)` for the morph
 and 220 ms for the reveal, built and reacted to in `spike-17-overlay-shape/`, where
@@ -76,8 +76,12 @@ something leaving, so they take the strong ease-out. They are CSS animations on 
 and its two pseudo-elements, declared with their keyframes inside the one opt-in block,
 and under reduce the pseudo-elements are never drawn at all. Colour is never the only
 signal, so under reduce, and in forced colours where every dot is `CanvasText`, the word
-beside the dot still says it. The minimized Panel's traffic light (ticket 08) is meant
-to reuse the same dot.
+beside the dot still says it. The minimized Panel's traffic light (ticket 08) is the
+same dot: a `working` Pick pulses and a `held` one rings, a `done` one is green and
+still, and a `failed`, `unknown` or never-picked-up Pick is red and still
+(`data-status='failed'`), because nothing more will happen to it on its own. Its
+state in words is the light's `title`, since the minimized Panel has no room for the
+word beside it.
 
 The Picker comes out on `:hover` only where there is a pointer that hovers
 (`@media (hover: hover) and (pointer: fine)`): a tap on a touch screen leaves a hover

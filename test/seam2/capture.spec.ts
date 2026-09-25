@@ -35,14 +35,16 @@ const HOST = 'vite-agent-inspect'
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'
+const MINIMIZED = '[data-part="minimized"]'
+const LIGHT = '[data-part="light"]'
+const MINIMIZED_CAMERA = '[data-part="minimized-camera"]'
 const NOTE = '[data-part="note"]'
 const FOOTER = '[data-part="footer"]'
 const CAMERA = '[data-part="camera"]'
 const CAMERA_OFF = '[data-part="camera-off"]'
-const PANEL_STATUS = '[data-part="status"]'
 
-/** Spec §17's word for a Pick that was written to its Target. */
-const SENT = 'Sent'
+/** What the minimized Panel's camera says, in its title and its name. */
+const CAPTURE_SENT = 'Sent with a Screen Capture'
 
 /** What a disabled capture endpoint answers (ticket 17), written out. */
 const DISABLED_REASON =
@@ -50,6 +52,18 @@ const DISABLED_REASON =
 
 /** The toggle's standing choice, by origin, as the Overlay keeps it. */
 const TOGGLE_KEY = 'vite-agent-inspect:screen-capture:'
+
+/**
+ * Accepted: the Panel closes, and the Pick rests minimized in the Stack, its
+ * light titled Sent (overlay-polish 08).
+ */
+async function sent(page: Page): Promise<void> {
+  await expect(page.locator(PANEL)).toHaveCount(0)
+  await expect(page.locator(`${MINIMIZED} ${LIGHT}`).last()).toHaveAttribute(
+    'title',
+    'Sent',
+  )
+}
 
 function probe(name: string): string {
   return `${name}-${Math.random().toString(16).slice(2)}`
@@ -290,10 +304,16 @@ async function settled(page: Page): Promise<void> {
       page.evaluate((tag) => {
         const host = document.querySelector(tag)
         if (!host?.shadowRoot || host.hasAttribute('data-shutter')) return -1
-        return [...host.shadowRoot.querySelectorAll('*')].reduce(
-          (count, element) => count + element.getAnimations().length,
-          0,
-        )
+        // A status dot's pulse and rings loop for as long as its state lasts,
+        // so they never settle: those two, by name, are left out of the count.
+        return host.shadowRoot
+          .getAnimations()
+          .filter(
+            (animation) =>
+              !['dot-working', 'dot-needs'].includes(
+                (animation as CSSAnimation).animationName,
+              ),
+          ).length
       }, HOST),
     )
     .toBe(0)
@@ -464,7 +484,9 @@ test.describe('the camera toggle', () => {
 
     await page.locator(NOTE).fill(`what is this ${token}`)
     await page.locator(NOTE).press('Enter')
-    await expect(page.locator(PANEL_STATUS)).toHaveText(SENT)
+    await sent(page)
+    // Meant and not taken: nothing went, so no camera claims one did.
+    await expect(page.locator(`${MINIMIZED} ${MINIMIZED_CAMERA}`)).toHaveCount(0)
 
     expect(await delivered(token)).toMatch(
       /screen capture\s+a capture was intended, and failed/,
@@ -644,7 +666,7 @@ test.describe('the shutter', () => {
     await pick(page, SECOND_PICKED)
     await page.locator(NOTE).fill(`first ${token}`)
     await page.locator(NOTE).press('Enter')
-    await expect(page.locator(PANEL_STATUS)).toHaveText(SENT)
+    await sent(page)
     await expect(page.locator('[data-part="stack"]')).toBeVisible()
 
     await page.keyboard.press('Escape')
@@ -792,7 +814,12 @@ test.describe('a capture that is moved, discarded or sent', () => {
 
     await page.locator(NOTE).fill(`what is this ${token}`)
     await page.locator(NOTE).press('Enter')
-    await expect(page.locator(PANEL_STATUS)).toHaveText(SENT)
+    await sent(page)
+    // The minimized Panel says a Screen Capture went, in a camera and its words.
+    const camera = page.locator(`${MINIMIZED} ${MINIMIZED_CAMERA}`)
+    await expect(camera).toHaveCount(1)
+    await expect(camera).toHaveAccessibleName(CAPTURE_SENT)
+    await expect(camera).toHaveAttribute('title', CAPTURE_SENT)
 
     const body = await delivered(token)
     const line = new RegExp(`^.*screen capture\\s+(\\S*${id}\\.png)`, 'm').exec(body)
@@ -816,7 +843,9 @@ test.describe('a capture that is moved, discarded or sent', () => {
 
     await page.locator(NOTE).fill(`what is this ${token}`)
     await page.locator(NOTE).press('Enter')
-    await expect(page.locator(PANEL_STATUS)).toHaveText(SENT)
+    await sent(page)
+    // Deleted, not sent: no camera on the minimized Panel.
+    await expect(page.locator(`${MINIMIZED} ${MINIMIZED_CAMERA}`)).toHaveCount(0)
 
     const body = await delivered(token)
     expect(body).not.toContain('screen capture')
@@ -852,7 +881,7 @@ test.describe('a capture that is moved, discarded or sent', () => {
     await arm(page)
     await pick(page, PICKED)
     await turnCameraOn(page)
-    const sent = await startedId(calls, 0)
+    const sentId = await startedId(calls, 0)
 
     await page.locator(NOTE).fill(`what is this ${token}`)
     await page.locator(NOTE).press('Enter')
@@ -860,14 +889,14 @@ test.describe('a capture that is moved, discarded or sent', () => {
     await altClick(page, SECOND_PICKED)
     const moved = await startedId(calls, 1)
     release()
-    await expect(page.locator(PANEL_STATUS)).toHaveText(SENT)
+    await sent(page)
 
     const body = await delivered(token)
-    expect(body).toContain(`${sent}.png`)
-    expect(captureFile(sent)).not.toBeNull()
-    expect(calls.filter((call) => call.method === 'DELETE' && call.id === sent)).toEqual(
-      [],
-    )
+    expect(body).toContain(`${sentId}.png`)
+    expect(captureFile(sentId)).not.toBeNull()
+    expect(
+      calls.filter((call) => call.method === 'DELETE' && call.id === sentId),
+    ).toEqual([])
     // The one the move took belongs to no Pick once the Send is accepted.
     await expect.poll(() => captureFile(moved)).toBeNull()
   })

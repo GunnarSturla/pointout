@@ -3,8 +3,9 @@
 // Three states and no more. `Escape` unwinds one level — picked → armed → off —
 // which is the rule the prototype settled on and the one thing about the gesture
 // that is invisible from it. The fourth thing a click can mean is written down
-// here for the same reason: while a Pick is open, Alt-click *moves* an
-// unsubmitted Pick and *starts a new one* from a submitted Panel (spec §7).
+// here for the same reason: while a Pick is open, Alt-click *moves* it (spec
+// §7). Sending it closes its Panel and minimizes it into the Stack, and the
+// Overlay is off again: an Alt-click after that starts a new Pick.
 //
 // What is on screen is decided here and handed to the React surfaces as props
 // (`surfaces.tsx`); the Highlight and the page's hittability are driven by hand,
@@ -21,7 +22,7 @@ import { readOwner, readOwnerChain } from './fiber.js'
 import { createFrames } from './frames.js'
 import { elementAtPoint } from './hit-test.js'
 import { createMarks } from './marks.js'
-import type { PanelCamera, PointerInputs } from './panel.js'
+import type { Accepted, PanelCamera, PointerInputs } from './panel.js'
 import { inViewport } from './placement.js'
 import { createReflow } from './reflow.js'
 import { mountOverlayRoot, part } from './root.js'
@@ -75,8 +76,6 @@ export function startOverlay(document: Document): OverlayHandle {
   let pickCount = 0
   /** True once the picked element has left the page while its Panel is open. */
   let gone = false
-  /** The Pick the open Panel sent, once it has sent one. */
-  let openPickId: string | null = null
   /** Every Pick outstanding, oldest first: what the Stack shows. */
   let submitted: readonly Submitted[] = []
   /** Whether the Picker was last drawn offering the way back to the Panel. */
@@ -119,35 +118,46 @@ export function startOverlay(document: Document): OverlayHandle {
     picked?.scrollIntoView({ block: 'center', inline: 'nearest' })
     render()
   }
-  const onSubmitted = ({
-    pickId,
-    targetName,
-  }: {
-    pickId: string
-    targetName: string | null
-  }) => {
-    openPickId = pickId
-    // The frozen Highlight becomes the Stack's resting one: one box on the
-    // element, not two (spec §5).
-    marks.hide()
-    if (picked) submitted = [...submitted, { pickId, targetName, element: picked }]
-    render()
+  /**
+   * A Pick the dev server accepted rests in the Stack, minimized. When its
+   * Panel is still the open one, the Panel closes and the Overlay is off: the
+   * frozen Highlight becomes the Stack's resting one, one box on the element
+   * and not two (spec §5). A Send answered after its Panel was put away — or
+   * replaced by a newer Pick — still rests there, and leaves whatever is open
+   * now alone.
+   */
+  const onSubmitted = (count: number, accepted: Accepted) => {
+    const { element } = accepted
+    const name = readOwner(element).name ?? element.tagName.toLowerCase()
+    submitted = [...submitted, { ...accepted, name }]
+    if (count === pickCount && picked) off({ sent: true })
+    else render()
+  }
+  /**
+   * The open Panel's `onSubmitted`: `onSubmitted` told which Pick the Panel
+   * was opened for, so that a late answer can be told from the open Pick's.
+   * Kept while that Panel is, because the Panel is memoized on its props and a
+   * new function on every render would draw it again on every scroll.
+   */
+  let submittedHandler: { count: number; handle: (accepted: Accepted) => void } | null =
+    null
+  const submittedHandlerFor = (count: number) => {
+    if (submittedHandler?.count !== count) {
+      submittedHandler = { count, handle: (accepted) => onSubmitted(count, accepted) }
+    }
+    return submittedHandler.handle
   }
   const onDismiss = (pickId: string) => {
     submitted = submitted.filter((pick) => pick.pickId !== pickId)
-    // A Pick that dismissed itself takes its own Panel with it: there is nothing
-    // left for it to be anchored to or to say (spec §8).
-    if (openPickId === pickId) off()
-    else render()
+    render()
   }
   // A Pick sent on to another session from its report-back offer is a new Pick
-  // on the same element: the chip and the resting Highlight stay where they
-  // are, under the new id (spec §17).
+  // on the same element: its minimized Panel and the resting Highlight stay
+  // where they are, under the new id (spec §17).
   const onReplaced = (pickId: string, replacement: string, targetName: string) => {
     submitted = submitted.map((pick) =>
       pick.pickId === pickId ? { ...pick, pickId: replacement, targetName } : pick,
     )
-    if (openPickId === pickId) openPickId = replacement
     render()
   }
   const pointer = (): PointerInputs => {
@@ -167,7 +177,7 @@ export function startOverlay(document: Document): OverlayHandle {
    * it out (spec §8), and an open Panel that has ridden off-screen puts the way
    * back to it on the Picker (spec §7). A `held` Pick is outstanding until it is
    * dismissed, so this is also §8's rule that a `held` Pick pulls the Picker back
-   * out — and the Stack, which exists for as long as any chip does.
+   * out — and the Stack, which exists for as long as any minimized Panel does.
    */
   const render = () => {
     offeredWayBack = panelOffScreen()
@@ -189,7 +199,7 @@ export function startOverlay(document: Document): OverlayHandle {
               gone,
               pointer,
               camera: cameraForPanel(),
-              onSubmitted,
+              onSubmitted: submittedHandlerFor(pickCount),
             },
           }
         : null,
@@ -211,8 +221,9 @@ export function startOverlay(document: Document): OverlayHandle {
     render()
   }
 
-  const off = () => {
-    closePanel()
+  /** Off: nothing armed and no Panel. A Panel closed by its own Send keeps its capture. */
+  const off = (closing: { sent?: boolean } = {}) => {
+    closePanel(closing)
     mode = 'off'
     armedBy = null
     hovered = null
@@ -222,13 +233,13 @@ export function startOverlay(document: Document): OverlayHandle {
     render()
   }
 
-  const closePanel = () => {
+  const closePanel = ({ sent = false }: { sent?: boolean } = {}) => {
     // An unsubmitted Pick that is put away takes its capture with it: the
-    // developer's screen is not left on disk for a Pick that never went.
-    if (picked && openPickId === null) camera.discard()
+    // developer's screen is not left on disk for a Pick that never went. A sent
+    // one's capture is the server's already.
+    if (picked && !sent) camera.discard()
     picked = null
     gone = false
-    openPickId = null
   }
 
   /**
@@ -363,22 +374,17 @@ export function startOverlay(document: Document): OverlayHandle {
     const element = elementAtPoint(document, at.x, at.y) ?? hovered
     if (!element) return
 
-    // Spec §7's two meanings. An unsubmitted Panel *moves* — the Note the
-    // developer already wrote is theirs and travels with the Pick. A submitted
-    // one is a finished Pick, so this is a new one and the old Panel minimizes
-    // into the Stack, where its chip has been resting since it was sent. Either
-    // way the live mark is already on the element, and it becomes the Pick's.
+    // Spec §7: an open Panel is an unsubmitted one, and it *moves* — the Note
+    // the developer already wrote is theirs and travels with the Pick. The live
+    // mark is already on the element, and it becomes the Pick's.
     if (mode === 'picked') {
       marks.promote(element, readOwner(element))
-      if (openPickId === null) {
-        picked = element
-        hovered = element
-        gone = false
-        captureAt(element)
-        render()
-        return
-      }
-      closePanel()
+      picked = element
+      hovered = element
+      gone = false
+      captureAt(element)
+      render()
+      return
     }
 
     pickOn(element)

@@ -7,6 +7,7 @@
 import { memo } from 'react'
 import type { Candidate, NamedTarget } from '../wire.js'
 import type { Sessions } from './client.js'
+import { Dot } from './dot.js'
 import { partProps } from './root.js'
 import * as words from './words.js'
 
@@ -95,7 +96,7 @@ function line({
   if (health === 'needs') {
     return (
       <>
-        <Dot health={health} />
+        <Dot light={health} />
         {said(words.blockedOnPermission(live.name))}{' '}
         <span {...partProps('target-action')}>{words.APPROVE_IN_TERMINAL}</span>
       </>
@@ -106,7 +107,7 @@ function line({
   // The spaces between them are for what reads the row aloud, and are not drawn.
   return (
     <>
-      <Dot health={health} />
+      <Dot light={health} />
       <span {...partProps('target-name')}>{live.name}</span>{' '}
       <span {...partProps('target-status')}>{words.statusWord(live.status)}</span>
       {age && (
@@ -145,7 +146,7 @@ export const TargetChoices = memo(function TargetChoices({
             aria-current={isChosen ? 'true' : undefined}
             onClick={() => onChoose(candidate)}
           >
-            <Dot health={words.healthOf(candidate.status)} />
+            <Dot light={words.healthOf(candidate.status)} />
             <span {...partProps('row-name')}>{candidate.name}</span>{' '}
             <span {...partProps('row-status')}>{words.statusWord(candidate.status)}</span>{' '}
             <span {...partProps('row-detail')}>
@@ -169,18 +170,6 @@ export const TargetChoices = memo(function TargetChoices({
     </div>
   )
 })
-
-/**
- * A Candidate's health as a dot: green, amber or red. A status the Overlay has
- * no word for is grey, the colour that claims nothing, beside the harness's own
- * word for it. The dot is never the only signal, so it is hidden from what
- * reads the row aloud: the word beside it says the same.
- */
-function Dot({ health }: { health: words.Health | null }) {
-  return (
-    <span {...partProps('dot')} data-status={health ?? undefined} aria-hidden="true" />
-  )
-}
 
 /** `3d`, and in its title `Idle for 3 days`. */
 function Age({ part, age }: { part: string; age: words.IdleAge }) {

@@ -41,6 +41,8 @@ const APP_FOCUSABLE = '[data-fixture="full-viewport-decoy-restore"]'
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'
+const MINIMIZED = '[data-part="minimized"]'
+const LIGHT = '[data-part="light"]'
 const NOTE = '[data-part="note"]'
 const EMPTY = '[data-part="empty"]'
 const SEND = '[data-part="send"]'
@@ -67,6 +69,18 @@ interface CandidatePayload {
   pid: number
   sessionId: string
   startedThisServer: boolean
+}
+
+/**
+ * Accepted: the Panel closes, and the Pick rests minimized in the Stack, its
+ * light titled Sent (overlay-polish 08).
+ */
+async function sent(page: Page): Promise<void> {
+  await expect(page.locator(PANEL)).toHaveCount(0)
+  await expect(page.locator(`${MINIMIZED} ${LIGHT}`).last()).toHaveAttribute(
+    'title',
+    'Sent',
+  )
 }
 
 function candidate(overrides: Partial<CandidatePayload> = {}): CandidatePayload {
@@ -198,7 +212,7 @@ test('the footer shows the preselected Target and the row lists every Candidate'
   await page.locator(NOTE).click()
   await page.keyboard.type(note)
   await page.keyboard.press('Enter')
-  await expect(page.locator(STATUS)).toHaveText('Sent')
+  await sent(page)
 
   expect(await delivered(SECOND_FRAMES_LOG_ENV, token)).toContain(note)
 })
@@ -302,7 +316,7 @@ test('a Target that vanished between naming and sending is named, never swapped'
   await expect(page.locator(NOTE)).toHaveValue(note)
 
   await page.locator(SEND).click()
-  await expect(page.locator(STATUS)).toHaveText('Sent')
+  await sent(page)
   expect(await delivered(SECOND_FRAMES_LOG_ENV, token)).toContain(note)
 })
 

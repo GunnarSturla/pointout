@@ -34,14 +34,16 @@ const SECOND_PICKED = '[data-fixture="passed-down-badge"]'
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'
-const PANEL_STATUS = '[data-part="status"]'
 const TARGET = '[data-part="target"]'
 const TARGETS = '[data-part="targets"]'
 const TARGET_ROW = '[data-part="target-row"]'
 const STACK = '[data-part="stack"]'
-const CHIP = '[data-part="stack-chip"]'
-const CHIP_WORDS = '[data-part="chip-words"]'
-const CHIP_NEXT = '[data-part="chip-next"]'
+const MINIMIZED = '[data-part="minimized"]'
+const LIGHT = '[data-part="light"]'
+const DOT = '[data-part="dot"]'
+const MINIMIZED_WORDS = '[data-part="minimized-words"]'
+const MINIMIZED_NEXT = '[data-part="minimized-next"]'
+const OFFER_WORDS = '[data-part="offer-words"]'
 const SUMMARY = '[data-part="summary"]'
 const OFFER = '[data-part="offer"]'
 const QUESTION = '[data-part="offer-question"]'
@@ -62,6 +64,10 @@ const blockedPaused = (name: string) =>
 const summaryOf = (sent: number) => `${sent} sent, none acknowledged yet`
 const NO_ACK = 'No acknowledgement yet'
 const CHECK_TERMINAL = 'check your terminal'
+
+/** The traffic light's words (overlay-polish 08). */
+const NEVER_PICKED_UP = 'Never picked up'
+const WAITING_FOR_PROMPT = 'Waiting for the next prompt'
 
 /** Spec §17. */
 const OFFER_MS = 30_000
@@ -180,7 +186,9 @@ async function send(
   }
   await page.keyboard.type(note)
   await page.keyboard.press('Enter')
-  await expect(page.locator(PANEL_STATUS)).toHaveText(SENT)
+  // Accepted: the Panel closes, and the Pick rests minimized in the Stack.
+  await expect(page.locator(MINIMIZED).filter({ hasText: note })).toHaveCount(1)
+  await expect(page.locator(PANEL)).toHaveCount(0)
 }
 
 /** No Panel, not armed, and the pointer nowhere near the Stack. */
@@ -191,8 +199,8 @@ async function putAway(page: Page): Promise<void> {
   await expect(page.locator(PANEL)).toHaveCount(0)
 }
 
-const chipOf = (page: Page, pickId: string) =>
-  page.locator(`${CHIP}[data-pick="${pickId}"]`)
+const minimizedOf = (page: Page, pickId: string) =>
+  page.locator(`${MINIMIZED}[data-pick="${pickId}"]`)
 
 async function offered(page: Page, token: string): Promise<Delivered> {
   await open(page, token)
@@ -200,7 +208,7 @@ async function offered(page: Page, token: string): Promise<Delivered> {
   const delivered = await deliveredIn(REPORT_BACK_FRAMES_LOG_ENV, token)
   await putAway(page)
   await turnEnded(delivered)
-  await expect(chipOf(page, delivered.pickId).locator(OFFER)).toBeVisible()
+  await expect(minimizedOf(page, delivered.pickId).locator(OFFER)).toBeVisible()
   return delivered
 }
 
@@ -219,17 +227,23 @@ async function leftOf(page: Page): Promise<number> {
   return Number(await page.locator(COUNTDOWN).first().getAttribute('data-left'))
 }
 
-test('a Pick the Target never picked up expands its chip into the offer', async ({
+test('a Pick the Target never picked up expands its minimized Panel into the offer', async ({
   page,
 }) => {
   const delivered = await offered(page, probe('offer'))
-  const chip = chipOf(page, delivered.pickId)
+  const minimized = minimizedOf(page, delivered.pickId)
 
-  await expect(chip.locator(CHIP_WORDS)).toHaveText(neverPickedUp(TARGET_NAME))
-  await expect(chip.locator(QUESTION)).toHaveText(QUESTION_WORDS)
-  await expect(chip.locator(ELSEWHERE)).toBeVisible()
-  await expect(chip.locator(LEAVE)).toBeVisible()
-  await expect(chip.locator(COUNTDOWN)).toBeVisible()
+  // Red and steady beside its first line, and the offer under it.
+  await expect(minimized.locator(LIGHT)).toHaveAttribute('title', NEVER_PICKED_UP)
+  await expect(minimized.locator(`${LIGHT} ${DOT}`)).toHaveAttribute(
+    'data-status',
+    'failed',
+  )
+  await expect(minimized.locator(OFFER_WORDS)).toHaveText(neverPickedUp(TARGET_NAME))
+  await expect(minimized.locator(QUESTION)).toHaveText(QUESTION_WORDS)
+  await expect(minimized.locator(ELSEWHERE)).toBeVisible()
+  await expect(minimized.locator(LEAVE)).toBeVisible()
+  await expect(minimized.locator(COUNTDOWN)).toBeVisible()
 })
 
 test.describe('with motion allowed', () => {
@@ -245,8 +259,8 @@ test.describe('with motion allowed', () => {
     await expect(line).toHaveCSS('transition-timing-function', 'linear')
     // Drawn, and shorter than whole: its width on screen is the time left.
     const box = await line.boundingBox()
-    const chipBox = await page.locator(OFFER).boundingBox()
-    expect(box!.width).toBeLessThan(chipBox!.width)
+    const offerBox = await page.locator(OFFER).boundingBox()
+    expect(box!.width).toBeLessThan(offerBox!.width)
   })
 })
 
@@ -276,13 +290,14 @@ test('at zero the Pick is left for the next prompt, with a fresh TTL', async ({
   page,
 }) => {
   const delivered = await offered(page, probe('zero'))
-  const chip = chipOf(page, delivered.pickId)
+  const minimized = minimizedOf(page, delivered.pickId)
 
   await page.clock.fastForward(OFFER_MS + 1000)
 
-  await expect(chip.locator(OFFER)).toHaveCount(0)
-  await expect(chip.locator(CHIP_WORDS)).toHaveText(SENT)
-  await expect(chip.locator(CHIP_NEXT)).toHaveText(NEXT_PROMPT)
+  await expect(minimized.locator(OFFER)).toHaveCount(0)
+  await expect(minimized.locator(LIGHT)).toHaveAttribute('title', WAITING_FOR_PROMPT)
+  await expect(minimized.locator(MINIMIZED_WORDS)).toHaveCount(0)
+  await expect(minimized.locator(MINIMIZED_NEXT)).toHaveText(NEXT_PROMPT)
 
   const row = await statusRow(page, delivered.pickId)
   expect(row?.state).toBe('queued-unaddressed')
@@ -292,10 +307,10 @@ test('at zero the Pick is left for the next prompt, with a fresh TTL', async ({
 
 test('touching the offer stops its countdown for good', async ({ page }) => {
   const delivered = await offered(page, probe('touched'))
-  const chip = chipOf(page, delivered.pickId)
+  const minimized = minimizedOf(page, delivered.pickId)
 
-  await chip.locator(QUESTION).hover()
-  await expect(chip.locator(COUNTDOWN)).toHaveCount(0)
+  await minimized.locator(QUESTION).hover()
+  await expect(minimized.locator(COUNTDOWN)).toHaveCount(0)
   await page.mouse.move(4, 4)
 
   await page.clock.fastForward(OFFER_MS + 1000)
@@ -303,8 +318,8 @@ test('touching the offer stops its countdown for good', async ({ page }) => {
   for (let tick = 0; tick < 2; tick++) {
     await page.waitForResponse((response) => response.url().includes('/__agent/status'))
   }
-  await expect(chip.locator(OFFER)).toBeVisible()
-  await expect(chip.locator(COUNTDOWN)).toHaveCount(0)
+  await expect(minimized.locator(OFFER)).toBeVisible()
+  await expect(minimized.locator(COUNTDOWN)).toHaveCount(0)
   expect((await statusRow(page, delivered.pickId))?.state).toBe('sent')
 })
 
@@ -313,9 +328,9 @@ test('sending it to another session writes a fresh Pick there and forgets the ol
 }) => {
   const token = probe('elsewhere')
   const delivered = await offered(page, token)
-  const chip = chipOf(page, delivered.pickId)
+  const minimized = minimizedOf(page, delivered.pickId)
 
-  await chip.locator(ELSEWHERE).click()
+  await minimized.locator(ELSEWHERE).click()
   const rows = page.locator(`${STACK} ${TARGETS} ${TARGET_ROW}`)
   await expect(rows.filter({ hasText: SECOND_NAME })).toBeVisible()
   await rows.filter({ hasText: SECOND_NAME }).click()
@@ -324,22 +339,23 @@ test('sending it to another session writes a fresh Pick there and forgets the ol
   expect(fresh.pickId).not.toBe(delivered.pickId)
   expect(nonceOf(fresh.content)).not.toBe(nonceOf(delivered.content))
 
-  const moved = chipOf(page, fresh.pickId)
-  await expect(moved.locator(CHIP_WORDS)).toHaveText(SENT)
-  await expect(chipOf(page, delivered.pickId)).toHaveCount(0)
+  const moved = minimizedOf(page, fresh.pickId)
+  await expect(moved.locator(LIGHT)).toHaveAttribute('title', SENT)
+  await expect(moved.locator(MINIMIZED_WORDS)).toHaveCount(0)
+  await expect(minimizedOf(page, delivered.pickId)).toHaveCount(0)
   expect(await statusRow(page, delivered.pickId)).toBeUndefined()
   expect((await statusRow(page, fresh.pickId))?.state).toBe('sent')
 })
 
-// Spec §21: a resolution the server refuses is shown in the chip in the server's
+// Spec §21: a resolution the server refuses is shown in the Panel in the server's
 // own words (ticket 19's audit). The chosen session is swapped on the way out
 // for one that is no Candidate, so the refusal is the real server's.
-test('a retarget the server refuses shows its reason in the chip, and moves nothing', async ({
+test('a retarget the server refuses shows its reason in the Panel, and moves nothing', async ({
   page,
 }) => {
   const token = probe('elsewhere-refused')
   const delivered = await offered(page, token)
-  const chip = chipOf(page, delivered.pickId)
+  const minimized = minimizedOf(page, delivered.pickId)
 
   await page.route('**/__agent/pick/*/report', (route) =>
     route.continue({
@@ -350,7 +366,7 @@ test('a retarget the server refuses shows its reason in the chip, and moves noth
     }),
   )
   try {
-    await chip.locator(ELSEWHERE).click()
+    await minimized.locator(ELSEWHERE).click()
     const rows = page.locator(`${STACK} ${TARGETS} ${TARGET_ROW}`)
     await expect(rows.filter({ hasText: SECOND_NAME })).toBeVisible()
 
@@ -363,7 +379,7 @@ test('a retarget the server refuses shows its reason in the chip, and moves noth
     expect(error).toBe('target-replaced')
     expect(reason).toContain('no-such-session')
 
-    await expect(chip.locator('[data-part="offer-refusal"]')).toHaveText(reason)
+    await expect(minimized.locator('[data-part="offer-refusal"]')).toHaveText(reason)
     // Nothing moved: the Pick is where it was, and nothing reached the other session.
     expect((await statusRow(page, delivered.pickId))?.state).toBe('sent')
     expect(
@@ -392,7 +408,7 @@ test('two Picks to an idle Target both raise offers, and the summary holds', asy
   await turnEnded(second)
 
   for (const { pickId } of [first, second]) {
-    await expect(chipOf(page, pickId).locator(OFFER)).toBeVisible()
+    await expect(minimizedOf(page, pickId).locator(OFFER)).toBeVisible()
   }
   await expect(page.locator(SUMMARY)).toHaveText(summaryOf(2))
 })
@@ -407,8 +423,12 @@ test('a Target waiting on a permission prompt pauses the clock, and says so', as
 
   await expect(page.locator(WAITING)).toContainText(blockedPaused(WAITING_NAME))
   await expect(page.locator(WAITING_ACTION)).toHaveText(APPROVE)
-  // Session-level evidence: the chip itself still says only Sent.
-  await expect(page.locator(CHIP).first().locator(CHIP_WORDS)).toHaveText(SENT)
+  // Session-level evidence: the Pick's own Panel still says only Sent.
+  await expect(page.locator(MINIMIZED).first().locator(LIGHT)).toHaveAttribute(
+    'title',
+    SENT,
+  )
+  await expect(page.locator(MINIMIZED).first().locator(MINIMIZED_WORDS)).toHaveCount(0)
   // Nothing is armed or open, and the Stack and the Picker are both out.
   await expect(page.locator(STACK)).toBeVisible()
   await expect.poll(() => onScreen(page, PICKER)).toBe(true)
@@ -416,7 +436,7 @@ test('a Target waiting on a permission prompt pauses the clock, and says so', as
 })
 
 test('a Pick nobody has acknowledged in a minute reads as unknown', async ({ page }) => {
-  // The minute is the server's (seam 1 makes it pass); this is the chip's half,
+  // The minute is the server's (seam 1 makes it pass); this is the Panel's half,
   // read off a real Pick whose status answers `unknown`.
   const token = probe('unknown')
   await open(page, token)
@@ -428,8 +448,14 @@ test('a Pick nobody has acknowledged in a minute reads as unknown', async ({ pag
   })
   await send(page, PICKED, `unknown ${token}`)
 
-  await expect(page.locator(CHIP).first().locator(CHIP_WORDS)).toHaveText(NO_ACK)
-  await expect(page.locator(CHIP).first().locator(CHIP_NEXT)).toHaveText(CHECK_TERMINAL)
+  const minimized = page.locator(MINIMIZED).first()
+  await expect(minimized.locator(LIGHT)).toHaveAttribute('title', NO_ACK)
+  await expect(minimized.locator(`${LIGHT} ${DOT}`)).toHaveAttribute(
+    'data-status',
+    'failed',
+  )
+  await expect(minimized.locator(MINIMIZED_WORDS)).toHaveText(NO_ACK)
+  await expect(minimized.locator(MINIMIZED_NEXT)).toHaveText(CHECK_TERMINAL)
   await page.unrouteAll({ behavior: 'ignoreErrors' })
 })
 

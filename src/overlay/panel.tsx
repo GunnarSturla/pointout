@@ -1,7 +1,8 @@
-// The Panel (spec §7): the surface a Pick opens, where the Note is written, the
-// Target is shown and chosen, and the Pick's outcome is read. One Panel per
-// Pick, and never modal: a plain click anywhere else is the developer using
-// their app.
+// The Panel (spec §7), unsubmitted: the surface a Pick opens, where the Note is
+// written and the Target is shown and chosen. One Panel per Pick, and never
+// modal: a plain click anywhere else is the developer using their app. Once
+// the Pick is sent this form closes, and the Pick's outcome is read on its
+// submitted form, minimized in the Stack (`stack.tsx`).
 //
 // Element-anchored by `placement.ts`: it opens beside its element, never partly
 // off-screen, and then rides with the element wherever the page takes it. Native
@@ -10,7 +11,7 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react'
-import { NOTE_MAX_CHARACTERS } from '../wire.js'
+import { NOTE_MAX_CHARACTERS, NO_CAPTURE } from '../wire.js'
 import type { NamedTarget, PickBody } from '../wire.js'
 import { CameraLine, CameraToggle } from './camera.js'
 import type { Camera, CameraState } from './capture.js'
@@ -32,12 +33,6 @@ import { TargetChoices, TargetRow, sessionsState } from './target-row.js'
 import type { Offer } from './target-row.js'
 import { watchTick } from './tick.js'
 import * as words from './words.js'
-
-/** Spec §7's two labels. A Pick with no Note asks the agent to stand by. */
-const STAND_BY = 'Locate & stand by'
-const SEND = 'Send'
-/** The third: the button the re-resolve question relabels in place (spec §14). */
-const CONFIRM = 'Confirm'
 
 /**
  * Spec §5: the picked element unmounted while its Panel was open. Both halves
@@ -68,7 +63,22 @@ export interface PanelProps {
   pointer(): PointerInputs
   camera: PanelCamera
   /** Told once, when this Panel's Pick has been accepted by the dev server. */
-  onSubmitted(pick: { pickId: string; targetName: string | null }): void
+  onSubmitted(pick: Accepted): void
+}
+
+/** What the Panel knows of a Pick the dev server has just accepted. */
+export interface Accepted {
+  pickId: string
+  /** The element it was sent about, which a move may have changed. */
+  element: Element
+  targetName: string | null
+  note: string | null
+  /** A Screen Capture went with it, to be kept for the agent. */
+  captured: boolean
+  /** Why a write did not happen, in the server's words, when one did not. */
+  reason: string | null
+  /** What the 32 KiB cap took out of the Excerpts, in the server's words. */
+  trimmed: string | null
 }
 
 /** The camera, as far as the Panel draws and uses it (spec §7, §10). */
@@ -77,14 +87,6 @@ export interface PanelCamera {
   onToggle(): void
   /** Send the Pick carrying the Screen Capture it holds, when it holds one. */
   carry: Camera['carry']
-}
-
-/** What the Panel says under the footer once a Send has been answered. */
-interface Status {
-  text: string
-  refused: boolean
-  /** The server's own line beside a plain confirmation, when it had one. */
-  extra: string | null
 }
 
 export const Panel = memo(function Panel({
@@ -103,14 +105,22 @@ export const Panel = memo(function Panel({
   const [expanded, setExpanded] = useState(false)
   const [offer, setOffer] = useState<Offer | null>(null)
   const [sending, setSending] = useState(false)
+  // Accepted, and on its way out: a second Enter before the Panel has gone
+  // sends nothing.
   const [sent, setSent] = useState(false)
-  const [status, setStatus] = useState<Status | null>(null)
-  const [trimmed, setTrimmed] = useState<string | null>(null)
+  /** A Send the server refused, in its own words, under the footer. */
+  const [refusal, setRefusal] = useState<string | null>(null)
   const [explaining, setExplaining] = useState(false)
   const explain = useCallback(() => setExplaining((was) => !was), [])
 
   const { choosable, noSession } = sessionsState(sessions)
   const panel = usePlacement(element, gone, view, reflow)
+  // The element as it is now: a Send in flight is answered after a move may
+  // have taken the Pick somewhere else, and it is sent about where it ended.
+  const current = useRef(element)
+  useLayoutEffect(() => {
+    current.current = element
+  }, [element])
 
   // Spec §14: read at pick time, then on the Overlay's one tick while this Panel
   // is open. A Panel that is closed reads nothing, and an idle page never asks.
@@ -227,8 +237,10 @@ export const Panel = memo(function Panel({
     setSending(true)
     // Taken at pick time, and only decided about now: kept for the agent when
     // the toggle is on, deleted by the server when it is off (spec §10).
+    let captured = false
     const outcome = await camera.carry(
       (capture) => {
+        captured = capture !== null && capture.keep && capture.id !== NO_CAPTURE
         const body: PickBody = {
           ...pointer(),
           ...(capture ? { capture } : {}),
@@ -252,20 +264,24 @@ export const Panel = memo(function Panel({
       }
       // Fail closed, say so out loud (spec §21): the server's own reason, at the
       // point it happened, with the Note untouched so nothing written is lost.
-      setStatus({ text: outcome.reason, refused: true, extra: null })
+      setRefusal(outcome.reason)
       return
     }
 
-    // A 200 that went nowhere is not silent either: the server says why, and so
-    // does the Panel, beside the plain confirmation. What the 32 KiB cap took
-    // out of the Excerpts is one quiet line — information, not a warning: the
-    // Pick was accepted and the Note travelled whole (spec §7, §13).
+    // Accepted: this Panel closes, and the Pick rests minimized in the Stack,
+    // where it says what becomes of it. A 200 that went nowhere is not silent
+    // either, and neither is what the 32 KiB cap took out of the Excerpts: the
+    // server's words for both go with the Pick, to be said there (spec §7, §13).
     setSent(true)
-    setStatus({ text: 'Sent', refused: false, extra: outcome.reason ?? null })
-    setTrimmed(outcome.trimmed ?? null)
-    // The Pick now rests in the Stack, where it says what becomes of it. This
-    // Panel stays open until the developer makes another Pick (spec §7).
-    onSubmitted({ pickId: outcome.pickId, targetName: target?.name ?? null })
+    onSubmitted({
+      pickId: outcome.pickId,
+      element: current.current,
+      targetName: target?.name ?? null,
+      note: text.length > 0 ? text : null,
+      captured,
+      reason: outcome.reason ?? null,
+      trimmed: outcome.trimmed ?? null,
+    })
   }
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -299,7 +315,7 @@ export const Panel = memo(function Panel({
     onToggle: toggle,
     onChoose: choose,
   }
-  const label = offer ? CONFIRM : note.length > 0 ? SEND : STAND_BY
+  const label = offer ? words.CONFIRM : note.length > 0 ? words.SEND : words.STAND_BY
   const disabled =
     sending || sent || overCap || (!offer && (noSession || (choosable && !chosen)))
 
@@ -354,13 +370,11 @@ export const Panel = memo(function Panel({
         </button>
       </div>
       <CameraLine camera={camera.state} explaining={explaining} />
-      {status && (
-        <div {...partProps('status')} data-refused={status.refused ? '' : undefined}>
-          {status.text}
+      {refusal && (
+        <div {...partProps('status')} data-refused="">
+          {refusal}
         </div>
       )}
-      {status?.extra && <div {...partProps('status-reason')}>{status.extra}</div>}
-      {trimmed && <div {...partProps('trimmed')}>{trimmed}</div>}
     </div>
   )
 })

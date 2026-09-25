@@ -109,7 +109,7 @@ the page loads, then `runFor` or `fastForward`, or `pauseAt` so that only the te
 moves it (`report-back.spec.ts`, `surfaces.spec.ts`). A timer policy that is faked
 keeps one real-time test, in Chromium only, that proves its wall-clock length, and a
 comment says which one: `surfaces.spec.ts`'s two `on the wall clock` tests, for the
-done chip's ~8 s dismiss and the 1.5 s tick. CSS transitions do not run on that clock,
+done Pick's ~8 s dismiss and the 1.5 s tick. CSS transitions do not run on that clock,
 so a wait for one to settle stays real.
 
 **Run the final full suite as `caffeinate -i npm test` on macOS.** Idle sleep has been

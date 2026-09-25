@@ -52,6 +52,8 @@ const HIGHLIGHT = '[data-part="highlight"]'
 const CHIP_NAME = '[data-part="chip-name"]'
 const CHIP_FILE = '[data-part="chip-file"]'
 const PANEL = '[data-part="panel"]'
+const MINIMIZED = '[data-part="minimized"]'
+const LIGHT = '[data-part="light"]'
 const NOTE = '[data-part="note"]'
 const SEND = '[data-part="send"]'
 const TARGET = '[data-part="target"]'
@@ -62,6 +64,18 @@ interface Box {
   y: number
   width: number
   height: number
+}
+
+/**
+ * Accepted: the Panel closes, and the Pick rests minimized in the Stack, its
+ * light titled Sent (overlay-polish 08).
+ */
+async function sent(page: Page): Promise<void> {
+  await expect(page.locator(PANEL)).toHaveCount(0)
+  await expect(page.locator(`${MINIMIZED} ${LIGHT}`).last()).toHaveAttribute(
+    'title',
+    'Sent',
+  )
 }
 
 /** One probe token per test, carried in the url so its frame can be found. */
@@ -286,7 +300,7 @@ test('Enter sends, and the frame carries the Note inside the fences and the Poin
   const note = `make this card quieter ${token}`
   await page.keyboard.type(note)
   await page.keyboard.press('Enter')
-  await expect(page.locator(STATUS)).toHaveText('Sent')
+  await sent(page)
 
   const content = await delivered(token)
   const fence = /--- note ([0-9a-f]{12}) ---\n([\s\S]*?)\n--- end note \1 ---/.exec(
@@ -313,7 +327,7 @@ test('a note-less send produces a frame with no note fence', async ({ page }) =>
 
   await expect(page.locator(SEND)).toHaveText('Locate & stand by')
   await page.keyboard.press('Enter')
-  await expect(page.locator(STATUS)).toHaveText('Sent')
+  await sent(page)
 
   const content = await delivered(token)
   expect(content).not.toContain('--- note ')
@@ -375,7 +389,7 @@ test('the fixed full-viewport decoy and the Overlay itself are never picked', as
   await arm(page)
   await pick(page, PICKED)
   await page.keyboard.press('Enter')
-  await expect(page.locator(STATUS)).toHaveText('Sent')
+  await sent(page)
   const content = await delivered(token)
   expect(content).toMatch(new RegExp(`\\belement\\s+${PICKED_TAG}\\b`))
 })

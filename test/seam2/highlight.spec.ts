@@ -23,8 +23,9 @@ const HOST = 'vite-agent-inspect'
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'
+const MINIMIZED = '[data-part="minimized"]'
+const LIGHT = '[data-part="light"]'
 const SEND = '[data-part="send"]'
-const STATUS = '[data-part="status"]'
 /** The line the Panel adds when the element it is anchored to has left. */
 const GONE = '[data-part="gone"]'
 const ELEMENT_GONE = 'This element is gone from the page. The pick still sends.'
@@ -56,6 +57,18 @@ interface Box {
   y: number
   width: number
   height: number
+}
+
+/**
+ * Accepted: the Panel closes, and the Pick rests minimized in the Stack, its
+ * light titled Sent (overlay-polish 08).
+ */
+async function sent(page: Page): Promise<void> {
+  await expect(page.locator(PANEL)).toHaveCount(0)
+  await expect(page.locator(`${MINIMIZED} ${LIGHT}`).last()).toHaveAttribute(
+    'title',
+    'Sent',
+  )
 }
 
 function probe(name: string): string {
@@ -593,49 +606,51 @@ test.describe('Alt held over an open Panel', () => {
     await expect.poll(async () => (await boxOf(page, PANEL)).y).not.toBe(panelBefore.y)
     await expect(page.locator(CURRENT)).toHaveCount(1)
   })
+})
 
-  test('over a submitted Panel, the live one is lit and paints over the resting mark', async ({
-    page,
-  }) => {
-    const token = probe('alt-submitted')
-    await open(page, token)
-    await page.locator(PICKER).click()
-    await pick(page, FIRST)
-    await page.keyboard.type(`rest here ${token}`)
-    await page.keyboard.press('Enter')
-    await expect(page.locator(STATUS)).toHaveText('Sent')
-    await expect(page.locator(CURRENT)).toHaveCount(0)
+test('once a Pick is sent, the mark following the pointer is lit and paints over its resting mark', async ({
+  page,
+}) => {
+  const token = probe('alt-submitted')
+  await open(page, token)
+  await page.locator(PICKER).click()
+  await pick(page, FIRST)
+  await page.keyboard.type(`rest here ${token}`)
+  await page.keyboard.press('Enter')
+  // Send minimizes the Panel into the Stack: nothing is open, so nothing of
+  // the Pick's own is left on the page but its resting mark.
+  await sent(page)
+  await expect(page.locator(CURRENT)).toHaveCount(0)
 
-    // Over the element the sent Pick rests on: both marks on one element, and
-    // the live one is the one on top.
-    await page.keyboard.down('Alt')
-    await hover(page, FIRST)
-    await expect(page.locator(LIVE)).toBeVisible()
-    await expect.poll(() => treatmentOf(page, LIVE)).toBe('lit')
-    const layers = await page.evaluate((tag) => {
-      const root = document.querySelector(tag)?.shadowRoot
-      const layer = (selector: string) => {
-        const box = root?.querySelector(selector)
-        return box ? Number(getComputedStyle(box).zIndex) : Number.NaN
-      }
-      return {
-        live: layer('[data-mark="live"]'),
-        resting: layer('[data-part="highlight"][data-resting]:not([data-mark])'),
-      }
-    }, HOST)
-    expect(layers.live).toBeGreaterThan(layers.resting)
+  // Alt arms again. Over the element the sent Pick rests on: both marks on
+  // one element, and the one following the pointer is lit and on top.
+  await page.keyboard.down('Alt')
+  await hover(page, FIRST)
+  await expect(page.locator(CURRENT)).toBeVisible()
+  await expect.poll(() => treatmentOf(page, CURRENT)).toBe('lit')
+  const layers = await page.evaluate((tag) => {
+    const root = document.querySelector(tag)?.shadowRoot
+    const layer = (selector: string) => {
+      const box = root?.querySelector(selector)
+      return box ? Number(getComputedStyle(box).zIndex) : Number.NaN
+    }
+    return {
+      following: layer('[data-mark="current"]'),
+      resting: layer('[data-part="highlight"][data-resting]:not([data-mark])'),
+    }
+  }, HOST)
+  expect(layers.following).toBeGreaterThan(layers.resting)
 
-    // Alt-click starts a new Pick there, and with Alt still held the next
-    // element pointed at gets a lit live mark too.
-    const at = await centre(page, FIRST)
-    await page.mouse.click(at.x, at.y)
-    await expect.poll(() => markOff(page, CURRENT, FIRST)).toEqual(ON_IT)
-    await hover(page, THIRD)
-    await expect(page.locator(LIVE)).toBeVisible()
-    await expect.poll(() => treatmentOf(page, LIVE)).toBe('lit')
-    await page.keyboard.up('Alt')
-    await expect(page.locator(LIVE)).toHaveCount(0)
-  })
+  // Alt-click starts a new Pick there, and with Alt still held the next
+  // element pointed at gets a lit live mark too.
+  const at = await centre(page, FIRST)
+  await page.mouse.click(at.x, at.y)
+  await expect.poll(() => markOff(page, CURRENT, FIRST)).toEqual(ON_IT)
+  await hover(page, THIRD)
+  await expect(page.locator(LIVE)).toBeVisible()
+  await expect.poll(() => treatmentOf(page, LIVE)).toBe('lit')
+  await page.keyboard.up('Alt')
+  await expect(page.locator(LIVE)).toHaveCount(0)
 })
 
 test('a picked element that unmounts fades, says so, and is still sent', async ({
@@ -658,7 +673,7 @@ test('a picked element that unmounts fades, says so, and is still sent', async (
   await expect(page.locator(GONE)).toHaveText(ELEMENT_GONE)
 
   await page.locator(SEND).click()
-  await expect(page.locator(STATUS)).toHaveText('Sent')
+  await sent(page)
   expect(await delivered(token)).toContain(note)
 })
 

@@ -1,8 +1,8 @@
-// The report-back offer (spec §8, §17, stories 46 to 48): what a chip expands
-// into, in place, when its Pick's Target never picked it up. The words, the
-// question, its two answers, and a thirty-second countdown drawn as a thin line
-// that shortens once a second. When the line runs out, the Pick is left for
-// whoever the developer prompts next — so walking away is never the outcome
+// The report-back offer (spec §8, §17, stories 46 to 48): what a minimized
+// Panel expands into, in place, when its Pick's Target never picked it up. The
+// words, the question, its two answers, and a thirty-second countdown drawn as
+// a thin line that shortens once a second. When the line runs out, the Pick is
+// left for whoever the developer prompts next — so walking away is never the outcome
 // with no defence. Touching the offer stops the countdown for good: reading it
 // never sets off the default under the developer's hand.
 //
@@ -51,8 +51,8 @@ export function ReportBackOffer(props: ReportBackOfferProps) {
   const { onTouch, onLeave, onSendElsewhere, onChoose } = props
 
   // Hovering, pressing or focusing anything in the offer is touching it. Read
-  // off the element's own events, like the chip's hover, because a pointer
-  // arriving from the page is retargeted at the host on its way in.
+  // off the element's own events, like the minimized Panel's hover, because a
+  // pointer arriving from the page is retargeted at the host on its way in.
   const touch = useCallback(
     (node: HTMLDivElement | null) => {
       if (!node) return
@@ -71,7 +71,7 @@ export function ReportBackOffer(props: ReportBackOfferProps) {
 
   return (
     <div ref={touch} {...partProps('offer')}>
-      <div {...partProps('chip-words')}>{words.neverPickedUp(name)}</div>
+      <div {...partProps('offer-words')}>{words.neverPickedUp(name)}</div>
       <div {...partProps('offer-question')}>{words.SEND_OR_LEAVE}</div>
       <div {...partProps('offer-answers')}>
         <button type="button" {...partProps('offer-elsewhere')} onClick={onSendElsewhere}>
@@ -91,9 +91,9 @@ export function ReportBackOffer(props: ReportBackOfferProps) {
 }
 
 /**
- * Ticket 10's in-Panel list of sessions, opened inside the chip. The Target
- * that never picked it up is listed too, marked: a developer who has just
- * fixed that session may want it again.
+ * Ticket 10's in-Panel list of sessions, opened inside the minimized Panel. The
+ * Target that never picked it up is listed too, marked: a developer who has
+ * just fixed that session may want it again.
  */
 function ChooseSession({
   sessions,

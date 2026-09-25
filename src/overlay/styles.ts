@@ -346,7 +346,9 @@ export const OVERLAY_STYLESHEET = `
   .picker[data-armed] { forced-color-adjust: none }
 }
 
-/* The Stack (spec §8): bottom-right, and only while something is outstanding. */
+/* The Stack (spec §8): bottom-right, and only while something is outstanding.
+   Newest at the bottom, and every minimized Panel as wide as the widest, up to
+   the plan's 320 px. */
 .stack {
   position: fixed;
   inset-block-end: 12px;
@@ -356,48 +358,133 @@ export const OVERLAY_STYLESHEET = `
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
-  max-width: 320px;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
   font: var(--type-ui);
 }
 
 .summary {
   padding-inline: 4px;
-  font-size: 11px;
+  font: var(--type-small);
   text-align: end;
-  opacity: 0.75;
+  color: var(--ink-muted);
 }
 
-.stack-chip {
-  padding: 6px 10px;
-  border: 1px solid rgb(127 127 127 / 45%);
+/* A submitted Pick's Panel, minimized (docs/overlay-design.md): the floating
+   card one step in — 8 px radius and the resting shadow — one line 28 px high,
+   and a second, small line under it only when there is something to read. */
+.minimized {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: Canvas;
-  color: CanvasText;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
-  font-size: 12px;
+  background-color: var(--surface);
+  color: var(--ink);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 12%),
+    0 4px 12px -4px rgb(0 0 0 / 18%);
+  font: var(--type-ui);
   cursor: default;
 }
 
-.stack-chip[data-state='failed'] { border-color: #b3261e }
-
-.stack-chip[data-state='failed'] .chip-words { color: #b3261e }
-
-.chip-words { font-weight: 500 }
-
-.chip-next {
-  margin-block-start: 2px;
-  font-size: 11px;
-  opacity: 0.8;
+/* Traffic light, component (600), the Note's first line (muted), camera. The
+   Note gives way first, with an ellipsis; a long component name gives way too,
+   but never to nothing. Nothing here clips the light: a held Pick's rings
+   reach 5 px past its dot. */
+.minimized-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-/* The report-back offer (spec §8, §17): the chip expanded in place. */
+.light {
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.minimized-name,
+.minimized-note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.minimized-name {
+  flex: 0 1 auto;
+  max-width: 50%;
+  font-weight: 600;
+}
+
+.minimized-note {
+  flex: 1 1 0;
+  color: var(--ink-muted);
+}
+
+.minimized-camera {
+  flex: none;
+  display: grid;
+  color: var(--ink-muted);
+}
+
+/* The second line, and anything else the server said about the Pick: the
+   small step, lined up under the component's name rather than under the
+   light (the dot's 8 px and the gap's 8). A bad outcome, or one that waits on
+   the developer, is said in the red of the light beside it; the next action
+   is ink, like the Target row's imperative. What the 32 KiB cap took out of
+   the Excerpts stays muted: information, deliberately not the refusal colour,
+   because the Pick was accepted (spec §7, §13). */
+.minimized-said,
+.minimized-reason,
+.trimmed,
+.minimized .offer {
+  padding-inline-start: 16px;
+  font: var(--type-small);
+  color: var(--ink-muted);
+}
+
+.minimized[data-state='held'] .minimized-words,
+.minimized[data-state='failed'] .minimized-words,
+.minimized[data-state='unknown'] .minimized-words {
+  color: var(--needs);
+}
+
+/* The words, then the next action on a line of its own, as in the Target
+   row's blocked state: run on after a sentence, an imperative reads as part
+   of it. Where there is nothing to do — a Pick waiting for the next prompt —
+   the line is only the route, and stays muted. */
+.minimized-said {
+  display: flex;
+  flex-direction: column;
+}
+
+.minimized[data-state='held'] .minimized-next,
+.minimized[data-state='failed'] .minimized-next,
+.minimized[data-state='unknown'] .minimized-next {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The report-back offer (spec §8, §17): the minimized Panel expanded in place,
+   under its first line. */
 .offer {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  margin-block-start: 4px;
 }
 
-.offer-question { font-size: 11px }
+.offer-words {
+  color: var(--needs);
+  font: var(--type-ui);
+}
+
+.offer-question { color: var(--ink) }
 
 .offer-answers {
   display: flex;
@@ -428,7 +515,7 @@ export const OVERLAY_STYLESHEET = `
   display: flex;
   flex-direction: column;
   padding-inline: 4px;
-  font-size: 11px;
+  font: var(--type-small);
   text-align: end;
 }
 
@@ -553,6 +640,10 @@ export const OVERLAY_STYLESHEET = `
 .dot[data-status='ready'] { background-color: var(--ready) }
 .dot[data-status='working'] { background-color: var(--working) }
 .dot[data-status='needs'] { background-color: var(--needs) }
+/* The minimized Panel's red that holds still: a Pick that failed, or that
+   nothing has answered, or that was never picked up. It asks for something
+   to be done, and nothing more will happen on its own, so it never rings. */
+.dot[data-status='failed'] { background-color: var(--needs) }
 
 /* The idle age: short, and in figures that line up down the Session list.
    Its title says it in full. */
@@ -787,14 +878,10 @@ ${each(':focus-visible')} {
   box-shadow: 0 0 0 2px var(--surface);
 }
 
+/* A Send the server refused, in its own words, where it happened. */
 .status { font: var(--type-ui) }
 
 .status[data-refused] { color: var(--needs) }
-
-.status-reason {
-  font: var(--type-ui);
-  color: var(--ink-muted);
-}
 
 /* The Note counter: quiet until the cap, and at the cap it is the reason the
    Send button is off, so it stops being quiet (spec §7). */
@@ -808,13 +895,6 @@ ${each(':focus-visible')} {
 .counter[data-over] {
   color: var(--ink);
   font-weight: 600;
-}
-
-/* Excerpts the 32 KiB cap took out: one quiet informational line, deliberately
-   not the refusal colour above — the Pick was accepted (spec §7, §13). */
-.trimmed {
-  font: var(--type-ui);
-  color: var(--ink-muted);
 }
 
 /* ------------------------------------------------------------------------

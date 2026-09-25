@@ -32,9 +32,13 @@ The Overlay: one open shadow root, the Picker, Highlight, Panel and Stack, the h
 test with its shield, the Owner chain with per-frame Confidence, and Target selection.
 The Panel, Stack and Picker are React components fed by an imperative controller; the
 Highlight is imperative (ADR-0004). The Panel's placement is arithmetic in
-`src/overlay/placement.ts`; there is no runtime dependency. A Pick's chip words and
-next action come from one `say(state, reason, name)` in `stack.tsx`; `held` and
-`failed` Receipts reach the chip (ticket 27).
+`src/overlay/placement.ts`; there is no runtime dependency. Send closes the
+unsubmitted Panel, and the Pick rests as its minimized Panel in the Stack
+(overlay-polish ticket 08): a traffic light with its state in a `title`, the component,
+the Note's first line, a camera when a Screen Capture went, and a second line of §17's
+words. The light, its word, the words and the next action come from one
+`say(state, reason, name, offered)` in `stack.tsx`; `held` and `failed` Receipts reach
+it (ticket 27). "Chip" means the Highlight's label only.
 
 The Panel footer has the camera toggle, and a pick closes the Shutter for the
 capture frame whatever the toggle says (ticket 18, `src/overlay/capture.ts`). A Pick

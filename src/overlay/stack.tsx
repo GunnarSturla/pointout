@@ -1,19 +1,23 @@
 // The Stack (spec §8, §17): where submitted Picks rest while their fate is
-// unsettled. Bottom-right, one chip per submitted Pick, no cap — and gone
-// entirely the moment nothing is outstanding, which is the whole of what
+// unsettled. Bottom-right, one minimized Panel per submitted Pick, no cap — and
+// gone entirely the moment nothing is outstanding, which is the whole of what
 // separates it from the Picker (`CONTEXT.md`).
 //
-// Each chip says only what is known about *its own* Pick. The states come from
-// `/__agent/status`, which carries Pick-specific evidence; the Target's live
-// status never reaches this module, so §17's rule — session-level evidence
-// colours the Target row and never moves a chip — holds by construction. What
-// does reach it is the server's report-back clock for each Pick: offered back,
-// which expands the chip into the offer (`report-back.tsx`), or paused behind a
-// permission prompt, which the Stack's footer says (spec §17).
+// A minimized Panel is the submitted form of the Panel the Pick was written in:
+// one line with its traffic light, the component, the Note's first line and a
+// camera when a Screen Capture went, and a second, small line when there is
+// something to read. It says only what is known about *its own* Pick. The
+// states come from `/__agent/status`, which carries Pick-specific evidence; the
+// Target's live status never reaches this module, so §17's rule — session-level
+// evidence colours the Target row and never moves a Pick — holds by
+// construction. What does reach it is the server's report-back clock for each
+// Pick: offered back, which expands the minimized Panel into the offer
+// (`report-back.tsx`), or paused behind a permission prompt, which the Stack's
+// footer says (spec §17).
 //
-// A chip owns the resting Highlight of its Pick as well as its words: the two
-// are one thing to the developer, and hovering the chip is what re-lights the
-// box.
+// A minimized Panel owns the resting Highlight of its Pick as well as its
+// words: the two are one thing to the developer, and hovering the one is what
+// re-lights the other.
 
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -41,29 +45,36 @@ import type {
 } from '../wire.js'
 import { readSessions, readStatus, resolveOffer } from './client.js'
 import type { Sessions } from './client.js'
+import type { Accepted } from './panel.js'
 import { viewportBox } from './deep-element.js'
+import { Dot } from './dot.js'
+import { CameraIcon } from './icons.js'
 import { ReportBackOffer } from './report-back.js'
 import type { Reflow } from './reflow.js'
 import { partProps } from './root.js'
 import { watchTick } from './tick.js'
 import * as words from './words.js'
+import type { Light } from './words.js'
 
 /**
- * Spec §8: a `done` chip dismisses itself on a plain timer of about eight
+ * Spec §8: a `done` Pick dismisses itself on a plain timer of about eight
  * seconds. Plain is the point — no condition, no hover to keep it alive.
  */
 const DISMISS_DONE_MS = 8000
 
-/** The chip reads **Sent** in both of these; only the sub-line tells them apart. */
+/** Nothing has acknowledged a Pick in any of these: what the summary counts. */
 const UNACKNOWLEDGED: readonly string[] = [SENT, QUEUED_UNADDRESSED, UNKNOWN]
 
-/** What the Overlay hands the Stack when a Pick is accepted. */
-export interface Submitted {
-  pickId: string
-  /** The element the Pick was made on: its resting Highlight goes here. */
-  element: Element
-  /** The Target's name as the Panel knew it, for as long as it stays known. */
-  targetName: string | null
+/**
+ * What the Overlay hands the Stack when a Pick is accepted: what its Panel
+ * knew of it, and what the element is called. Its resting Highlight goes on
+ * `element`. What the dev server said as it accepted it — `reason` and
+ * `trimmed` — is said for as long as the Pick is, because the Panel it was
+ * said in is gone.
+ */
+export interface Submitted extends Accepted {
+  /** What the element is called: the component that wrote it, or its tag. */
+  name: string
 }
 
 export interface StackProps {
@@ -114,13 +125,13 @@ export const Stack = memo(function Stack({
   const [offers, setOffers] = useState<ReadonlyMap<string, Offered>>(() => new Map())
   /** The sessions the offer's list chooses from, read when it opens. */
   const [sessions, setSessions] = useState<Sessions | null>(null)
-  /** The Pick whose chip is hovered: its resting box is the live treatment again. */
+  /** The Pick whose minimized Panel is hovered: its resting box is the live treatment again. */
   const [lit, setLit] = useState<string | null>(null)
   /** The Picks whose dismissal timer is running: a second poll must not restart it. */
   const dismissing = useRef(new Set<string>())
 
   // Spec §14: one tick, running only while something is outstanding. A poll
-  // that could not be answered changes nothing: a chip may only move on
+  // that could not be answered changes nothing: a Pick may only move on
   // evidence, and a failed read is the absence of evidence (spec §17, §21).
   useEffect(() => {
     if (picks.length === 0) return
@@ -182,7 +193,7 @@ export const Stack = memo(function Stack({
   }, [])
 
   /**
-   * What the server answered a resolution with is evidence: the chip says it at
+   * What the server answered a resolution with is evidence: the Panel says it at
    * once rather than on the next poll. The offer is over either way.
    */
   const settle = useCallback(
@@ -246,38 +257,36 @@ export const Stack = memo(function Stack({
 
   // Sent is what is known the moment the server accepted a Pick; the first poll
   // is what tells an addressed Pick from one the hook floor will carry.
-  const chips = picks.map((pick) => {
+  const rows = picks.map((pick) => {
     const heard = told.get(pick.pickId)
     const state = heard?.state ?? SENT
     const offered =
       heard?.reportBack?.state === CLOCK_OFFERED && OFFERABLE.includes(state)
+    const offer = offered ? (offers.get(pick.pickId) ?? null) : null
+    const name = heard?.target?.name ?? pick.targetName ?? ''
     return {
       pick,
       state,
-      reason: heard?.reason ?? null,
-      name: heard?.target?.name ?? pick.targetName ?? '',
+      name,
       target: heard?.target ?? null,
-      offer: offered ? (offers.get(pick.pickId) ?? null) : null,
-      // A `held` Pick's chip already names the prompt; the footer is for the
-      // sent ones stalled behind a Target's own.
+      offer,
+      said: say(state, heard?.reason ?? null, name, offer !== null),
+      // A `held` Pick already names the prompt; the footer is for the sent
+      // ones stalled behind a Target's own.
       paused: heard?.reportBack?.state === CLOCK_PAUSED && state !== HELD,
     }
   })
-  // One Pick says everything about itself on its own chip; the summary exists
-  // for the case story 49 names, which is several Picks in flight — and it
-  // counts them, attributing nothing to any one (spec §17).
-  const unacknowledged = chips.filter((chip) =>
-    UNACKNOWLEDGED.includes(chip.state),
-  ).length
+  // One Pick says everything about itself on its own minimized Panel; the
+  // summary exists for the case story 49 names, which is several Picks in
+  // flight — and it counts them, attributing nothing to any one (spec §17).
+  const unacknowledged = rows.filter((row) => UNACKNOWLEDGED.includes(row.state)).length
   // Spec §17: the paused clock's footer names the Target and the one action
-  // that unblocks it — the phrase the Target row and the `held` chip use.
-  const waitingOn = [
-    ...new Set(chips.filter((chip) => chip.paused).map((chip) => chip.name)),
-  ]
+  // that unblocks it — the phrase the Target row and a `held` Pick use.
+  const waitingOn = [...new Set(rows.filter((row) => row.paused).map((row) => row.name))]
 
   return (
     <>
-      {chips.map(({ pick }) => (
+      {rows.map(({ pick }) => (
         <RestingBox
           key={pick.pickId}
           element={pick.element}
@@ -286,15 +295,15 @@ export const Stack = memo(function Stack({
         />
       ))}
       <div {...partProps('stack')}>
-        {chips.length >= 2 && unacknowledged > 0 && (
+        {rows.length >= 2 && unacknowledged > 0 && (
           <div {...partProps('summary')}>{words.noneAcknowledgedYet(unacknowledged)}</div>
         )}
-        {chips.map(({ pick, state, reason, name, target, offer }) => (
-          <Chip
+        {rows.map(({ pick, state, said, name, target, offer }) => (
+          <Minimized
             key={pick.pickId}
-            pickId={pick.pickId}
+            pick={pick}
             state={state}
-            {...say(state, reason, name)}
+            said={said}
             onHover={setLit}
           >
             {offer && (
@@ -313,7 +322,7 @@ export const Stack = memo(function Stack({
                 onChoose={(candidate) => void choose(pick.pickId, candidate)}
               />
             )}
-          </Chip>
+          </Minimized>
         ))}
         {waitingOn.map((name) => (
           <div key={name} {...partProps('stack-waiting')}>
@@ -327,29 +336,28 @@ export const Stack = memo(function Stack({
 })
 
 /**
- * One chip. Its hover is read through the element's own `pointerenter` and
- * `pointerleave` rather than React's: React derives those two from over/out
- * pairs, and a pointer arriving from the consumer's own React tree is retargeted
- * at the shadow host on the way in, so the pair never forms. The Overlay and the
- * app share one React, and this is the one place the two trees hand a pointer
- * across.
+ * A submitted Pick's Panel, minimized in the Stack. Its hover is read through
+ * the element's own `pointerenter` and `pointerleave` rather than React's:
+ * React derives those two from over/out pairs, and a pointer arriving from the
+ * consumer's own React tree is retargeted at the shadow host on the way in, so
+ * the pair never forms. The Overlay and the app share one React, and this is
+ * the one place the two trees hand a pointer across.
  */
-function Chip({
-  pickId,
+function Minimized({
+  pick,
   state,
-  text,
-  next,
+  said,
   onHover,
   children,
 }: {
-  pickId: string
-  state: string
-  text: string
-  next: string | null
+  pick: Submitted
+  state: PickState
+  said: Said
   onHover(pickId: string | null): void
-  /** The offer, when there is one: the chip expands into it in place (spec §8). */
+  /** The offer, when there is one: the Panel expands into it in place (spec §8). */
   children?: ReactNode
 }) {
+  const { pickId } = pick
   const hover = useCallback(
     (node: HTMLDivElement | null) => {
       if (!node) return
@@ -365,60 +373,146 @@ function Chip({
     [pickId, onHover],
   )
 
-  // An offer stands in for the chip's words: it says what they would have said
-  // about the Pick, and what to do about it.
+  // The spaces between the parts are for what reads the Panel aloud; the line
+  // spaces them itself. An offer stands in for the second line: it says what
+  // that line would have said about the Pick, and what to do about it.
   return (
     <div
       ref={hover}
-      {...partProps('stack-chip')}
+      {...partProps('minimized')}
       data-pick={pickId}
       data-state={state}
       data-offered={children ? '' : undefined}
     >
-      {children ?? (
-        <>
-          <div {...partProps('chip-words')}>{text}</div>
-          {next && <div {...partProps('chip-next')}>{next}</div>}
-        </>
-      )}
+      <div {...partProps('minimized-line')}>
+        <span
+          {...partProps('light')}
+          role="img"
+          aria-label={said.title}
+          title={said.title}
+        >
+          <Dot light={said.light} />
+        </span>{' '}
+        <span {...partProps('minimized-name')}>{pick.name}</span>{' '}
+        <span {...partProps('minimized-note')}>
+          {firstLine(pick.note) ?? words.STAND_BY}
+        </span>
+        {pick.captured && (
+          <>
+            {' '}
+            <span
+              {...partProps('minimized-camera')}
+              role="img"
+              aria-label={words.CAPTURE_SENT}
+              title={words.CAPTURE_SENT}
+            >
+              <CameraIcon />
+            </span>
+          </>
+        )}
+      </div>
+      {children ??
+        ((said.words || said.next) && (
+          <div {...partProps('minimized-said')}>
+            {said.words && <span {...partProps('minimized-words')}>{said.words}</span>}
+            {said.words && said.next && ' '}
+            {said.next && <span {...partProps('minimized-next')}>{said.next}</span>}
+          </div>
+        ))}
+      {pick.reason && <div {...partProps('minimized-reason')}>{pick.reason}</div>}
+      {pick.trimmed && <div {...partProps('trimmed')}>{pick.trimmed}</div>}
     </div>
   )
 }
 
+/** The Note's first line, or null for a Pick sent without one. */
+function firstLine(note: string | null): string | null {
+  if (!note) return null
+  return note.split('\n', 1)[0] ?? ''
+}
+
+/** What one minimized Panel says about its Pick. */
+interface Said {
+  /** The traffic light's colour: null is grey. */
+  light: Light | null
+  /** The light's state in words, in its `title`. */
+  title: string
+  /** §17's words for the state, on the second line. */
+  words: string | null
+  /** Under them, the next action, or the route the Pick will take. */
+  next: string | null
+}
+
 /**
- * What one chip says: its words, and the sub-line under them — the next action,
- * or the route a Pick nobody is addressed to will actually take. One arm per
- * state of §17's table, from Pick-specific evidence and nothing else.
+ * The traffic light and its word, and the second line — §17's words, and under
+ * them the next action, or the route a Pick nobody is addressed to will
+ * actually take. One arm per state of §17's table, from Pick-specific evidence
+ * and nothing else.
  */
 function say(
   state: PickState,
   reason: string | null,
   name: string,
-): { text: string; next: string | null } {
+  offered: boolean,
+): Said {
+  // The offer brings its own words, and the light says what it is about.
+  if (offered)
+    return { light: 'failed', title: words.NEVER_PICKED_UP, words: null, next: null }
   switch (state) {
     // §17 gives `held` fixed words, so they come from the state; the server
     // leaves `reason` null for it on purpose.
     case HELD:
-      return { text: words.askingToApprove(name), next: words.APPROVE_IN_TERMINAL }
+      return {
+        light: 'needs',
+        title: words.NEEDS_APPROVAL,
+        words: words.askingToApprove(name),
+        next: words.APPROVE_IN_TERMINAL,
+      }
     case WORKING:
-      return { text: words.workingOn(name), next: null }
+      return {
+        light: 'working',
+        title: words.WORKING,
+        words: words.workingOn(name),
+        next: null,
+      }
     case DONE:
-      return { text: words.doneReportedBy(name), next: null }
+      return {
+        light: 'ready',
+        title: words.DONE,
+        words: words.doneReportedBy(name),
+        next: null,
+      }
     case FAILED:
-      return { text: reason ?? words.NOT_DELIVERED, next: words.SEND_AGAIN }
+      return {
+        light: 'failed',
+        title: words.FAILED,
+        words: reason ?? words.NOT_DELIVERED,
+        next: words.SEND_AGAIN,
+      }
+    // Sent, as far as the Pick goes: the light says so, and the line says when.
     case QUEUED_UNADDRESSED:
-      return { text: words.SENT, next: words.NEXT_PROMPT }
+      return {
+        light: null,
+        title: words.WAITING_FOR_PROMPT,
+        words: null,
+        next: words.NEXT_PROMPT,
+      }
     case SENT:
-      return { text: words.SENT, next: null }
+      return { light: null, title: words.SENT, words: null, next: null }
     case UNKNOWN:
-      return { text: words.NO_ACK_YET, next: words.CHECK_TERMINAL }
+      return {
+        light: 'failed',
+        title: words.NO_ACK_YET,
+        words: words.NO_ACK_YET,
+        next: words.CHECK_TERMINAL,
+      }
   }
 }
 
 /**
  * The resting Highlight of a submitted Pick (spec §5): a thin outline, no fill
- * and no chip, desaturated — and the live treatment again while its chip is
- * hovered. There is no chip element here at all, so "no chip" is a fact about
+ * and no chip, desaturated — and the live treatment again while its minimized
+ * Panel is hovered. There is no chip element here at all, so "no chip" is a fact about
  * the box rather than a rule that could be overridden. It is placed and
  * re-measured and never travels: it belongs to one element for as long as the
  * Pick is outstanding, which is what `data-placing` says, and it stays on.
