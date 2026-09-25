@@ -6,6 +6,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { startExampleServer } from './dev-server.js'
 import { repoRoot } from './paths.js'
+import { clearDrainLock } from './drain-lock.js'
 import { clearHotUpdateLock } from './hot-update-lock.js'
 import { takeSeam2Lock } from './seam2-lock.js'
 import { listeningSession } from './session-socket.js'
@@ -55,12 +56,19 @@ const FRAMES_LOG_ENV = 'SEAM2_FRAMES_LOG'
 const SECOND_FRAMES_LOG_ENV = 'SEAM2_SECOND_FRAMES_LOG'
 const REPORT_BACK_FRAMES_LOG_ENV = 'SEAM2_REPORT_BACK_FRAMES_LOG'
 
+/**
+ * The hook discovery entry the posture block names, whose secret is the
+ * drain's credential: a spec that drains reads it the way the CLI does.
+ */
+const DISCOVERY_ENTRY_ENV = 'SEAM2_DISCOVERY_ENTRY'
+
 export default async function serveForSeam2(): Promise<() => Promise<void>> {
   // Before anything is booted: a second full seam 2 on this machine waits for
   // the first, whatever port it was given (seam2-lock.ts).
   const releaseLock = await takeSeam2Lock()
   // Held now, so nothing else can be using it: only a killed run's leftover.
   clearHotUpdateLock()
+  clearDrainLock()
 
   let server
   try {
@@ -86,6 +94,9 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
   process.env[FRAMES_LOG_ENV] = framesLog
   process.env[SECOND_FRAMES_LOG_ENV] = secondFramesLog
   process.env[REPORT_BACK_FRAMES_LOG_ENV] = reportBackFramesLog
+  const discovery = /discovery entry\s+(\S+\.json)/.exec(server.log())?.[1]
+  if (!discovery) throw new Error(`no discovery entry line in:\n${server.log()}`)
+  process.env[DISCOVERY_ENTRY_ENV] = discovery
 
   // Each session's cwd is this checkout, which is the root the example app's dev
   // server discovers, so each is a Candidate — except the last, which works

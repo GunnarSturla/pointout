@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import type { Page, Route } from '@playwright/test'
+import { apartFromDrains } from '../harness/drain-lock.js'
 import { replyTo } from '../harness/session-socket.js'
 
 // Seam 2: the report-back offer as a developer meets it (spec §8, §17, stories
@@ -289,20 +290,23 @@ test.describe('with reduced motion', () => {
 test('at zero the Pick is left for the next prompt, with a fresh TTL', async ({
   page,
 }) => {
-  const delivered = await offered(page, probe('zero'))
-  const minimized = minimizedOf(page, delivered.pickId)
+  // Queued, and read as queued: no drain may take it in between.
+  await apartFromDrains(async () => {
+    const delivered = await offered(page, probe('zero'))
+    const minimized = minimizedOf(page, delivered.pickId)
 
-  await page.clock.fastForward(OFFER_MS + 1000)
+    await page.clock.fastForward(OFFER_MS + 1000)
 
-  await expect(minimized.locator(OFFER)).toHaveCount(0)
-  await expect(minimized.locator(LIGHT)).toHaveAttribute('title', WAITING_FOR_PROMPT)
-  await expect(minimized.locator(MINIMIZED_WORDS)).toHaveCount(0)
-  await expect(minimized.locator(MINIMIZED_NEXT)).toHaveText(NEXT_PROMPT)
+    await expect(minimized.locator(OFFER)).toHaveCount(0)
+    await expect(minimized.locator(LIGHT)).toHaveAttribute('title', WAITING_FOR_PROMPT)
+    await expect(minimized.locator(MINIMIZED_WORDS)).toHaveCount(0)
+    await expect(minimized.locator(MINIMIZED_NEXT)).toHaveText(NEXT_PROMPT)
 
-  const row = await statusRow(page, delivered.pickId)
-  expect(row?.state).toBe('queued-unaddressed')
-  // Fresh: thirty minutes from the requeue, not from when the Pick was made.
-  expect(row!.expiresAt).toBeGreaterThan(row!.createdAt + TTL_MS)
+    const row = await statusRow(page, delivered.pickId)
+    expect(row?.state).toBe('queued-unaddressed')
+    // Fresh: thirty minutes from the requeue, not from when the Pick was made.
+    expect(row!.expiresAt).toBeGreaterThan(row!.createdAt + TTL_MS)
+  })
 })
 
 test('touching the offer stops its countdown for good', async ({ page }) => {

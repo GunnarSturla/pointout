@@ -18,6 +18,7 @@ import {
   CAPTURE_DISABLED,
   CLOCK_OFFERED,
   UNKNOWN_CAPTURE,
+  UNKNOWN_PICK,
   DONE,
   NOT_WITHDRAWABLE,
   OFFERABLE,
@@ -306,7 +307,7 @@ function recordPickAction(
     return sendRefusal(logger, response, {
       status: 404,
       body: {
-        error: 'unknown-pick',
+        error: UNKNOWN_PICK,
         reason:
           `refused an ${action} for a pick this dev server never accepted. ` +
           'A pick is known only to the server that minted it.',
@@ -404,7 +405,7 @@ async function resolveReport(
     return sendRefusal(logger, response, {
       status: 404,
       body: {
-        error: 'unknown-pick',
+        error: UNKNOWN_PICK,
         reason: 'refused a report for a pick this dev server never accepted.',
       },
     })
@@ -507,7 +508,7 @@ function withdrawPick(
     return sendRefusal(logger, response, {
       status: 404,
       body: {
-        error: 'unknown-pick',
+        error: UNKNOWN_PICK,
         reason:
           'refused to withdraw a pick this dev server is not holding. It was ' +
           'withdrawn already, or it was never accepted here.',

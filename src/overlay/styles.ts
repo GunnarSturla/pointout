@@ -21,13 +21,15 @@ export const HOST_STYLE = [
 /**
  * Every Overlay control but the Picker, which has rules of its own: Send,
  * Cancel, the camera toggle, the Target row, the Session list rows, the
- * offer's answers and a minimized Panel's first line, which opens it. The
+ * offer's answers, a minimized Panel's first line, which opens it, and its ×,
+ * which withdraws it. The
  * plan's states table (docs/overlay-design.md) applies to each, so each
  * state's rule is written once, for the whole list.
  */
 const CONTROLS = [
   '.cancel',
   '.minimized-line',
+  '.minimized-withdraw',
   '.offer-elsewhere',
   '.offer-leave',
   '.camera',
@@ -415,13 +417,22 @@ export const OVERLAY_STYLESHEET = `
 
    It is the button that opens the Panel, so it fills the card to its border,
    drawn where the card's padding was: pressed or hovered, the whole line
-   answers, and the card is the size it was. */
+   answers, and the card is the size it was. Where the Pick can be withdrawn,
+   the × takes the end of the row, and the line stops short of it: a button
+   is never inside another one. */
+.minimized-head {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin: -5px -10px;
+}
+
 .minimized-line {
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  margin: -5px -10px;
   padding: 5px 10px;
   border: 0;
   border-radius: 7px;
@@ -431,6 +442,39 @@ export const OVERLAY_STYLESHEET = `
   text-align: start;
   cursor: pointer;
 }
+
+/* The line's end is square beside the ×, so the two read as one row split in
+   two, and each answers its own hover. */
+.minimized[data-withdrawable] .minimized-line {
+  padding-inline-end: 6px;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+/* Withdraw: a quiet ghost button, muted until it is hovered, at the size of
+   the camera beside it. 20 px square keeps the row 28 px high. */
+.minimized-withdraw {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-inline: 0 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background-color: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .minimized-withdraw:hover { color: var(--ink) }
+}
+
+.minimized-withdraw:focus-visible { color: var(--ink) }
+
+.minimized-withdraw[aria-disabled='true'] { cursor: default }
 
 .light {
   flex: none;
@@ -472,12 +516,20 @@ export const OVERLAY_STYLESHEET = `
    because the Pick was accepted (spec §7, §13). */
 .minimized-said,
 .minimized-reason,
+.minimized-withdrawn,
+.minimized-refusal,
 .trimmed,
 .minimized .offer {
   padding-inline-start: 16px;
   font: var(--type-small);
   color: var(--ink-muted);
 }
+
+/* Who already has a withdrawn Pick is not a refusal, and not a footnote:
+   ink, for the moment it is said. A Withdraw the server refused is. */
+.minimized-withdrawn { color: var(--ink) }
+
+.minimized-refusal { color: var(--needs) }
 
 .minimized[data-state='held'] .minimized-words,
 .minimized[data-state='failed'] .minimized-words,
@@ -1092,6 +1144,19 @@ ${each('')} {
   .minimized { opacity: 0 }
 }
 
+/* A withdrawn Pick's Panel going (overlay-polish ticket 10): as an
+   unsubmitted Panel leaves, a still copy fades where it stood, quicker than it
+   came. Where movement is allowed, the block below shrinks it a little too. */
+.minimized[data-leaving] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@starting-style {
+  .minimized[data-leaving] { opacity: 1 }
+}
+
 /* The Panel drawn once where a change of place starts from: back where it
    was, or unseen where it now is. Nothing eases into that; only out of it. */
 .panel[data-placing],
@@ -1271,6 +1336,17 @@ ${each('')} {
 
   .minimized {
     transition: opacity 120ms cubic-bezier(0.23, 1, 0.32, 1) 120ms;
+  }
+
+  .minimized[data-leaving] {
+    transform: scale(0.96);
+    transition:
+      opacity 120ms cubic-bezier(0.23, 1, 0.32, 1),
+      transform 120ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @starting-style {
+    .minimized[data-leaving] { transform: none }
   }
 
   .expanded {

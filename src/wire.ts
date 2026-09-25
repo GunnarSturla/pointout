@@ -383,6 +383,13 @@ export interface WithdrawAnswer {
   targetName: string | null
 }
 
+/**
+ * The `error` a Pick's own routes refuse with for a Pick this server is not
+ * holding: withdrawn already, or never accepted here. The Overlay reads it on
+ * a withdraw as the Pick being gone, which is what was asked.
+ */
+export const UNKNOWN_PICK = 'unknown-pick'
+
 /** The `error` a withdraw refuses with for a Pick past taking back. */
 export const NOT_WITHDRAWABLE = 'not-withdrawable'
 
