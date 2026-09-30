@@ -26,7 +26,7 @@ The startup posture block is complete and ordered (ticket 19); every line and wh
 means is in `docs/posture.md`. It is logged once, at `warn` when any line degrades.
 `src/server/claude/harness-version.ts` compares the registry's newest `version` with
 `VERIFIED_HARNESS` and warns, never refuses; seam 1 overrides the record with
-`VITE_AGENT_INSPECT_VERIFIED_HARNESS` (`<semver>@<YYYY-MM-DD>` or `never`), test-only.
+`POINTOUT_VERIFIED_HARNESS` (`<semver>@<YYYY-MM-DD>` or `never`), test-only.
 A Pick refused at the cap no longer spends its capture: `ingestPick` takes the claim
 only after `fitPayload` accepts. The §21 audit table, one test per item, is in ticket
 19.

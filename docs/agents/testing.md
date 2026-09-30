@@ -96,7 +96,7 @@ silently attached to.
 
 **One full seam 2 runs at a time on the machine.** Two browser suites side by side,
 from two worktrees, roughly double every test's time. So `globalSetup` first takes a
-lock, `vite-agent-inspect-seam2.lock` under the OS temp dir, holding its pid
+lock, `pointout-seam2.lock` under the OS temp dir, holding its pid
 (`test/harness/seam2-lock.ts`), whatever `SEAM2_PORT` says. A second run prints
 *waiting for another seam-2 run, pid N* once, and waits for up to 10 minutes before it
 fails with that reason. A lock whose pid is dead, from a run that was killed, is taken
@@ -293,8 +293,8 @@ exactly these strings, and `test/harness/fixture-env.ts` sets them.
 
 | variable | what it overrides |
 | --- | --- |
-| `VITE_AGENT_INSPECT_REGISTRY_DIR` | the session registry directory, so a test can write fake session JSON and key files |
-| `VITE_AGENT_INSPECT_SOCKET_DIR` | the socket directory, so a test can bind a unix socket per fake session, record every frame written to it, and send Receipts and idle notices back |
+| `POINTOUT_REGISTRY_DIR` | the session registry directory, so a test can write fake session JSON and key files |
+| `POINTOUT_SOCKET_DIR` | the socket directory, so a test can bind a unix socket per fake session, record every frame written to it, and send Receipts and idle notices back |
 | `PATH` | a fake `screencapture` is placed first: it writes a known PNG, an empty file, hangs or fails, on `FAKE_SCREENCAPTURE_MODE`, and records every call's pid and arguments to `fixture.capturePids()` and `fixture.captureCalls()` — which is how a test reads the region the server asked for, and how it sees that an aborted capture really was killed. On `gitShim`, a fake `git` goes in front too: it records its arguments to `fixture.gitCalls()` and execs the real one, so a test can count the subprocesses the server spawns |
 | `CLAUDE_PID` | the pid the started-this-server preselect matches |
 
@@ -302,7 +302,7 @@ Each override is test-only. A consumer never sets any of them.
 
 ## Making time pass
 
-`VITE_AGENT_INSPECT_CLOCK_SKEW_MS` is a fifth override, and the odd one out: it is
+`POINTOUT_CLOCK_SKEW_MS` is a fifth override, and the odd one out: it is
 not a harness boundary but the server's own clock, read afresh on every call. Spec
 §15 gives every queue entry thirty minutes, which is longer than a test is allowed
 to take, so seam 1 moves the clock rather than waiting for it —
@@ -315,7 +315,7 @@ never sets it.
 
 ## Pretending to be another operating system
 
-`VITE_AGENT_INSPECT_PLATFORM` is a sixth override, and the last one that is not a
+`POINTOUT_PLATFORM` is a sixth override, and the last one that is not a
 harness boundary: it is the platform the server believes it is on. Screen Capture is
 macOS only (spec §10), so seam 1 states the platform rather than inheriting it.
 `createFixtureEnv` sets it to `darwin`, which makes the capture journeys read the
@@ -328,7 +328,7 @@ on the machine it is actually running on, every time it starts.
 
 ## Standing in for the verified harness
 
-`VITE_AGENT_INSPECT_VERIFIED_HARNESS` is a seventh override (ticket 19). The posture
+`POINTOUT_VERIFIED_HARNESS` is a seventh override (ticket 19). The posture
 block prints the Claude Code version the model-tier canaries last passed against,
 which ticket 21 records in `src/server/claude/verified-harness.ts`. That record
 changes every time the canaries pass. So seam 1 states the version it wants,

@@ -23,7 +23,7 @@ import type { Page, Request, Route } from '@playwright/test'
 const FRAMES_LOG_ENV = 'SEAM2_FRAMES_LOG'
 
 /** Where every dev server keeps its captures: `<os tmp>/<this>/<pid>-<hex>/<id>.png`. */
-const CAPTURE_ROOT = join(tmpdir(), 'vite-agent-inspect-captures')
+const CAPTURE_ROOT = join(tmpdir(), 'pointout-captures')
 
 const CAPTURE = '**/__agent/capture'
 
@@ -31,7 +31,7 @@ const PICKED = '[data-fixture="card-heading"]'
 const SECOND_PICKED = '[data-fixture="passed-down-badge"]'
 const THIRD_PICKED = 'h1'
 
-const HOST = 'vite-agent-inspect'
+const HOST = 'pointout-overlay'
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'
@@ -51,7 +51,7 @@ const DISABLED_REASON =
   "this dev server is not running on macOS (platform: linux), and v0 takes a Screen Capture with macOS's own screencapture tool"
 
 /** The toggle's standing choice, by origin, as the Overlay keeps it. */
-const TOGGLE_KEY = 'vite-agent-inspect:screen-capture:'
+const TOGGLE_KEY = 'pointout:screen-capture:'
 
 /**
  * Accepted: the Panel closes, and the Pick rests minimized in the Stack, its

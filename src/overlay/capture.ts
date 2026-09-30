@@ -221,5 +221,5 @@ const ON = 'on'
 const OFF = 'off'
 
 function toggleKey(view: Window): string {
-  return `vite-agent-inspect:screen-capture:${view.location.origin}`
+  return `pointout:screen-capture:${view.location.origin}`
 }

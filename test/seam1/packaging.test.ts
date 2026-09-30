@@ -11,7 +11,7 @@ describe('the CommonJS entry', () => {
     const require = createRequire(import.meta.url)
     let message = ''
     try {
-      require('vite-agent-inspect')
+      require('pointout')
       throw new Error('require() of the package was expected to throw')
     } catch (error) {
       message = error instanceof Error ? error.message : String(error)
@@ -19,7 +19,7 @@ describe('the CommonJS entry', () => {
 
     expect(message).toMatch(/ESM-only/)
     expect(message).toContain('defineConfig(async () =>')
-    expect(message).toContain('await import("vite-agent-inspect")')
+    expect(message).toContain('await import("pointout")')
   })
 })
 
@@ -68,7 +68,7 @@ describe('the built package', () => {
     }
     // The Overlay is a separate module the plugin resolves at runtime, not
     // something inlined into the entry.
-    expect(entry).not.toContain('__viteAgentInspect')
+    expect(entry).not.toContain('__pointout')
   })
 
   it('packs dist and nothing else of ours', () => {
@@ -127,8 +127,8 @@ describe('the production build', () => {
   })
 
   it('carries no Overlay code', () => {
-    expect(output).not.toContain('virtual:vite-agent-inspect/overlay')
-    expect(output).not.toContain('__viteAgentInspect')
+    expect(output).not.toContain('virtual:pointout/overlay')
+    expect(output).not.toContain('__pointout')
   })
 
   it('carries no /__agent string', () => {

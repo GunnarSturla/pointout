@@ -10,7 +10,7 @@ import { randomSuffix, sweepDead } from '../temp-files.js'
 // a dev server that was killed leaves images of somebody's screen behind.
 
 /** Named in full, in the posture block, on purpose: see `docs/screen-capture.md`. */
-const ROOT_NAME = 'vite-agent-inspect-captures'
+const ROOT_NAME = 'pointout-captures'
 
 /** `<pid>-<6 hex>`: the only shape the startup sweep spares. */
 const OWNED = /^(\d+)-[0-9a-f]{6}$/

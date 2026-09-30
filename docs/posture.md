@@ -7,15 +7,15 @@ anywhere else. A system that is quietly doing nothing is the failure this block 
 there to rule out (spec §2, §21).
 
 ```
-vite-agent-inspect — startup posture
+pointout — startup posture
   root             /home/me/app (git rev-parse --show-toplevel)
   guard            loopback only; Origin required on Pick ingress, and absent means refused
   registry         readable — 1 session in this checkout
   harness version  Claude Code 2.1.280 in the registry; the canaries last passed against 2.1.280 (2026-09-01)
   reply socket     bound at /tmp/cc-socks/54321.sock
   screen capture   available
-  temp directory   /var/folders/…/vite-agent-inspect-captures/54321-9f0ab1 (user-only; removed at shutdown, and what dead dev servers left beside it is swept at startup)
-  discovery entry  /var/folders/…/vite-agent-inspect-servers-501/3f…-54321-a1b2c3.json (user-only; removed at shutdown)
+  temp directory   /var/folders/…/pointout-captures/54321-9f0ab1 (user-only; removed at shutdown, and what dead dev servers left beside it is swept at startup)
+  discovery entry  /var/folders/…/pointout-servers-501/3f…-54321-a1b2c3.json (user-only; removed at shutdown)
 ```
 
 **Info or warning.** A block where everything works is logged as information. If
@@ -35,7 +35,7 @@ directory is in this same checkout.
 | --- | --- |
 | `<path> (git rev-parse --show-toplevel)` | the usual case: the git toplevel above the Vite root |
 | `<path> (the Vite root; not inside a git repository)` | no git, so the Vite root is used |
-| `<path> (the root option)` | you passed `agentInspect({ root })` |
+| `<path> (the root option)` | you passed `pointout({ root })` |
 
 ## `guard`
 
@@ -101,7 +101,7 @@ does not.
 
 ## `temp directory`
 
-Where this dev server writes Screen Captures: `<os tmp>/vite-agent-inspect-captures/<pid>-<6 hex>`,
+Where this dev server writes Screen Captures: `<os tmp>/pointout-captures/<pid>-<6 hex>`,
 mode `0700`. The whole directory is removed at shutdown. At startup, whatever dead
 dev servers left in the shared root is swept, and `; N left by dead dev servers
 swept` says how much. It is swept whether or not capture is available.
@@ -110,7 +110,7 @@ swept` says how much. It is swept whether or not capture is available.
 
 ## `discovery entry`
 
-The file the hooks installed by `npx vite-agent-inspect init` read to find this dev
+The file the hooks installed by `npx pointout init` read to find this dev
 server and drain the Picks waiting for your next prompt.
 
 | text | meaning |
@@ -136,7 +136,7 @@ None of these repeat a posture line.
 
 ## For tests
 
-`VITE_AGENT_INSPECT_VERIFIED_HARNESS` stands in for the recorded version, as
+`POINTOUT_VERIFIED_HARNESS` stands in for the recorded version, as
 `<version>@<YYYY-MM-DD>` or `never`. It is **test-only**, like the other overrides
 in `docs/agents/testing.md`, and a consumer never sets it. The seam-1 posture test
 (`test/seam1/posture.test.ts`) holds the exact wording of every line on this page.

@@ -292,8 +292,8 @@ describe('the testing conventions', () => {
 
   it('name the four harness overrides', () => {
     for (const name of [
-      'VITE_AGENT_INSPECT_REGISTRY_DIR',
-      'VITE_AGENT_INSPECT_SOCKET_DIR',
+      'POINTOUT_REGISTRY_DIR',
+      'POINTOUT_SOCKET_DIR',
       'PATH',
       'CLAUDE_PID',
     ]) {

@@ -18,7 +18,7 @@ import type { FixtureEnv } from '../harness/fixture-env.js'
 import { tempApps } from '../harness/temp-app.js'
 import type { TempApp } from '../harness/temp-app.js'
 
-// `npx vite-agent-inspect init` (spec §18, §19; user stories 61 to 65 and 87),
+// `npx pointout init` (spec §18, §19; user stories 61 to 65 and 87),
 // observed the way docs/agents/testing.md asks: as a child process, through the
 // text it prints, the code it exits with and the files it leaves on disk. Every
 // path, event name and sentence here is written out rather than imported — the
@@ -29,7 +29,7 @@ import type { TempApp } from '../harness/temp-app.js'
 const SETTINGS = '.claude/settings.json'
 
 /** Where Claude Code finds a project's skills, one directory per skill. */
-const SKILL = '.claude/skills/vite-agent-inspect/SKILL.md'
+const SKILL = '.claude/skills/pointout/SKILL.md'
 
 /** The two hook events the floor rides (spec §15, §18). */
 const EVENTS = ['UserPromptSubmit', 'Stop'] as const
@@ -75,9 +75,9 @@ interface CliRun {
  * directory, so a test can see that nothing user-level was touched.
  */
 function runInit(app: TempApp, cwd = app.appDir): Promise<CliRun> & { home: string } {
-  const home = mkdtempSync(join(tmpdir(), 'vite-agent-inspect-home-'))
+  const home = mkdtempSync(join(tmpdir(), 'pointout-home-'))
   homes.push(home)
-  const bin = join(app.playground, 'node_modules/vite-agent-inspect/dist/cli/main.js')
+  const bin = join(app.playground, 'node_modules/pointout/dist/cli/main.js')
   const run = spawnCollect(process.execPath, [bin, 'init'], {
     cwd,
     env: { ...process.env, HOME: home, USERPROFILE: home },
@@ -193,16 +193,13 @@ describe('init', () => {
 
   it('replaces a hook it installed from elsewhere and an edited skill, and says so', async () => {
     const app = apps.create({ git: true })
-    mkdirSync(join(app.checkout, '.claude/skills/vite-agent-inspect'), {
+    mkdirSync(join(app.checkout, '.claude/skills/pointout'), {
       recursive: true,
     })
     const moved = {
       type: 'command',
       command: 'node',
-      args: [
-        '${CLAUDE_PROJECT_DIR}/old/node_modules/vite-agent-inspect/dist/cli/main.js',
-        'drain',
-      ],
+      args: ['${CLAUDE_PROJECT_DIR}/old/node_modules/pointout/dist/cli/main.js', 'drain'],
     }
     writeFileSync(
       join(app.checkout, SETTINGS),
@@ -228,13 +225,13 @@ describe('init', () => {
     const app = apps.create({ git: true })
     // A workspace package that alone depends on it, below the checkout root.
     mkdirSync(join(app.appDir, 'node_modules'))
-    symlinkSync(repoRoot, join(app.appDir, 'node_modules', 'vite-agent-inspect'), 'dir')
+    symlinkSync(repoRoot, join(app.appDir, 'node_modules', 'pointout'), 'dir')
 
     expectOk(await runInit(app))
 
     for (const event of EVENTS) {
       expect(oursFor(readSettings(app), event)[0]?.args?.[0]).toBe(
-        '${CLAUDE_PROJECT_DIR}/app/node_modules/vite-agent-inspect/dist/cli/main.js',
+        '${CLAUDE_PROJECT_DIR}/app/node_modules/pointout/dist/cli/main.js',
       )
     }
   })
@@ -265,7 +262,7 @@ describe('init', () => {
     const app = apps.create({ git: true })
     // A project beside the temp app, with no node_modules of its own anywhere
     // above it: the bin is still the temp app's, the way a global `npx` would be.
-    const elsewhere = mkdtempSync(join(tmpdir(), 'vite-agent-inspect-bare-'))
+    const elsewhere = mkdtempSync(join(tmpdir(), 'pointout-bare-'))
     homes.push(elsewhere)
 
     const run = await runInit(app, elsewhere)
@@ -346,7 +343,7 @@ describe('the setup skill', () => {
 
   it('is a skill: frontmatter naming it and saying when it applies', async () => {
     const skill = await installedSkill()
-    expect(skill).toMatch(/^---\nname: vite-agent-inspect\ndescription: .+\n---\n/)
+    expect(skill).toMatch(/^---\nname: pointout\ndescription: .+\n---\n/)
   })
 
   it('corrects the origin the harness frames a Pick with', async () => {

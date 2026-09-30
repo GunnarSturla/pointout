@@ -389,7 +389,7 @@ async function focusedPart(page: Page): Promise<string | null> {
   return page.evaluate(
     () =>
       document
-        .querySelector('vite-agent-inspect')
+        .querySelector('pointout-overlay')
         ?.shadowRoot?.activeElement?.getAttribute('data-part') ?? null,
   )
 }

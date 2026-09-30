@@ -112,7 +112,7 @@ export function createReportBackClock({
     watch.offeredAt = at
     const record = ledger.get(watch.pickId)
     logger.warn(
-      `vite-agent-inspect: ${record ? targetName(record.pick) : 'its session'} never ` +
+      `pointout: ${record ? targetName(record.pick) : 'its session'} never ` +
         `picked up pick ${watch.pickId} (${why}); the Overlay offers it back.`,
     )
   }
@@ -179,7 +179,7 @@ export function createReportBackClock({
           // saying `unknown` is the one thing that is true (spec §17, §21).
           ledger.advance(watch.pickId, UNKNOWN)
           logger.warn(
-            `vite-agent-inspect: pick ${watch.pickId} has had no acknowledgement in a ` +
+            `pointout: pick ${watch.pickId} has had no acknowledgement in a ` +
               (status === 'busy'
                 ? 'minute while its session was busy.'
                 : 'minute, and its session can no longer be seen; the TTL governs it now.'),

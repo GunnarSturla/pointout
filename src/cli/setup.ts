@@ -17,7 +17,7 @@ import { normalizeToWorktreeRoot } from '../server/paths.js'
 // written, so a refusal never leaves a half-set-up project behind it.
 
 /** The package's own name, as a consumer's `node_modules` spells it. */
-const PACKAGE_NAME = 'vite-agent-inspect'
+const PACKAGE_NAME = 'pointout'
 
 /**
  * How every installed drain CLI's path ends, wherever the package landed. A
@@ -97,7 +97,7 @@ export function runSetup(harness: HarnessSetup, cwd: string): void {
 
   const width = Math.max(...plan.items.map(({ action }) => action.length))
   const lines = [
-    `vite-agent-inspect init: ${harness.name}, in ${root}`,
+    `pointout init: ${harness.name}, in ${root}`,
     ...plan.items.map(
       ({ what, path, action }) => `  ${action.padEnd(width)}  ${what} — ${path}`,
     ),

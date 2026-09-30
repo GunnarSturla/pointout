@@ -16,7 +16,7 @@ import type { VerifiedHarness } from './verified-harness.js'
  * file, so seam 1 can boot none, older and equal. `<version>@<YYYY-MM-DD>`, or
  * `never` for a harness no canary run has verified. A consumer never sets it.
  */
-const VERIFIED_HARNESS_ENV = 'VITE_AGENT_INSPECT_VERIFIED_HARNESS'
+const VERIFIED_HARNESS_ENV = 'POINTOUT_VERIFIED_HARNESS'
 
 const NEWER =
   'This harness is newer than the last one verified. v0 carries on, because it pins ' +
@@ -63,7 +63,7 @@ function verifiedHarness(): VerifiedHarness | null {
   // every harness and warn on every start, which is a test that lies.
   if (!version || !verifiedAt || !/^\d+\.\d+\.\d+$/.test(version)) {
     throw new Error(
-      `vite-agent-inspect: ${VERIFIED_HARNESS_ENV} is "${override}"; it takes ` +
+      `pointout: ${VERIFIED_HARNESS_ENV} is "${override}"; it takes ` +
         '<major.minor.patch>@<YYYY-MM-DD>, or never. It is a test-only override.',
     )
   }

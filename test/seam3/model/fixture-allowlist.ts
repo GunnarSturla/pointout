@@ -24,7 +24,7 @@ import { join } from 'node:path'
 // the transcript only once it has run, and the terminal garbles the dialog.
 
 /** Written into the hook script; the shipped-file check searches for it. */
-export const FIXTURE_MARKER = 'vite-agent-inspect seam 3 fixture allowlist'
+export const FIXTURE_MARKER = 'pointout seam 3 fixture allowlist'
 
 /**
  * One `curl` at one of this dev server's Pick routes and nothing more: flags that

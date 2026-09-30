@@ -3,7 +3,7 @@
 // passed" has to be something seam 1 can make true rather than wait for.
 
 /** Test-only, like the four harness overrides. A consumer never sets it. */
-const CLOCK_SKEW_ENV = 'VITE_AGENT_INSPECT_CLOCK_SKEW_MS'
+const CLOCK_SKEW_ENV = 'POINTOUT_CLOCK_SKEW_MS'
 
 /**
  * The wall clock, plus however far the harness has moved it. Read at every call

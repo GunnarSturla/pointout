@@ -15,7 +15,7 @@ import { HOST_STYLE, OVERLAY_STYLESHEET } from './styles.js'
  * say so in the Pointer rather than looking like one of the app's divs — and so
  * a reader of the consumer's DOM knows at a glance what it is.
  */
-export const HOST_TAG = 'vite-agent-inspect'
+export const HOST_TAG = 'pointout-overlay'
 
 export interface OverlayRoot {
   host: HTMLElement

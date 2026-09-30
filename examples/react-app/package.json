@@ -1,8 +1,8 @@
 {
-  "name": "vite-agent-inspect-example",
+  "name": "pointout-example",
   "version": "0.0.0",
   "private": true,
-  "description": "The in-repo React 19 test bed and development target for vite-agent-inspect.",
+  "description": "The in-repo React 19 test bed and development target for pointout.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,6 +20,6 @@
     "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
-    "vite-agent-inspect": "file:../.."
+    "pointout": "file:../.."
   }
 }

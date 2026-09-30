@@ -39,7 +39,7 @@ const FIXTURE_WORDS = [FIXTURE_MARKER, 'permissionDecision']
 
 describe('seam 3 — the fixture allowlist ships nowhere', () => {
   it('searches for words the fixture really writes', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'vite-agent-inspect-seam3-hook-'))
+    const dir = mkdtempSync(join(tmpdir(), 'pointout-seam3-hook-'))
     try {
       writeFixtureHook(dir, 'http://127.0.0.1:1', { allow: true })
       const script = readFileSync(join(dir, 'pre-tool-use.mjs'), 'utf8')

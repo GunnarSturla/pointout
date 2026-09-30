@@ -26,7 +26,7 @@ import type { PostureLine } from '../posture.js'
 // next frame on the same connection is still served (spec §16, user story 82).
 
 /** Test-only. A consumer never sets it. */
-const SOCKET_DIR_ENV = 'VITE_AGENT_INSPECT_SOCKET_DIR'
+const SOCKET_DIR_ENV = 'POINTOUT_SOCKET_DIR'
 
 /** Measured, not guessed: this is where the harness keeps its own (spec §16). */
 const DEFAULT_SOCKET_DIR = '/tmp/cc-socks'

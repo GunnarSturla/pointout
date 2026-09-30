@@ -10,7 +10,7 @@ import type { HarnessServer } from '../harness/dev-server.js'
 
 // How Vite serves the Overlay's virtual module. Written out rather than
 // imported: no test imports a server module (docs/agents/testing.md).
-const OVERLAY_MODULE_URL = '/@id/__x00__virtual:vite-agent-inspect/overlay'
+const OVERLAY_MODULE_URL = '/@id/__x00__virtual:pointout/overlay'
 
 describe('the seam-1 dev server', () => {
   let server!: HarnessServer

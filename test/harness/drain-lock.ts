@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { clearLock, holding } from './directory-lock.js'
 
-const DRAIN_LOCK = join(tmpdir(), 'vite-agent-inspect-seam2-drain.lock')
+const DRAIN_LOCK = join(tmpdir(), 'pointout-seam2-drain.lock')
 
 /** Longer than any holder keeps it: a Pick offered back, requeued and read. */
 const WAIT_MS = 90_000

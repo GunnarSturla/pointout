@@ -16,7 +16,7 @@ import type { Frames } from './frames.js'
 import { HOST_TAG, part } from './root.js'
 
 /** The attribute that enables the rule. Set while armed, removed the moment not. */
-const ARMED_ATTRIBUTE = 'data-vite-agent-inspect-armed'
+const ARMED_ATTRIBUTE = 'data-pointout-armed'
 
 /** Installed once in the host document's head; inert until the attribute is set. */
 const ARMED_STYLESHEET = `

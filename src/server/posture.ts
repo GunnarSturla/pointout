@@ -8,7 +8,7 @@ import { DIRECTORY_MISSING, SHAPE_UNRECOGNISED } from '../wire.js'
 import type { RootMethod } from './paths.js'
 import type { Registry } from './registry.js'
 
-const HEADING = 'vite-agent-inspect — startup posture'
+const HEADING = 'pointout — startup posture'
 
 /**
  * One service's line: what it says, and whether what it says is a degradation

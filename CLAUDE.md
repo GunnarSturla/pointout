@@ -1,4 +1,4 @@
-# vite-agent-inspect
+# pointout
 
 A Vite dev-server plugin that lets a developer pick an element in the running app,
 type a request about it, and have it reach the Claude Code session they are already

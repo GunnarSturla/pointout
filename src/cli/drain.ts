@@ -121,5 +121,5 @@ function envelope(event: string, context: string): string {
 }
 
 function warn(message: string): void {
-  process.stderr.write(`vite-agent-inspect: ${message}\n`)
+  process.stderr.write(`pointout: ${message}\n`)
 }

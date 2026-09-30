@@ -306,7 +306,7 @@ export function rememberTarget(view: Window, sessionId: string): void {
 }
 
 function lastTargetKey(view: Window): string {
-  return `vite-agent-inspect:last-target:${view.location.origin}`
+  return `pointout:last-target:${view.location.origin}`
 }
 
 /** A replacement is only usable if it carries all three parts of an address. */

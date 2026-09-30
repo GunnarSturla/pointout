@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { clearLock, holding } from './directory-lock.js'
 
-const HOT_UPDATE_LOCK = join(tmpdir(), 'vite-agent-inspect-seam2-hot-update.lock')
+const HOT_UPDATE_LOCK = join(tmpdir(), 'pointout-seam2-hot-update.lock')
 
 /** Longer than any holder keeps it: a hot update and its revert, under load. */
 const WAIT_MS = 60_000

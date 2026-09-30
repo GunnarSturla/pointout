@@ -12,7 +12,7 @@ accident, months later, in a temp directory.
 ## Where they live
 
 ```
-$TMPDIR/vite-agent-inspect-captures/<pid>-<6 hex>/<capture id>.png
+$TMPDIR/pointout-captures/<pid>-<6 hex>/<capture id>.png
 ```
 
 One directory per dev server, named after its process, mode `0700`. The startup
@@ -21,7 +21,7 @@ the capture line (`docs/posture.md` lists every line):
 
 ```
   screen capture   available
-  temp directory   /var/folders/…/vite-agent-inspect-captures/54321-9f0ab1 (user-only; removed at shutdown, and what dead dev servers left beside it is swept at startup)
+  temp directory   /var/folders/…/pointout-captures/54321-9f0ab1 (user-only; removed at shutdown, and what dead dev servers left beside it is swept at startup)
 ```
 
 ## When they go

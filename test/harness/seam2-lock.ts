@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /** The one lock every checkout on this machine shares. */
-export const SEAM2_LOCK_DIR = join(tmpdir(), 'vite-agent-inspect-seam2.lock')
+export const SEAM2_LOCK_DIR = join(tmpdir(), 'pointout-seam2.lock')
 
 /** How long a run waits for another to finish before it gives up. */
 export const SEAM2_LOCK_WAIT_MS = 10 * 60 * 1000

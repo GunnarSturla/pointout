@@ -1,5 +1,5 @@
 {
-  "name": "vite-agent-inspect",
+  "name": "pointout",
   "version": "0.0.0",
   "private": true,
   "description": "Pick an element in the running app, type a request about it, and have it reach the Claude Code session you are already working in.",
@@ -14,7 +14,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "vite-agent-inspect": "./dist/cli/main.js"
+    "pointout": "./dist/cli/main.js"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -32,8 +32,8 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "predev": "npm run build",
-    "dev": "npm run dev --workspace vite-agent-inspect-example",
-    "build:example": "npm run build --workspace vite-agent-inspect-example",
+    "dev": "npm run dev --workspace pointout-example",
+    "build:example": "npm run build --workspace pointout-example",
     "test": "npm run test:seam1 && npm run test:seam2",
     "pretest:seam1": "npm run build",
     "test:seam1": "vitest run",

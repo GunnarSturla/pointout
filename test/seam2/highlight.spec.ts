@@ -19,7 +19,7 @@ import { apartFromHotUpdates } from '../harness/hot-update-lock.js'
 /** Where the fake session's inbox writes what it received (test/harness/serve.ts). */
 const FRAMES_LOG_ENV = 'SEAM2_FRAMES_LOG'
 
-const HOST = 'vite-agent-inspect'
+const HOST = 'pointout-overlay'
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'

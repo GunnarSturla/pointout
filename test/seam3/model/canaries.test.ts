@@ -78,7 +78,7 @@ function canary(assumption: string, ticket: string, check: () => void): void {
 }
 
 /** The first line of every delivery the dev server renders, written out. */
-const HEADING = 'vite-agent-inspect — 1 pick from the browser.'
+const HEADING = 'pointout — 1 pick from the browser.'
 
 const NO_LEFTOVERS = { entry: false, keyFile: false, socket: false }
 
@@ -414,7 +414,7 @@ describe.skipIf(skip)(`seam 3 — model tier${skip ? ` (skipped: ${why})` : ''}`
     // `init` exactly as a consumer runs it, from the installed bin.
     initOutput = execFileSync(
       'node',
-      [join(repo.dir, 'node_modules/vite-agent-inspect/dist/cli/main.js'), 'init'],
+      [join(repo.dir, 'node_modules/pointout/dist/cli/main.js'), 'init'],
       { cwd: repo.dir, env: scrubbedEnv(), encoding: 'utf8' },
     )
     server = await startRealDevServer(repo.dir)
@@ -433,9 +433,7 @@ describe.skipIf(skip)(`seam 3 — model tier${skip ? ` (skipped: ${why})` : ''}`
 
   it("init writes the hooks and the skill into the scratch project's own .claude/, and no permission", () => {
     expect(initOutput).toContain(join(repo.dir, '.claude/settings.json'))
-    expect(initOutput).toContain(
-      join(repo.dir, '.claude/skills/vite-agent-inspect/SKILL.md'),
-    )
+    expect(initOutput).toContain(join(repo.dir, '.claude/skills/pointout/SKILL.md'))
     const settings = JSON.parse(
       readFileSync(join(repo.dir, '.claude/settings.json'), 'utf8'),
     ) as Record<string, unknown>
@@ -525,7 +523,7 @@ describe.skipIf(skip)(`seam 3 — model tier${skip ? ` (skipped: ${why})` : ''}`
 
     beforeAll(async () => {
       // The fixture allowlist, in a temporary directory handed to this session alone.
-      settingsDir = mkdtempSync(join(tmpdir(), 'vite-agent-inspect-seam3-fixture-'))
+      settingsDir = mkdtempSync(join(tmpdir(), 'pointout-seam3-fixture-'))
       hook = writeFixtureHook(settingsDir, server.url, { allow: true })
       session = await launchSession({
         cwd: repo.dir,
@@ -815,7 +813,7 @@ describe.skipIf(skip)(`seam 3 — model tier${skip ? ` (skipped: ${why})` : ''}`
 
     beforeAll(async () => {
       // The same hook, allowing nothing: it only logs what is asked, exactly.
-      settingsDir = mkdtempSync(join(tmpdir(), 'vite-agent-inspect-seam3-fixture-'))
+      settingsDir = mkdtempSync(join(tmpdir(), 'pointout-seam3-fixture-'))
       hook = writeFixtureHook(settingsDir, server.url, { allow: false })
       session = await launchSession({
         cwd: repo.dir,

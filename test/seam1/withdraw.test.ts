@@ -192,7 +192,7 @@ describe('withdrawing a Pick nobody has yet', () => {
 
 /** The directory the posture block says this server writes its captures to. */
 function captureDirectory(server: HarnessServer): string {
-  const found = /\S*vite-agent-inspect-captures[/\\]\S+/.exec(server.log())
+  const found = /\S*pointout-captures[/\\]\S+/.exec(server.log())
   if (!found) throw new Error('the posture block named no capture directory')
   return found[0]
 }

@@ -8,12 +8,12 @@ import { createDiscovery } from './server/discovery.js'
 import { installAgentEndpoints } from './server/http.js'
 import { boundAddress } from './server/bound-host.js'
 import { announcePosture, createServerFacts } from './server/index.js'
-import type { AgentInspectOptions, ServerFacts, Services } from './server/index.js'
+import type { PointoutOptions, ServerFacts, Services } from './server/index.js'
 
-export type { AgentInspectOptions, ServerFacts }
+export type { PointoutOptions, ServerFacts }
 
 /** The id a consumer's page (and a test) refers to the Overlay by. */
-const OVERLAY_MODULE_ID = 'virtual:vite-agent-inspect/overlay'
+const OVERLAY_MODULE_ID = 'virtual:pointout/overlay'
 /** Vite's convention for a virtual module's resolved id. */
 const RESOLVED_OVERLAY_MODULE_ID = '\0' + OVERLAY_MODULE_ID
 /** How Vite serves that resolved id over HTTP. */
@@ -38,7 +38,7 @@ const overlayEntry = fileURLToPath(new URL('./overlay/index.js', import.meta.url
  * The Vite plugin. Dev only: it applies to `serve`, so a production build
  * contains no Overlay code and no `/__agent` string.
  */
-export function agentInspect(options: AgentInspectOptions = {}): Plugin {
+export function pointout(options: PointoutOptions = {}): Plugin {
   /** Worked out once at `configResolved`; every request reads it. */
   let facts: ServerFacts | null = null
   /** Brought up by `configureServer`, and closed with the server. */
@@ -50,7 +50,7 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
   const resolvedFacts = (): ServerFacts => {
     if (!facts) {
       throw new Error(
-        'vite-agent-inspect: configureServer ran before configResolved, so the ' +
+        'pointout: configureServer ran before configResolved, so the ' +
           'repo root and the session registry are unknown. This is a bug.',
       )
     }
@@ -58,7 +58,7 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
   }
 
   return {
-    name: 'vite-agent-inspect',
+    name: 'pointout',
     apply: 'serve',
 
     config(userConfig: UserConfig) {
@@ -155,4 +155,4 @@ export function agentInspect(options: AgentInspectOptions = {}): Plugin {
   }
 }
 
-export default agentInspect
+export default pointout

@@ -20,7 +20,7 @@ import { apartFromHotUpdates } from '../harness/hot-update-lock.js'
 // Every string here is written out rather than imported: the Overlay's part
 // names are the contract (docs/agents/testing.md).
 
-const HOST = 'vite-agent-inspect'
+const HOST = 'pointout-overlay'
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'

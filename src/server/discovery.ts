@@ -35,7 +35,7 @@ import { alive, randomSuffix, sweepDead, sweptClause } from './temp-files.js'
 // naming a port that is now somebody else's.
 
 /** Per-user by name as well as by mode: a shared `/tmp` is the normal case. */
-const ROOT_NAME = 'vite-agent-inspect-servers'
+const ROOT_NAME = 'pointout-servers'
 
 /** `<root hash>-<pid>-<6 hex>.json`: the only shape the startup sweep spares. */
 const OWNED = /^[0-9a-f]{16}-(\d+)-[0-9a-f]{6}\.json$/

@@ -87,7 +87,7 @@ function planSettings(project: Project): SetupPlan {
   const wanted = drainHook(project)
 
   const items: SetupItem[] = EVENTS.map((event) => {
-    const what = `${event} hook (vite-agent-inspect drain)`
+    const what = `${event} hook (pointout drain)`
     const groups = hookGroups(path, hooks, event)
     const found = groups.flatMap((group) => group.hooks.filter(isOurs))
 
@@ -152,7 +152,7 @@ function hookGroups(
 }
 
 function planSkill(project: Project): SetupPlan {
-  const path = join(project.root, '.claude', 'skills', 'vite-agent-inspect', 'SKILL.md')
+  const path = join(project.root, '.claude', 'skills', 'pointout', 'SKILL.md')
   const before = existsSync(path) ? readFileSync(path, 'utf8') : null
   const what = 'setup skill'
   if (before === SKILL)

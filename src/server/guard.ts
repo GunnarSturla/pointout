@@ -52,7 +52,7 @@ export function refuseNonLoopback(request: IncomingMessage): Refusal | null {
   return forbidden(
     'not-loopback',
     `refused a request from ${address || 'an unknown address'}: ` +
-      'vite-agent-inspect only answers on loopback.',
+      'pointout only answers on loopback.',
   )
 }
 

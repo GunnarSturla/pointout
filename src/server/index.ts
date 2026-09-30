@@ -17,7 +17,7 @@ import {
 import { readCandidates, registryDirectory } from './registry.js'
 
 /** The plugin's own options. A normal consumer sets none of them. */
-export interface AgentInspectOptions {
+export interface PointoutOptions {
   /** The repo root, overriding discovery. */
   root?: string
 }
@@ -57,7 +57,7 @@ export function createServerFacts({
   options,
 }: {
   viteRoot: string
-  options: AgentInspectOptions
+  options: PointoutOptions
 }): ServerFacts {
   const { root, method } = discoverRepoRoot(viteRoot, options.root)
 

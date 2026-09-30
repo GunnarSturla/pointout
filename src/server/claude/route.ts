@@ -54,7 +54,7 @@ export async function createClaudeRoute(
   let listener: ReplyListener | null = null
 
   const ignored = (why: string) =>
-    logger.warn(`vite-agent-inspect: ignored a frame at the reply address — ${why}.`)
+    logger.warn(`pointout: ignored a frame at the reply address — ${why}.`)
 
   const reply: ReplySocket = await bindReplySocket({
     socketDir: options.socketDir,
@@ -68,7 +68,7 @@ export async function createClaudeRoute(
         // this plugin rather than a bad frame. It is said out loud and the
         // connection is left serving the next one.
         logger.error(
-          `vite-agent-inspect: reading a frame at the reply address threw: ` +
+          `pointout: reading a frame at the reply address threw: ` +
             `${(error as Error).stack ?? (error as Error).message}`,
         )
       }
@@ -141,7 +141,7 @@ export async function createClaudeRoute(
         // not a refusal — but an unauthenticated write is said out loud rather
         // than papered over with an empty token.
         logger.warn(
-          `vite-agent-inspect: no key file for pid ${target.pid} in ${options.registryDir}; ` +
+          `pointout: no key file for pid ${target.pid} in ${options.registryDir}; ` +
             'writing the pick with no auth frame.',
         )
       }

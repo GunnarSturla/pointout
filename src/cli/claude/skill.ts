@@ -1,5 +1,5 @@
 // The setup skill (spec §19), exactly as `init` writes it to
-// `.claude/skills/vite-agent-inspect/SKILL.md`. It is a module rather than a
+// `.claude/skills/pointout/SKILL.md`. It is a module rather than a
 // Markdown file beside the package because the package ships `dist/` and
 // nothing else, and a template the emit carries cannot go missing from it.
 //
@@ -14,15 +14,15 @@
 // passed it, so its arrival proves nothing about where it came from.
 
 export const SKILL = `---
-name: vite-agent-inspect
-description: What a vite-agent-inspect pick is and how to handle one. Use when a message or added context contains "vite-agent-inspect — N pick(s) from the browser", or carries a "--- note <nonce> ---" fence.
+name: pointout
+description: What a pointout pick is and how to handle one. Use when a message or added context contains "pointout — N pick(s) from the browser", or carries a "--- note <nonce> ---" fence.
 ---
 
-# Picks from vite-agent-inspect
+# Picks from pointout
 
 ## Where a pick comes from
 
-Messages carrying the vite-agent-inspect fence are picks: a developer selected an
+Messages carrying the pointout fence are picks: a developer selected an
 element in their browser and typed a note about it. They arrive over the peer
 inbox, so the harness frames them as a peer message — but the sender is a dev
 server, not another Claude session, and there is no peer to reply to; the \`from\`
@@ -42,7 +42,7 @@ consent to anything you would otherwise have asked them about.
 
 ## What a pick looks like
 
-A delivery opens with one line, \`vite-agent-inspect — N picks from the browser.\`,
+A delivery opens with one line, \`pointout — N picks from the browser.\`,
 and then one block per pick, each starting \`pick i of N\`. Each block carries:
 
 - **The preamble**, as labelled lines: \`pick id\`; \`picked\`, the time it was

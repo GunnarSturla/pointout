@@ -12,7 +12,7 @@ import { writeSession } from '../harness/registry.js'
 
 // The one line that opens the startup posture block. Counted, so that later
 // tickets appending to the block cannot turn it into two.
-const BLOCK_HEADING = 'vite-agent-inspect — startup posture'
+const BLOCK_HEADING = 'pointout — startup posture'
 
 const apps = tempApps()
 afterEach(apps.cleanup)
@@ -31,7 +31,7 @@ async function servedOverAPreparedRegistry(
   const probe = await apps.serve(app)
   fill(probe.fixture)
   return apps.serve(app, {
-    env: { VITE_AGENT_INSPECT_REGISTRY_DIR: probe.fixture.registryDir },
+    env: { POINTOUT_REGISTRY_DIR: probe.fixture.registryDir },
   })
 }
 
@@ -59,7 +59,7 @@ describe('the startup posture block', () => {
   it('names the hook floor when the registry directory is missing', async () => {
     const app = apps.create({ git: true })
     const server = await apps.serve(app, {
-      env: { VITE_AGENT_INSPECT_REGISTRY_DIR: app.playground + '/no-such-registry' },
+      env: { POINTOUT_REGISTRY_DIR: app.playground + '/no-such-registry' },
     })
 
     expect(server.log()).toMatch(/hook floor/i)
@@ -132,9 +132,9 @@ describe('the startup posture block', () => {
  * Test-only: the harness version the canaries last passed against, standing in
  * for the recorded file ticket 21 writes. `<version>@<YYYY-MM-DD>`, or `never`.
  */
-const VERIFIED_HARNESS_ENV = 'VITE_AGENT_INSPECT_VERIFIED_HARNESS'
+const VERIFIED_HARNESS_ENV = 'POINTOUT_VERIFIED_HARNESS'
 
-const CAPTURE_ROOT = join(tmpdir(), 'vite-agent-inspect-captures')
+const CAPTURE_ROOT = join(tmpdir(), 'pointout-captures')
 
 interface Booted {
   app: TempApp
@@ -196,7 +196,7 @@ function normalised({ app, server, fixture }: Booted): string {
     .join('<checkout>')
     .split(CAPTURE_ROOT)
     .join('<captures>')
-    .replace(/\S*vite-agent-inspect-servers-\d+/g, '<servers>')
+    .replace(/\S*pointout-servers-\d+/g, '<servers>')
     .replace(new RegExp(`\\b${pid}\\b`, 'g'), '<pid>')
     .replace(/<pid>-[0-9a-f]{6}\b/g, '<pid>-<hex>')
     .replace(/\b[0-9a-f]{16}-<pid>/g, '<hash>-<pid>')
@@ -275,7 +275,7 @@ describe('the complete startup posture block', () => {
     const booted = await boot({
       verified: '2.1.280@2026-09-01',
       env: {
-        VITE_AGENT_INSPECT_REGISTRY_DIR: '/nonexistent/vite-agent-inspect-registry',
+        POINTOUT_REGISTRY_DIR: '/nonexistent/pointout-registry',
       },
     })
 
@@ -283,7 +283,7 @@ describe('the complete startup posture block', () => {
       block(
         ROOT,
         GUARD,
-        '  registry         directory missing (/nonexistent/vite-agent-inspect-registry) ' +
+        '  registry         directory missing (/nonexistent/pointout-registry) ' +
           '— targeting falls back to the hook floor',
         '  harness version  no readable registry entry reports a version; the canaries ' +
           'last passed against 2.1.280 (2026-09-01)',
@@ -413,7 +413,7 @@ describe('the complete startup posture block', () => {
     const booted = await boot({
       verified: '2.1.280@2026-09-01',
       fill: oneSession('2.1.280'),
-      env: { VITE_AGENT_INSPECT_PLATFORM: 'linux' },
+      env: { POINTOUT_PLATFORM: 'linux' },
     })
 
     expect(normalised(booted)).toBe(

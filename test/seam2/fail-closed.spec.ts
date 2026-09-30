@@ -23,7 +23,7 @@ const PANEL = '[data-part="panel"]'
 const CAMERA_FAILED = '[data-part="camera-failed"]'
 
 /** The toggle's standing choice, by origin, as the Overlay keeps it. */
-const TOGGLE_KEY = 'vite-agent-inspect:screen-capture:'
+const TOGGLE_KEY = 'pointout:screen-capture:'
 
 /** The Panel's words for a capture the server refused to start (ticket 18). */
 const captureFailed = (reason: string) => `No Screen Capture for this pick: ${reason}`

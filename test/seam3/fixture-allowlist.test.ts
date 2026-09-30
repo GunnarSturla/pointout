@@ -43,7 +43,7 @@ const NEVER = [
 ]
 
 describe('seam 3 — the fixture allowlist allows one command shape', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'vite-agent-inspect-seam3-hook-'))
+  const dir = mkdtempSync(join(tmpdir(), 'pointout-seam3-hook-'))
   afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
   it.each(MEASURED)('allows %s', (command) => {

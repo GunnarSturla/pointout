@@ -65,7 +65,7 @@ export const SOCKET_DIR = '/tmp/cc-socks'
 /** Where the harness keeps transcripts, one directory per cwd. */
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
-const SCRATCH_PREFIX = 'vite-agent-inspect-seam3-'
+const SCRATCH_PREFIX = 'pointout-seam3-'
 
 // ---------------------------------------------------------------------------
 // Can this machine run seam 3 at all?
@@ -128,7 +128,7 @@ export function preflight(): Preflight {
 /**
  * This process's environment with every `CLAUDE*` variable removed —
  * `CLAUDE_CODE_CHILD_SESSION` above all, which makes a session never register —
- * and every `VITE_AGENT_INSPECT_*` override too, since seam 3 fakes nothing.
+ * and every `POINTOUT_*` override too, since seam 3 fakes nothing.
  * `extra` is applied last: it is how a canary deliberately puts one back.
  */
 export function scrubbedEnv(extra: Record<string, string> = {}): Record<string, string> {
@@ -142,7 +142,7 @@ export function scrubbedEnv(extra: Record<string, string> = {}): Record<string, 
 
 /** A variable seam 3 never hands on: the harness's own, and this plugin's overrides. */
 function isScrubbed(name: string): boolean {
-  return name.startsWith('CLAUDE') || name.startsWith('VITE_AGENT_INSPECT_')
+  return name.startsWith('CLAUDE') || name.startsWith('POINTOUT_')
 }
 
 /** Whether a pid is still a live process. */
@@ -884,7 +884,7 @@ export interface RealDevServer {
 /**
  * The example app's dev server, started from the scratch repository with no
  * override at all: it reads the real registry and binds in the real socket
- * directory. This process's own `CLAUDE*` and `VITE_AGENT_INSPECT_*` variables
+ * directory. This process's own `CLAUDE*` and `POINTOUT_*` variables
  * are held back while it runs, so a suite started from inside a Claude Code
  * session does not hand the dev server that session's pid for its preselect.
  */

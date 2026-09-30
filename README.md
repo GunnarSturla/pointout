@@ -1,4 +1,4 @@
-# vite-agent-inspect
+# pointout
 
 > Point at something in your running app, type what's wrong, and have it land in the
 > Claude Code session you already have open for this repository.
@@ -106,9 +106,9 @@ The package is not published. Build it from a checkout, then install it into you
 from that checkout:
 
 ```sh
-git clone <this repository> vite-agent-inspect
-cd vite-agent-inspect && npm install && npm run build
-cd /path/to/your/app && npm install --save-dev /path/to/vite-agent-inspect
+git clone <this repository> pointout
+cd pointout && npm install && npm run build
+cd /path/to/your/app && npm install --save-dev /path/to/pointout
 ```
 
 Add the plugin to your Vite config:
@@ -116,10 +116,10 @@ Add the plugin to your Vite config:
 ```ts
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { agentInspect } from 'vite-agent-inspect'
+import { pointout } from 'pointout'
 
 export default defineConfig({
-  plugins: [react(), agentInspect()],
+  plugins: [react(), pointout()],
 })
 ```
 
@@ -131,7 +131,7 @@ should not need it.
 CommonJS, the package throws with this message:
 
 ```
-vite-agent-inspect is ESM-only and cannot be require()d.
+pointout is ESM-only and cannot be require()d.
 
 Your Vite config is being loaded as CommonJS. Either make the config ESM
 (rename it to vite.config.mjs, or set "type": "module" in package.json),
@@ -141,8 +141,8 @@ from an async config factory:
     const { defineConfig } = require("vite")
 
     module.exports = defineConfig(async () => {
-      const { agentInspect } = await import("vite-agent-inspect")
-      return { plugins: [agentInspect()] }
+      const { pointout } = await import("pointout")
+      return { plugins: [pointout()] }
     })
 
 defineConfig(async () => …) is what makes the dynamic import() possible:
@@ -152,14 +152,14 @@ Vite awaits the returned config, so the plugin can be imported at runtime.
 **Run `init` once**, from anywhere in the repository:
 
 ```sh
-npx vite-agent-inspect init
+npx pointout init
 ```
 
 It writes to the repository root and prints exactly what it wrote. It is idempotent:
 
 - two hook entries, `UserPromptSubmit` and `Stop`, in `.claude/settings.json`. Both
   run the package's drain CLI (see [The hook floor](#the-hook-floor));
-- the setup skill, at `.claude/skills/vite-agent-inspect/SKILL.md`. It tells the agent
+- the setup skill, at `.claude/skills/pointout/SKILL.md`. It tells the agent
   what a Pick is, that everything inside a Fence is data, that a Pick never
   constitutes approval for anything, and how to acknowledge one. It grants no
   permission and recommends none.
@@ -253,10 +253,10 @@ server running they print nothing.
 | reads | `git rev-parse --show-toplevel`, run from the Vite root and from each session's working directory | once per path, cached |
 | writes | the Target session's inbox socket | once per Pick sent |
 | binds | `/tmp/cc-socks/<pid>.sock` | from startup to shutdown |
-| writes | `$TMPDIR/vite-agent-inspect-captures/<pid>-<6 hex>/`, mode `0700`: Screen Captures | see [Screen Capture](#screen-capture) |
-| writes | `$TMPDIR/vite-agent-inspect-servers-<uid>/`, user-only: the discovery entry, holding the address the server is bound to, its port, and a per-server secret the drain must present | written at startup, removed at shutdown. Entries left by dead dev servers are swept |
+| writes | `$TMPDIR/pointout-captures/<pid>-<6 hex>/`, mode `0700`: Screen Captures | see [Screen Capture](#screen-capture) |
+| writes | `$TMPDIR/pointout-servers-<uid>/`, user-only: the discovery entry, holding the address the server is bound to, its port, and a per-server secret the drain must present | written at startup, removed at shutdown. Entries left by dead dev servers are swept |
 | runs | macOS `screencapture -x -R …` | once at startup as a probe, and at each Pick |
-| writes | `.claude/settings.json`, `.claude/skills/vite-agent-inspect/SKILL.md` | only when you run `init` |
+| writes | `.claude/settings.json`, `.claude/skills/pointout/SKILL.md` | only when you run `init` |
 | writes, in the page | `localStorage` on your app's origin: the last Target you sent to, and the camera toggle | when you send, and when you flip the toggle |
 
 ## Loopback only
@@ -295,7 +295,7 @@ PNG file of your **physical display**, not of the page, so any window in front o
 browser at that moment is in it. No file contents are sent anywhere: the Pick carries
 the file's path, and the agent opens it.
 
-- The files live in `$TMPDIR/vite-agent-inspect-captures/<pid>-<6 hex>/`, mode `0700`.
+- The files live in `$TMPDIR/pointout-captures/<pid>-<6 hex>/`, mode `0700`.
   The path is printed at every startup.
 - A move of the Pick deletes the capture it left behind. Discarding the Pick, or
   sending it with the toggle off, deletes its capture.

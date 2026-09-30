@@ -13,8 +13,8 @@ import { delimiter, join } from 'node:path'
 // The four test-only overrides seam 1 fakes the harness through. The names are
 // normative and documented in docs/agents/testing.md; the plugin reads them
 // from `process.env` by the same strings (ticket 02 onward).
-export const ENV_REGISTRY_DIR = 'VITE_AGENT_INSPECT_REGISTRY_DIR'
-export const ENV_SOCKET_DIR = 'VITE_AGENT_INSPECT_SOCKET_DIR'
+export const ENV_REGISTRY_DIR = 'POINTOUT_REGISTRY_DIR'
+export const ENV_SOCKET_DIR = 'POINTOUT_SOCKET_DIR'
 export const ENV_CLAUDE_PID = 'CLAUDE_PID'
 export const ENV_PATH = 'PATH'
 
@@ -24,14 +24,14 @@ export const ENV_PATH = 'PATH'
  * journeys then read the same on a Linux checkout as on a mac, and "not macOS"
  * is observable from a mac. Test-only, like the four above.
  */
-export const ENV_PLATFORM = 'VITE_AGENT_INSPECT_PLATFORM'
+export const ENV_PLATFORM = 'POINTOUT_PLATFORM'
 
 /**
  * Not a harness boundary — the server's own clock. Thirty minutes is longer
  * than any test is allowed to take, so seam 1 moves the clock instead of
  * waiting for it. Test-only, like the four above; a consumer never sets it.
  */
-export const ENV_CLOCK_SKEW = 'VITE_AGENT_INSPECT_CLOCK_SKEW_MS'
+export const ENV_CLOCK_SKEW = 'POINTOUT_CLOCK_SKEW_MS'
 
 /**
  * Make time pass for every dev server in this process. `0` puts the clock back,
@@ -113,7 +113,7 @@ export function createFixtureEnv({
   gitShim = false,
   platform = 'darwin',
 }: FixtureEnvOptions = {}): FixtureEnv {
-  const dir = mkdtempSync(join(tmpdir(), 'vite-agent-inspect-'))
+  const dir = mkdtempSync(join(tmpdir(), 'pointout-'))
   const registryDir = join(dir, 'registry')
   const socketDir = join(dir, 'sockets')
   const binDir = join(dir, 'bin')

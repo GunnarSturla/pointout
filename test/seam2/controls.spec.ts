@@ -12,7 +12,7 @@ import type { Page } from '@playwright/test'
 
 const PICKED = '[data-fixture="card-heading"]'
 
-const HOST = 'vite-agent-inspect'
+const HOST = 'pointout-overlay'
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'

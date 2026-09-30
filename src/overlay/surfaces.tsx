@@ -52,7 +52,7 @@ export interface Surfaces {
  */
 export function mountSurfaces(document: Document, shadow: ShadowRoot): Surfaces {
   const view = document.defaultView
-  if (!view) throw new Error('vite-agent-inspect: the Overlay needs a window')
+  if (!view) throw new Error('pointout: the Overlay needs a window')
   const container = part(document, 'div', 'surfaces')
   shadow.append(container)
   const root = createRoot(container)

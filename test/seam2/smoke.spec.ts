@@ -10,9 +10,7 @@ test.beforeEach(async ({ page }) => {
 })
 
 test('the app renders its initial fixtures', async ({ page }) => {
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-    'vite-agent-inspect — test bed',
-  )
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('pointout — test bed')
 
   // Nested owner chain: two cards, each with a heading its parent's parent
   // wrote, and a badge created two owners above where it renders.
@@ -71,21 +69,21 @@ test('the Overlay module is served, evaluated, and mounted on one open shadow ro
       page.evaluate(() => {
         const marker = (
           globalThis as {
-            __viteAgentInspect?: { apiBase?: string; host?: Element }
+            __pointout?: { apiBase?: string; host?: Element }
           }
-        ).__viteAgentInspect
+        ).__pointout
         const host = marker?.host
         return {
           apiBase: marker?.apiBase,
           tag: host?.tagName.toLowerCase(),
           mode: host?.shadowRoot ? 'open' : 'closed or absent',
-          roots: document.querySelectorAll('vite-agent-inspect').length,
+          roots: document.querySelectorAll('pointout-overlay').length,
         }
       }),
     )
     .toEqual({
       apiBase: '/__agent',
-      tag: 'vite-agent-inspect',
+      tag: 'pointout-overlay',
       mode: 'open',
       roots: 1,
     })

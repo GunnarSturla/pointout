@@ -70,7 +70,7 @@ describe('the test commands', () => {
     // this never starts a real session: seam 3 itself does that, on its own
     // command, and seam 1 only checks that it knows when it cannot. `node` and
     // `npm` are linked back in from any entry that shared a directory with it.
-    const bin = mkdtempSync(join(tmpdir(), 'vite-agent-inspect-no-claude-'))
+    const bin = mkdtempSync(join(tmpdir(), 'pointout-no-claude-'))
     const entries = (process.env.PATH ?? '').split(delimiter).filter(Boolean)
     const holdsClaude = (entry: string) => existsSync(join(entry, 'claude'))
     for (const shared of entries.filter(holdsClaude)) {

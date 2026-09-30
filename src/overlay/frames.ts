@@ -25,7 +25,7 @@
 import { frameDocument, isFrame } from './deep-element.js'
 
 /** The event dispatched in a frame document to learn whether it can be heard. */
-const PROBE = 'vite-agent-inspect-probe'
+const PROBE = 'pointout-probe'
 
 export interface Frames {
   /**

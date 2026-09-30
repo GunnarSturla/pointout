@@ -25,7 +25,7 @@ import type { CaptureResult, RunningCapture } from './screencapture.js'
 // The one outcome that is never allowed is an empty capture that travels.
 
 /** Test-only, like the harness overrides. A consumer never sets it. */
-const PLATFORM_ENV = 'VITE_AGENT_INSPECT_PLATFORM'
+const PLATFORM_ENV = 'POINTOUT_PLATFORM'
 
 const MACOS = 'darwin'
 
@@ -146,9 +146,7 @@ export async function createCaptureService({
           // An abort is this server doing as it was told, and a developer
           // moving a Pick through six elements should not read six warnings.
           if (!result.aborted) {
-            logger.warn(
-              `vite-agent-inspect: capture ${id} produced nothing: ${result.reason}`,
-            )
+            logger.warn(`pointout: capture ${id} produced nothing: ${result.reason}`)
           }
         }
         return result
@@ -238,7 +236,7 @@ function disabled(
     start() {
       // Unreachable: the endpoint refuses with the reason before it gets here,
       // and this is what keeps that from being a comment nobody enforces.
-      throw new Error(`vite-agent-inspect: Screen Capture is disabled — ${reason}`)
+      throw new Error(`pointout: Screen Capture is disabled — ${reason}`)
     },
     abort: () => false,
     resolve: (request) =>

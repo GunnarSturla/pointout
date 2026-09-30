@@ -292,7 +292,7 @@ describe('POST /__agent/drain', () => {
     expect(small.drained).toBe(0)
     expect(small.remaining).toBe(1)
     expect(small.reason).toBe(
-      `vite-agent-inspect — pick ${pickId} is larger than the 200 characters this ` +
+      `pointout — pick ${pickId} is larger than the 200 characters this ` +
         'hook had left to carry, so it was not delivered. It stays queued for a later ' +
         'prompt, and fails if nothing carries it within its 30 minutes.',
     )
@@ -431,7 +431,7 @@ describe('the drain CLI', () => {
     expect(run.code).toBe(0)
     expect(run.code).not.toBe(2)
     expect(run.stdout).toBe('')
-    expect(run.stderr).toContain('vite-agent-inspect')
+    expect(run.stderr).toContain('pointout')
   })
 
   it('stays under the hook output cap and says how many picks remain', async () => {

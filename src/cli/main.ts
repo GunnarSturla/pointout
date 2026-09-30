@@ -3,9 +3,9 @@ import { claudeSetup } from './claude/setup.js'
 import { runDrain } from './drain.js'
 import { runSetup } from './setup.js'
 
-// The package's one binary, `vite-agent-inspect`, with a subcommand per job
+// The package's one binary, `pointout`, with a subcommand per job
 // (spec §18). One bin rather than two because the spec names `npx
-// vite-agent-inspect init`, and a second executable for the hook would be a
+// pointout init`, and a second executable for the hook would be a
 // second thing for a consumer to have installed correctly.
 //
 // `drain` is the hook floor's wrapper and must never exit 2 or throw; `init`
@@ -25,7 +25,7 @@ const command = COMMANDS[name]
 
 if (!command) {
   process.stderr.write(
-    `vite-agent-inspect: no command ${JSON.stringify(name)}. ` +
+    `pointout: no command ${JSON.stringify(name)}. ` +
       `Commands: ${Object.keys(COMMANDS).join(', ')}.\n`,
   )
   process.exitCode = 1
@@ -33,9 +33,7 @@ if (!command) {
   try {
     await command.run()
   } catch (error) {
-    process.stderr.write(
-      `vite-agent-inspect: ${name} failed: ${(error as Error).message}\n`,
-    )
+    process.stderr.write(`pointout: ${name} failed: ${(error as Error).message}\n`)
     if (!command.failsQuietly) process.exitCode = 1
   }
 }

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { agentInspect } from 'vite-agent-inspect'
+import { pointout } from 'pointout'
 
 export default defineConfig({
-  plugins: [react(), agentInspect()],
+  plugins: [react(), pointout()],
 })

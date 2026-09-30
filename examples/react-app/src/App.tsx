@@ -27,7 +27,7 @@ export function App() {
       <FullViewportDecoy />
       <main className="page">
         <header className="page-header">
-          <h1>vite-agent-inspect — test bed</h1>
+          <h1>pointout — test bed</h1>
           <p>
             The development target and the fixture set. Nothing here moves: the only
             motion in the project is the Overlay's, and it is behind a media query.

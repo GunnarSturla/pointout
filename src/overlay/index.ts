@@ -1,4 +1,4 @@
-// The Overlay — everything vite-agent-inspect draws into the consumer's page:
+// The Overlay — everything pointout draws into the consumer's page:
 // Picker, Highlight, Panel and Stack, in one open shadow root (spec §3).
 //
 // The whole journey: hold Alt or click the Picker, hover an element and read the
@@ -15,7 +15,7 @@ export interface OverlayMarker extends OverlayHandle {
 }
 
 declare global {
-  var __viteAgentInspect: OverlayMarker | undefined
+  var __pointout: OverlayMarker | undefined
 }
 
-globalThis.__viteAgentInspect = { apiBase: API_BASE, ...startOverlay(document) }
+globalThis.__pointout = { apiBase: API_BASE, ...startOverlay(document) }

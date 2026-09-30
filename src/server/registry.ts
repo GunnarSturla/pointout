@@ -11,7 +11,7 @@ import { normalizeToWorktreeRoot } from './paths.js'
 // pinned here and a shape that has moved is reported rather than worked around.
 
 /** Test-only. A consumer never sets it. */
-const REGISTRY_DIR_ENV = 'VITE_AGENT_INSPECT_REGISTRY_DIR'
+const REGISTRY_DIR_ENV = 'POINTOUT_REGISTRY_DIR'
 
 /** An entry carrying all six is usable. Anything less is a harness that moved. */
 const REQUIRED_FIELDS = [

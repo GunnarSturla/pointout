@@ -1,12 +1,12 @@
 'use strict'
 
-// vite-agent-inspect is ESM-only (spec §1). This file exists so a consumer
+// pointout is ESM-only (spec §1). This file exists so a consumer
 // whose Vite config loads as CommonJS is told what to do, rather than shown
 // Node's stock ERR_REQUIRE_ESM message.
 
 throw new Error(
   [
-    'vite-agent-inspect is ESM-only and cannot be require()d.',
+    'pointout is ESM-only and cannot be require()d.',
     '',
     'Your Vite config is being loaded as CommonJS. Either make the config ESM',
     '(rename it to vite.config.mjs, or set "type": "module" in package.json),',
@@ -16,8 +16,8 @@ throw new Error(
     '    const { defineConfig } = require("vite")',
     '',
     '    module.exports = defineConfig(async () => {',
-    '      const { agentInspect } = await import("vite-agent-inspect")',
-    '      return { plugins: [agentInspect()] }',
+    '      const { pointout } = await import("pointout")',
+    '      return { plugins: [pointout()] }',
     '    })',
     '',
     'defineConfig(async () => …) is what makes the dynamic import() possible:',

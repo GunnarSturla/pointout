@@ -116,7 +116,7 @@ export function recordReplies(route: DeliveryRoute, evidence: ReplyEvidence): vo
     idle(notice) {
       evidence.idle.record(notice)
       evidence.logger.info(
-        `vite-agent-inspect: session ${notice.target.sessionId} finished a turn ` +
+        `pointout: session ${notice.target.sessionId} finished a turn ` +
           `at ${notice.finishedAt}, after pick ${notice.pickId}.`,
       )
       evidence.clock.idle(notice.target, notice.finishedAt, now())
@@ -128,7 +128,7 @@ function applyReceipt(receipt: Receipt, { ledger, logger }: ReplyEvidence): void
   const record = ledger.get(receipt.pickId)
   if (!record) {
     logger.warn(
-      `vite-agent-inspect: ignored a ${receipt.status} receipt for pick ` +
+      `pointout: ignored a ${receipt.status} receipt for pick ` +
         `${receipt.pickId}, which this dev server has no ledger record of.`,
     )
     return
@@ -145,7 +145,7 @@ function applyReceipt(receipt: Receipt, { ledger, logger }: ReplyEvidence): void
     // sentence this server would then be the author of (spec §21).
     ledger.advance(receipt.pickId, HELD)
     logger.info(
-      `vite-agent-inspect: pick ${receipt.pickId} is held at ${name} until it is ` +
+      `pointout: pick ${receipt.pickId} is held at ${name} until it is ` +
         'approved there.' +
         (receipt.reason ? ` The harness said: ${receipt.reason}` : ''),
     )
@@ -160,13 +160,13 @@ function applyReceipt(receipt: Receipt, { ledger, logger }: ReplyEvidence): void
     // put better evidence back.
     if (record.state !== HELD) {
       logger.info(
-        `vite-agent-inspect: pick ${receipt.pickId} was released by the harness ` +
+        `pointout: pick ${receipt.pickId} was released by the harness ` +
           `while this server had it as ${record.state}; nothing to return to sent.`,
       )
       return
     }
     ledger.advance(receipt.pickId, SENT)
-    logger.info(`vite-agent-inspect: pick ${receipt.pickId} was released, and is sent.`)
+    logger.info(`pointout: pick ${receipt.pickId} was released, and is sent.`)
     return
   }
 
@@ -175,7 +175,7 @@ function applyReceipt(receipt: Receipt, { ledger, logger }: ReplyEvidence): void
   // also keeps the TTL sweep from writing its own sentence over this one.
   const sentence = failureSentence(receipt, name)
   ledger.failByReceipt(receipt.pickId, sentence)
-  logger.warn(`vite-agent-inspect: pick ${receipt.pickId} ${receipt.status}. ${sentence}`)
+  logger.warn(`pointout: pick ${receipt.pickId} ${receipt.status}. ${sentence}`)
 }
 
 const NOT_DELIVERED = 'Not delivered — '

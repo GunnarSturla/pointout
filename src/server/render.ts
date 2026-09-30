@@ -155,7 +155,7 @@ export interface RenderOptions {
  */
 export function renderPicks(picks: Pick[], { origin }: RenderOptions): string {
   const at = now()
-  const heading = `vite-agent-inspect — ${count(picks.length, 'pick')} from the browser.`
+  const heading = `pointout — ${count(picks.length, 'pick')} from the browser.`
   const blocks = picks.map((pick, index) =>
     renderPick(pick, index, picks.length, origin, at),
   )

@@ -15,10 +15,10 @@ import type { Page } from '@playwright/test'
 const FRAMES_LOG_ENV = 'SEAM2_FRAMES_LOG'
 
 /** The attribute the armed stylesheet rule keys off, on the document element. */
-const ARMED_ATTRIBUTE = 'data-vite-agent-inspect-armed'
+const ARMED_ATTRIBUTE = 'data-pointout-armed'
 
 /** The Overlay's host tag — the one element the armed rule exempts. */
-const HOST = 'vite-agent-inspect'
+const HOST = 'pointout-overlay'
 
 const PICKER = '[data-part="picker"]'
 const HIGHLIGHT = '[data-part="highlight"]'

@@ -51,7 +51,7 @@ export interface OverlayHandle {
 
 export function startOverlay(document: Document): OverlayHandle {
   const view = document.defaultView
-  if (!view) throw new Error('vite-agent-inspect: the Overlay needs a window')
+  if (!view) throw new Error('pointout: the Overlay needs a window')
 
   const { host, shadow } = mountOverlayRoot(document)
   // The two Highlights are drawn into a layer of their own, ahead of the
@@ -169,7 +169,7 @@ export function startOverlay(document: Document): OverlayHandle {
     render()
   }
   const pointer = (): PointerInputs => {
-    if (!picked) throw new Error('vite-agent-inspect: no Pick is open to send')
+    if (!picked) throw new Error('pointout: no Pick is open to send')
     return pointerOf(view, picked, marks.lastBox())
   }
 

@@ -241,13 +241,11 @@ export function installAgentEndpoints(
     // A handler that throws is a bug in this plugin, and a bug that answered
     // nothing would look to the Overlay like a network that dropped the Pick.
     Promise.resolve(endpoint.handle(request, response, context)).catch((error: Error) => {
-      logger.error(
-        `vite-agent-inspect: ${API_BASE}${path} threw: ${error.stack ?? error.message}`,
-      )
+      logger.error(`pointout: ${API_BASE}${path} threw: ${error.stack ?? error.message}`)
       if (!response.headersSent) {
         sendJson(response, 500, {
           error: 'internal-error',
-          reason: `vite-agent-inspect failed to answer ${API_BASE}${path}: ${error.message}`,
+          reason: `pointout failed to answer ${API_BASE}${path}: ${error.message}`,
         })
       }
     })
@@ -351,10 +349,10 @@ async function drainPicks(
   if (refused) return sendRefusal(logger, response, refused)
 
   const drained = drainQueue({ ledger, origin: origin(), budget: parsed.value.budget })
-  if (drained.reason) logger.warn(`vite-agent-inspect: ${drained.reason}`)
+  if (drained.reason) logger.warn(`pointout: ${drained.reason}`)
   else if (drained.drained > 0) {
     logger.info(
-      `vite-agent-inspect: ${drained.drained} ` +
+      `pointout: ${drained.drained} ` +
         `${drained.drained === 1 ? 'pick' : 'picks'} drained into ${parsed.value.event}` +
         (drained.remaining > 0 ? `, ${drained.remaining} still queued` : ''),
     )
@@ -368,7 +366,7 @@ async function drainPicks(
  */
 function expireStale({ ledger, logger }: RequestContext): void {
   for (const record of ledger.expire(now())) {
-    logger.warn(`vite-agent-inspect: pick ${record.pick.id} expired. ${record.reason}`)
+    logger.warn(`pointout: pick ${record.pick.id} expired. ${record.reason}`)
   }
 }
 
@@ -438,7 +436,7 @@ async function resolveReport(
     ledger.requeue(oldId, now())
     clock.forget(oldId)
     logger.info(
-      `vite-agent-inspect: pick ${oldId} is left for the next prompt in ` +
+      `pointout: pick ${oldId} is left for the next prompt in ` +
         'this repo, with a fresh 30 minutes.',
     )
     const answer: ReportAnswer = { pickId: oldId, state: QUEUED_UNADDRESSED }
@@ -476,7 +474,7 @@ async function resolveReport(
   ledger.open(pick, state, unwritten)
   if (unwritten === undefined) clock.watch(pick.id, target, now(), chosen.status)
   logger.info(
-    `vite-agent-inspect: pick ${oldId} was sent again to ${target.name} as pick ${pick.id}.`,
+    `pointout: pick ${oldId} was sent again to ${target.name} as pick ${pick.id}.`,
   )
 
   const answer: ReportAnswer = {
@@ -539,7 +537,7 @@ function withdrawPick(
   if (record.pick.captureFile) captures.discard(record.pick.captureFile)
 
   logger.info(
-    `vite-agent-inspect: pick ${id} was withdrawn. ` +
+    `pointout: pick ${id} was withdrawn. ` +
       (written.alreadyWritten
         ? `It had already been written to ${written.targetName ?? 'a prompt in this repo'}, ` +
           'which may still act on it: a write cannot be recalled.'
@@ -574,7 +572,7 @@ async function deliverRendered(
         reason: `session ${pick.target.sessionId} is no longer in the registry`,
       }
   if (outcome.written) return undefined
-  logger.warn(`vite-agent-inspect: pick ${pick.id} was not delivered: ${outcome.reason}`)
+  logger.warn(`pointout: pick ${pick.id} was not delivered: ${outcome.reason}`)
   return outcome.reason
 }
 
@@ -777,7 +775,7 @@ function loopbackOrigin(server: ViteDevServer): string {
 }
 
 function sendRefusal(logger: Logger, response: ServerResponse, refusal: Refusal): void {
-  logger.warn(`vite-agent-inspect: ${refusal.body.reason}`)
+  logger.warn(`pointout: ${refusal.body.reason}`)
   sendJson(response, refusal.status, refusal.body)
 }
 

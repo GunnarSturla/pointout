@@ -192,7 +192,7 @@ function remainderLine(remaining: number): string {
  */
 function tooLargeLine(record: LedgerRecord, budget: number): string {
   return (
-    `vite-agent-inspect — pick ${record.pick.id} is larger than the ${budget} ` +
+    `pointout — pick ${record.pick.id} is larger than the ${budget} ` +
     'characters this hook had left to carry, so it was not delivered. It stays ' +
     `queued for a later prompt, and fails if nothing carries it within its ${TTL_MS / 60_000} minutes.\n`
   )

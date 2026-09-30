@@ -16,7 +16,7 @@ import { repoRoot } from './paths.js'
 // A throwaway consumer, laid out so root discovery has something to discover:
 //
 //   <playground>/                    never a git repository
-//   <playground>/node_modules/       vite-agent-inspect, linked as an install
+//   <playground>/node_modules/       pointout, linked as an install
 //   <playground>/checkout/           the git repository, when one is asked for
 //   <playground>/checkout/app/       the Vite root
 //   <playground>/<worktree>/         linked worktrees, added on demand
@@ -33,7 +33,7 @@ const INDEX_HTML = `<!doctype html>
 </html>
 `
 
-/** Whatever `agentInspect(...)` should be called with in the written config. */
+/** Whatever `pointout(...)` should be called with in the written config. */
 type PluginOptions = Record<string, unknown> | null
 /** Consumer-side Vite settings a test needs Vite itself to have. */
 type ViteConfig = Record<string, unknown> | null
@@ -64,12 +64,12 @@ export function createTempApp({
   pluginOptions = null,
   viteConfig = null,
 }: TempAppOptions = {}): TempApp {
-  const playground = realpathSync(mkdtempSync(join(tmpdir(), 'vite-agent-inspect-app-')))
+  const playground = realpathSync(mkdtempSync(join(tmpdir(), 'pointout-app-')))
   const checkout = join(playground, 'checkout')
   const appDir = join(checkout, 'app')
   mkdirSync(appDir, { recursive: true })
   mkdirSync(join(playground, 'node_modules'))
-  symlinkSync(repoRoot, join(playground, 'node_modules', 'vite-agent-inspect'), 'dir')
+  symlinkSync(repoRoot, join(playground, 'node_modules', 'pointout'), 'dir')
 
   writeFileSync(join(appDir, 'index.html'), INDEX_HTML)
   writeFileSync(
@@ -178,12 +178,12 @@ function writeConfig(
   writeFileSync(
     join(appDir, 'vite.config.js'),
     [
-      "import { agentInspect } from 'vite-agent-inspect'",
+      "import { pointout } from 'pointout'",
       '',
       'export default ' +
         JSON.stringify(config, null, 2).replace(
           '"@@plugins@@"',
-          `[agentInspect(${pluginOptions ? JSON.stringify(pluginOptions) : ''})]`,
+          `[pointout(${pluginOptions ? JSON.stringify(pluginOptions) : ''})]`,
         ),
       '',
     ].join('\n'),

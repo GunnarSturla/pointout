@@ -18,13 +18,13 @@ import type { HarnessServer } from '../harness/dev-server.js'
 //
 // No real screen is involved. The fake `screencapture` on `PATH` is what makes
 // the success path, the empty capture, the failure and the hang observable, and
-// `VITE_AGENT_INSPECT_PLATFORM` is what makes "not macOS" observable from a mac.
+// `POINTOUT_PLATFORM` is what makes "not macOS" observable from a mac.
 
 const CAPTURE = '/__agent/capture'
 const PICK = '/__agent/pick'
 
 /** The capture directory this dev server owns lives under the OS temp root. */
-const CAPTURE_ROOT = join(tmpdir(), 'vite-agent-inspect-captures')
+const CAPTURE_ROOT = join(tmpdir(), 'pointout-captures')
 
 /** The fixed margin §10 puts around the element, on every side. */
 const MARGIN = 24
@@ -63,7 +63,7 @@ async function startCaptureServer(
 
 /** The directory the posture block says this server writes its captures to. */
 function captureDirectory(server: HarnessServer): string {
-  const found = /\S*vite-agent-inspect-captures[/\\]\S+/.exec(server.log())
+  const found = /\S*pointout-captures[/\\]\S+/.exec(server.log())
   if (!found) throw new Error('the posture block named no capture directory')
   return found[0]
 }
@@ -311,7 +311,7 @@ describe('a Pick that carries a Screen Capture', () => {
 
   it('says why when the toggle was on and this server cannot capture', async () => {
     const { app, server, env } = await startCaptureServer({
-      VITE_AGENT_INSPECT_PLATFORM: 'linux',
+      POINTOUT_PLATFORM: 'linux',
     })
     const session = await sessions.open(env, { cwd: app.checkout, pid: 500_108 })
 
@@ -478,7 +478,7 @@ describe('the startup probe', () => {
 
   it('disables capture off macOS, with the platform named', async () => {
     const { server } = await startCaptureServer({
-      VITE_AGENT_INSPECT_PLATFORM: 'linux',
+      POINTOUT_PLATFORM: 'linux',
     })
 
     const log = server.log()
@@ -496,7 +496,7 @@ describe('the startup probe', () => {
     // this body, because seam 2's one dev server can capture. This is where that
     // body is held to what a real one sends (ticket 18).
     const { server } = await startCaptureServer({
-      VITE_AGENT_INSPECT_PLATFORM: 'linux',
+      POINTOUT_PLATFORM: 'linux',
     })
 
     const { status, json } = await postCapture(server)
@@ -510,7 +510,7 @@ describe('the startup probe', () => {
 
   it('takes no capture at all once it is disabled', async () => {
     const { server, env } = await startCaptureServer({
-      VITE_AGENT_INSPECT_PLATFORM: 'linux',
+      POINTOUT_PLATFORM: 'linux',
     })
 
     await postCapture(server)
