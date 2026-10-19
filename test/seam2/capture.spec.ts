@@ -70,7 +70,7 @@ function probe(name: string): string {
 }
 
 async function open(page: Page, token: string): Promise<void> {
-  await page.goto(`/?probe=${token}`)
+  await page.goto(`?probe=${token}`)
   await expect(page.locator(PICKER)).toBeVisible()
 }
 
@@ -334,6 +334,13 @@ async function settled(page: Page): Promise<void> {
  * allowed, on the same click (overlay-polish ticket 07). Its entrance is never
  * gated on a capture, and it is held on its own below.
  */
+/** A sequence with what eased after the opening sorted, since it eased at once. */
+function easedTogether(sequence: string[]): string[] {
+  const opened = sequence.findIndex((line) => line.startsWith('opened'))
+  if (opened === -1) return sequence
+  return [...sequence.slice(0, opened + 1), ...sequence.slice(opened + 1).toSorted()]
+}
+
 function apartFromControls(sequence: string[]): string[] {
   return sequence.filter(
     (line) =>
@@ -622,7 +629,11 @@ test.describe('the shutter', () => {
     ])
     expect(first).toContain('eased highlight background-color')
     expect(first).toContain('eased chip opacity')
-    for (const run of rest) expect(run).toEqual(first)
+    // The two fades back in start together, at the opening, and which of them
+    // the engine reports first is its own business: on Next.js it changed from
+    // run to run (ticket 06 of the Next.js Connector). So they are compared as
+    // a set, and everything up to the opening in order.
+    for (const run of rest) expect(easedTogether(run)).toEqual(easedTogether(first ?? []))
     // What the Panel's controls did as the Pick landed is taken out above, and
     // held here: a colour fade, or a press, and never anything that hides.
     for (const run of runs) {

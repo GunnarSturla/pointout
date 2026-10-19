@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { PARAMETERIZED_SUITES, SEAM2_PORT, TEST_BEDS } from './test/harness/hosts.js'
 import { SEAM2_LOCK_WAIT_MS } from './test/harness/seam2-lock.js'
 
 // Seam 2: the browser, in all three engines, against the same dev server seam 1
@@ -8,8 +9,13 @@ import { SEAM2_LOCK_WAIT_MS } from './test/harness/seam2-lock.js'
 // that boots it is TypeScript, Playwright compiles its own, and `node` on this
 // repo's Node floor cannot run it. The port is bound strictly, so a leftover
 // server fails the run loudly instead of being attached to (see serve.ts).
-const port = Number(process.env.SEAM2_PORT ?? 5178)
-const baseURL = `http://127.0.0.1:${port}`
+const baseURL = `http://127.0.0.1:${SEAM2_PORT}`
+
+const ENGINES = [
+  { name: 'chromium', device: devices['Desktop Chrome'] },
+  { name: 'firefox', device: devices['Desktop Firefox'] },
+  { name: 'webkit', device: devices['Desktop Safari'] },
+]
 
 /**
  * What a whole run may take once it holds the machine's seam-2 lock. A healthy
@@ -28,9 +34,14 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   reporter: process.env.CI ? 'list' : [['list']],
   use: { baseURL, trace: 'on-first-retry' },
-  projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
-  ],
+  // One project per engine and test bed (test/harness/hosts.ts): Vite's runs
+  // every spec, and each of Next's two routes runs the suites that hold on
+  // every Host.
+  projects: ENGINES.flatMap(({ name, device }) =>
+    TEST_BEDS.map((bed) => ({
+      name: name + bed.suffix,
+      use: { ...device, baseURL: bed.baseURL },
+      ...(bed.suffix ? { testMatch: PARAMETERIZED_SUITES } : {}),
+    })),
+  ),
 })

@@ -43,6 +43,11 @@ import { nextAppRoot } from './paths.js'
 export interface StartNextOptions {
   /** What Next binds to; loopback by default, as the Vite harness does. */
   host?: string
+  /**
+   * The port to bind; by default Next chooses one. Seam 2 names its own, so a
+   * Playwright project can carry the Next page's origin as its `baseURL`.
+   */
+  port?: number
   /** Extra overrides for this server. */
   env?: Record<string, string>
   /** The pid the preselect should match. */
@@ -99,6 +104,7 @@ let started = 0
 /** Start `examples/next-app` under `next dev`, with the harness faked. */
 export async function startNextServer({
   host = '127.0.0.1',
+  port: askedPort = 0,
   env = {},
   claudePid,
   gitShim = false,
@@ -154,7 +160,15 @@ export async function startNextServer({
   // Vitest sets `test`; `next dev` warns about any value but its own.
   delete childEnv.NODE_ENV
 
-  const args = [NEXT_BIN, 'dev', '-H', host, '-p', '0', ...(webpack ? ['--webpack'] : [])]
+  const args = [
+    NEXT_BIN,
+    'dev',
+    '-H',
+    host,
+    '-p',
+    String(askedPort),
+    ...(webpack ? ['--webpack'] : []),
+  ]
   const child = spawn(process.execPath, args, {
     cwd: appRoot,
     env: childEnv,

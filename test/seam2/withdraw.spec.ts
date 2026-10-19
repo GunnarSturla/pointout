@@ -25,6 +25,9 @@ const FRAMES_LOG_ENV = 'SEAM2_FRAMES_LOG'
 /** The session only report-back journeys address, and end the turns of. */
 const REPORT_BACK_FRAMES_LOG_ENV = 'SEAM2_REPORT_BACK_FRAMES_LOG'
 const DISCOVERY_ENTRY_ENV = 'SEAM2_DISCOVERY_ENTRY'
+/** The Next.js test bed's own entry, and its origin (test/harness/serve.ts). */
+const NEXT_DISCOVERY_ENTRY_ENV = 'SEAM2_NEXT_DISCOVERY_ENTRY'
+const NEXT_URL_ENV = 'SEAM2_NEXT_URL'
 
 const TARGET_NAME = 'seam 2 report-back session'
 
@@ -152,7 +155,7 @@ async function dropped(delivered: Delivered): Promise<void> {
 
 async function open(page: Page, token: string): Promise<void> {
   await page.clock.install()
-  await page.goto(`/?probe=${token}`)
+  await page.goto(`?probe=${token}`)
   await expect(page.locator(PICKER)).toBeVisible()
 }
 
@@ -274,8 +277,11 @@ function focusedPart(page: Page): Promise<string | null> {
 
 /** What the drain would hand the next prompt, read the way the hook reads it. */
 async function drain(page: Page): Promise<{ text: string }> {
-  const entry = process.env[DISCOVERY_ENTRY_ENV]
-  if (!entry) throw new Error(`${DISCOVERY_ENTRY_ENV} is unset: globalSetup did not run`)
+  // Each dev server has its own secret: the drain goes to the one this page is on.
+  const onNext = new URL(page.url()).origin === process.env[NEXT_URL_ENV]
+  const name = onNext ? NEXT_DISCOVERY_ENTRY_ENV : DISCOVERY_ENTRY_ENV
+  const entry = process.env[name]
+  if (!entry) throw new Error(`${name} is unset: globalSetup did not run`)
   const { secret } = JSON.parse(readFileSync(entry, 'utf8')) as { secret: string }
   const response = await page.request.post(DRAIN, {
     data: { cwd: repoRoot, secret, event: 'UserPromptSubmit', budget: 9000 },
@@ -504,7 +510,7 @@ test('a Pick the server no longer holds is treated as gone', async ({
   // Withdrawn already, from somewhere else: the page has not polled since.
   await pause(page)
   const first = await page.request.delete(`/__agent/pick/${delivered.pickId}`, {
-    headers: { origin: baseURL! },
+    headers: { origin: new URL(baseURL!).origin },
   })
   expect(first.status()).toBe(200)
 

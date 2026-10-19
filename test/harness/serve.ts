@@ -10,9 +10,9 @@ import { clearDrainLock } from './drain-lock.js'
 import { clearHotUpdateLock } from './hot-update-lock.js'
 import { takeSeam2Lock } from './seam2-lock.js'
 import { listeningSession } from './session-socket.js'
-import { NEXT_URL_ENV } from './hosts.js'
+import { NEXT_URL_ENV, SEAM2_NEXT_PORT, SEAM2_PORT } from './hosts.js'
 
-export const SEAM2_PORT = Number(process.env.SEAM2_PORT ?? 5178)
+export { SEAM2_PORT }
 
 /**
  * The fake session seam 2 addresses by default. Its pid is the `CLAUDE_PID` the
@@ -62,6 +62,8 @@ const REPORT_BACK_FRAMES_LOG_ENV = 'SEAM2_REPORT_BACK_FRAMES_LOG'
  * drain's credential: a spec that drains reads it the way the CLI does.
  */
 const DISCOVERY_ENTRY_ENV = 'SEAM2_DISCOVERY_ENTRY'
+/** The same, for the Next.js test bed's server, whose secret is its own. */
+const NEXT_DISCOVERY_ENTRY_ENV = 'SEAM2_NEXT_DISCOVERY_ENTRY'
 
 export default async function serveForSeam2(): Promise<() => Promise<void>> {
   // Before anything is booted: a second full seam 2 on this machine waits for
@@ -95,15 +97,25 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
   try {
     next = await startExampleServer({
       on: 'next',
+      port: SEAM2_NEXT_PORT,
       claudePid: SESSION_PID,
       env: server.fixture.env,
     })
+    if (next.port !== SEAM2_NEXT_PORT) {
+      await next.close()
+      throw new Error(`next dev bound ${next.port}, not ${SEAM2_NEXT_PORT}`)
+    }
   } catch (error) {
     await server.close()
     releaseLock()
-    throw new Error('seam 2 could not start examples/next-app under next dev', {
-      cause: error,
-    })
+    throw new Error(
+      `seam 2 could not start examples/next-app under next dev on ` +
+        `127.0.0.1:${SEAM2_NEXT_PORT}. Close what is on that port, or set ` +
+        'SEAM2_NEXT_PORT to another port.',
+      {
+        cause: error,
+      },
+    )
   }
   process.env[NEXT_URL_ENV] = next.url
 
@@ -119,6 +131,9 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
   const discovery = /discovery entry\s+(\S+\.json)/.exec(server.log())?.[1]
   if (!discovery) throw new Error(`no discovery entry line in:\n${server.log()}`)
   process.env[DISCOVERY_ENTRY_ENV] = discovery
+  const nextDiscovery = /discovery entry\s+(\S+\.json)/.exec(next.log())?.[1]
+  if (!nextDiscovery) throw new Error(`no discovery entry line in:\n${next.log()}`)
+  process.env[NEXT_DISCOVERY_ENTRY_ENV] = nextDiscovery
 
   // Each session's cwd is this checkout, which is the root the example app's dev
   // server discovers, so each is a Candidate — except the last, which works

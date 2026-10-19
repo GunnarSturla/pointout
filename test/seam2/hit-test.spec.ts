@@ -56,7 +56,7 @@ function probe(name: string): string {
 
 /** The test bed loads without its decoy; `decoy` turns it on at load. */
 async function open(page: Page, token: string, { decoy = false } = {}): Promise<void> {
-  await page.goto(decoy ? `/?decoy&probe=${token}` : `/?probe=${token}`)
+  await page.goto(decoy ? `?decoy&probe=${token}` : `?probe=${token}`)
   await expect(page.locator(PICKER)).toBeVisible()
 }
 

@@ -127,7 +127,7 @@ async function settle(page: Page): Promise<void> {
 }
 
 async function open(page: Page, token: string): Promise<void> {
-  await page.goto(`/?probe=${token}`)
+  await page.goto(`?probe=${token}`)
   await expect(page.locator(PICKER)).toBeVisible()
 }
 

@@ -146,7 +146,7 @@ async function open(page: Page, token: string): Promise<void> {
   // The page's clock, so thirty seconds can pass in one call. It flows on its
   // own until a test moves it.
   await page.clock.install()
-  await page.goto(`/?probe=${token}`)
+  await page.goto(`?probe=${token}`)
   await expect(page.locator(PICKER)).toBeVisible()
 }
 

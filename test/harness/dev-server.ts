@@ -142,11 +142,11 @@ export async function startExampleServer({
   ...options
 }: ExampleServerOptions = {}): Promise<HarnessServer> {
   if (on === 'next') {
-    const { root, configFile, port, ...next } = options
-    if (root !== undefined || configFile !== undefined || port !== undefined) {
+    const { root, configFile, ...next } = options
+    if (root !== undefined || configFile !== undefined) {
       throw new Error(
-        'the Next.js example takes no root, config file or port: it is always ' +
-          'examples/next-app, and Next chooses its port',
+        'the Next.js example takes no root or config file: it is always ' +
+          'examples/next-app',
       )
     }
     return startNextServer(next)

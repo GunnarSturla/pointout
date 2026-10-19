@@ -30,7 +30,8 @@ const FADES = ['color', 'background-color', 'border-color', 'outline-color']
 const NOTE_LINE = 18
 
 async function open(page: Page): Promise<void> {
-  await page.goto('/')
+  // The project's test bed itself: its `baseURL` is an origin and a route.
+  await page.goto('')
   await expect(page.locator(PICKER)).toBeVisible()
 }
 

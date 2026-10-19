@@ -388,9 +388,21 @@ written before the Next.js Connector still runs.
   (`POINTOUT_EXAMPLE_WITHOUT_POINTOUT`), `webpack: true` runs `next dev --webpack`,
   and `copy: true` serves a copy of the app at `examples/.harness-next-<name>/`, so a
   test can edit its `next.config.ts` without restarting every other file's server.
-- **Seam 2:** `globalSetup` starts both apps. Vite is Playwright's `baseURL`; a spec
-  reaches Next with `page.goto(hostURL('next', '/pages-router'))` from
-  `test/harness/hosts.ts`.
+- **Seam 2:** `globalSetup` starts both apps: Vite on `SEAM2_PORT`, Next on
+  `SEAM2_NEXT_PORT` (the next port up unless set), and Next is handed Vite's fixture
+  environment, so both read one registry and every seam-2 session is a Candidate on
+  either. Each engine has three projects, one per **test bed** (`TEST_BEDS` in
+  `test/harness/hosts.ts`): `chromium` is Vite's, `chromium-next-app` the App Router
+  route and `chromium-next-pages` the Pages Router route, and the project's `baseURL`
+  is the bed's origin and route. The suites in `PARAMETERIZED_SUITES` run on all three
+  beds (Next.js Connector ticket 06); every other spec runs on Vite's projects only.
+  A parameterized suite opens its page **relative** to the bed, `page.goto('?probe=…')`
+  and never `'/?probe=…'`, which would drop the route; it reaches `/__agent` by an
+  absolute path, which keeps only the origin, and a drain posts the secret of the
+  server the page is on (`SEAM2_NEXT_DISCOVERY_ENTRY` beside `SEAM2_DISCOVERY_ENTRY`).
+  A spec on Vite's projects reaches Next by name, with
+  `page.goto(hostURL('next', '/pages-router'))`. `test:seam2:fast` runs `chromium`,
+  Vite only; `--project='chromium*'` adds Next's two beds.
 
 ### What starting Next costs, and how it is started
 
@@ -427,7 +439,9 @@ about 1.2 s and `/pages-router` in about 0.6 s. Seam 1 went from about 25.3 s to
 27.7 s with the two Next files (`next-app.test.ts`, `next-harness.test.ts`, four
 servers between them). Seam 2's globalSetup boots Next beside Vite, at the same time;
 the Chromium-only run went from about 1.0 to 1.1 minutes with `next-app.spec.ts`'s six
-journeys.
+journeys. With the ten suites parameterized (ticket 06), Next's two beds add 255
+Chromium journeys, about 2.2 minutes on their own, and 496 Firefox and WebKit journeys,
+about 4.3 minutes, at a load average around 10 to 20.
 
 ### Captured frames
 
