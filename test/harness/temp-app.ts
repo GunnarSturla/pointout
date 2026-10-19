@@ -100,9 +100,14 @@ export function createTempApp(
 
   writeFileSync(
     join(appDir, 'package.json'),
-    // `vite` is named so `init` reads this app as a Vite one, as a consumer's is.
+    // Its Host is named so `init` reads this app as that Host's, as a consumer's is.
     JSON.stringify(
-      { name: 'temp-app', private: true, type: 'module', devDependencies: { vite: '*' } },
+      {
+        name: 'temp-app',
+        private: true,
+        type: 'module',
+        devDependencies: host === 'next' ? { next: '*' } : { vite: '*' },
+      },
       null,
       2,
     ) + '\n',
