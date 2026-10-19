@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { NextHarnessServer } from './next-server.js'
-import { nextAppRoot, repoRoot } from './paths.js'
+import { repoRoot } from './paths.js'
 
 // The owner stacks `npm run capture:next-frames` recorded on the Next.js test
 // bed (`test/fixtures/next-frames/<engine>.json`), put back on a running
@@ -51,7 +51,7 @@ export function capturedStack(
 
 /** A captured text with this server's origin and output folder put back. */
 function onServer(server: NextHarnessServer, text: string): string {
-  const distDir = join(nextAppRoot, server.distDir)
+  const distDir = join(server.appRoot, server.distDir)
   return text.replaceAll('{origin}', server.url).replaceAll('{distDir}', distDir)
 }
 

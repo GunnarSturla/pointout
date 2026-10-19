@@ -443,6 +443,17 @@ Two captures a few minutes apart were identical apart from WebKit's stack depth.
 `next-app.test.ts` fails if a captured chunk is no longer served or written, and then
 the fix is to capture again.
 
+`test/harness/next-frames.ts` puts a capture back on a server (`capturedStack`) and
+loads what a page would have first (`loadCapturedChunks`: both routes, then every chunk
+the captures name). Load before you Pick: the Next.js Connector dates a chunk by when a
+page first loaded it, and calls a frame in a chunk no page loaded from this server, but
+whose file has changed since pointout started, approximate. `test/harness/call-sites.ts`
+gives a suite the three call sites of `OwnerChainDepth.tsx` on either Host — the
+transform's position on Vite, the captured frame on Next — so the Owner chain and
+Confidence suites run as one `describe.each(['vite', 'next'])`. A test that edits a
+source file on Next does it in a `copy: true` server, which owns its fixtures; with no
+browser on the HMR socket, Turbopack rewrites a chunk only when a page next asks.
+
 Nothing in the example app animates. The spec's default is no motion (§9); the Overlay
 opts in under `prefers-reduced-motion: no-preference` and nowhere else (`docs/motion.md`),
 and a test bed that shimmers on its own would make that assertion meaningless.
