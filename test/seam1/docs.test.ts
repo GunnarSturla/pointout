@@ -348,6 +348,14 @@ describe('the packaging conventions', () => {
   it('are reachable from CLAUDE.md, which every ticket reads', () => {
     expect(read('CLAUDE.md')).toContain('docs/agents/packaging.md')
   })
+
+  it('name both entry points, no root entry, and where a Connector lives', () => {
+    expect(doc).toContain('`pointout/vite`')
+    expect(doc).toContain('`pointout/next`')
+    expect(doc).toMatch(/no root entry/)
+    expect(doc).toContain('src/<host>/')
+    expect(doc).toContain('peerDependenciesMeta')
+  })
 })
 
 describe('the packaging conventions cover the two gates', () => {

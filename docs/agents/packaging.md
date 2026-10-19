@@ -15,13 +15,54 @@ The package a consumer installs is **`dist/`, not `src/`**. `tsc` emits it one f
 one file out — `src/server/http.ts` becomes `dist/server/http.js`, with `.d.ts` and a
 source map beside it. There is no bundler, and two things depend on that:
 
-- the plugin resolves the Overlay's entry with `new URL('./overlay/index.js', import.meta.url)`,
-- and it hands Vite its own package root as `new URL('..', import.meta.url)`, which is
-  what `server.fs.allow` is given.
+- the Vite plugin, `dist/vite/index.js`, resolves the Overlay's entry with
+  `new URL('../overlay/index.js', import.meta.url)`,
+- and it hands Vite its own package root as `new URL('../..', import.meta.url)`, which
+  is what `server.fs.allow` is given.
 
 Both read off the emitted layout. They hold only while the emit sits exactly one level
-under the package root. An emit that nested the output deeper — `dist/src/…` — would
-break `server.fs.allow` in a way no error message would explain.
+under the package root and the Connector one level under that. An emit that nested the
+output deeper — `dist/src/…` — would break `server.fs.allow` in a way no error message
+would explain.
+
+## The entry points, and where a Connector lives
+
+The package has **one entry point per Host and no root entry** (ADR-0005). Importing
+bare `pointout` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`, so no Host is the default.
+
+| entry | what it is | source |
+| --- | --- | --- |
+| `pointout/vite` | the Vite plugin, `pointout()`, also the default export | `src/vite/index.ts` |
+| `pointout/vite`, `require` | throws, naming `await import("pointout/vite")` | `src/vite/cjs-entry.cts` |
+| `pointout/next` | `withPointout()`, from ticket 04 | `src/next/` |
+
+The bin, `pointout`, is the CLI and belongs to no Host. `vite` is an **optional** peer
+(`peerDependenciesMeta`); `next` joins it the same way. Each is needed only by its own
+Connector.
+
+**A Connector lives in its own directory**, `src/<host>/`, and is the only code that
+imports its Host, even a type. `test/seam1/connectors.test.ts` reads the emitted `dist/`
+and fails any module outside `dist/vite/` that imports `vite`; ticket 04 extends it to
+`next` and `dist/next/`. A Connector does four things (`GLOSSARY.md` › Connector):
+
+- puts the Overlay in the page,
+- serves the Guard's endpoints, by mounting the handler `createAgentEndpoints` in
+  `src/server/http.ts` returns. It hands that a `Connector`: the Host's logger, the
+  origins the page is served on, the loopback origin, and a frame resolver;
+- turns the Host's served positions back into source positions, with a **frame
+  resolver** (`src/server/frame-resolver.ts`). Given a served frame's URL, line and
+  column, it answers `found`, with the source file, the map to decode against or none,
+  whether the module drifted since the page read the frame, and whether it is vendor
+  code, or `absent` with a mode and a reason. The Vite one is
+  `src/vite/frame-resolver.ts`: the module graph, plus the `.vite/deps` and
+  `node_modules` vendor test;
+- says where the Host is listening: `boundAddress` in `src/server/bound-host.ts` takes
+  whatever the listening server's `address()` answered.
+
+Everything else is the core, under `src/server/`, `src/cli/`, `src/overlay/`, `src/api.ts`
+and `src/wire.ts`. The core logs through its own `Logger` (`src/server/logger.ts`), which
+a Host's logger satisfies. It owns the decoder, the Owner chain and Confidence, and never
+reads a URL scheme or a Host path.
 
 ## The two rules that bite
 
@@ -41,7 +82,7 @@ works unchanged. The example app is the exception, and deliberately: Vite bundle
 into the emit is one the runtime actually needs:
 
 ```ts
-import type { ViteDevServer } from 'vite'
+import type { ViteDevServer } from 'vite' // only ever inside src/vite/
 ```
 
 Get this wrong and the emitted file carries a runtime import of a package that is only a
