@@ -1,7 +1,7 @@
 # Overlay design plan
 
 The visual plan for the Overlay's surfaces, written before overlay-polish tickets 04–10
-build them. Pinned decisions from those tickets, `CONTEXT.md` and `docs/motion.md` are
+build them. Pinned decisions from those tickets, `GLOSSARY.md` and `docs/motion.md` are
 taken as given. Where this plan and a ticket disagree, the ticket wins.
 
 ## Subject, audience, primary job

@@ -189,7 +189,7 @@ it is not wrong, so it is left.
 
 ### A Panel going into the Stack, and coming out of it
 
-Overlay-polish ticket 09. A Pick's Panel is one Panel for its whole life (`CONTEXT.md`), so
+Overlay-polish ticket 09. A Pick's Panel is one Panel for its whole life (`GLOSSARY.md`), so
 sending it should look like the Panel going into the Stack, and opening it there like the
 same Panel coming back out.
 

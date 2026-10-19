@@ -25,7 +25,7 @@ Three shapes were on the table:
 
 | shape | cost |
 | --- | --- |
-| a separate `pointout-next` package | two packages to version against one wire, `CONTEXT.md` and test suite |
+| a separate `pointout-next` package | two packages to version against one wire, `GLOSSARY.md` and test suite |
 | a fork of the server for Next.js | every fix to the ledger, delivery or Guard made twice |
 | one package, an entry point per Host (`pointout/vite`, `pointout/next`), a shared core | moving most of `src/server/` out of a Vite-shaped module, once |
 
@@ -51,7 +51,7 @@ no Host.**
 
 ## Consequences
 
-- `CONTEXT.md` gains **Host** and **Connector**. "Adapter" stays reserved for delivery to
+- `GLOSSARY.md` gains **Host** and **Connector**. "Adapter" stays reserved for delivery to
   other harnesses.
 - Seams 1 and 2 run against both Hosts, parameterized by Host. A test still imports no
   server module.

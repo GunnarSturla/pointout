@@ -468,7 +468,7 @@ describe('a chain that is exact in places and not in others', () => {
     expect(content).toContain(`ChainMiddle — ${MODULE_PATH}:${leafSource()} (exact)`)
 
     // One label over three links, and no Confidence stated anywhere but on a
-    // link: a Pick has none (`CONTEXT.md`).
+    // link: a Pick has none (`GLOSSARY.md`).
     expect(content.match(/owner chain/g)).toHaveLength(1)
     expect(content).not.toMatch(/^\s*confidence\s/m)
     const stated = content.match(/\((?:dependency, )?(?:exact\)|approximate:|absent:)/g)

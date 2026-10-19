@@ -9,7 +9,7 @@ import { tempApps } from '../harness/temp-app.js'
 import type { TempApp } from '../harness/temp-app.js'
 import type { HarnessServer } from '../harness/dev-server.js'
 
-// Withdraw (`CONTEXT.md`, spec §20, §21): the developer takes back a submitted
+// Withdraw (`GLOSSARY.md`, spec §20, §21): the developer takes back a submitted
 // Pick that went wrong. It undoes what the dev server still holds — the queued
 // Pick, its report-back clock, its Screen Capture, its ledger row — and says
 // whether a session already has it, because a Pick written to a session cannot

@@ -1,7 +1,7 @@
 // The Stack (spec §8, §17): where submitted Picks rest while their fate is
 // unsettled. Bottom-right, one minimized Panel per submitted Pick, no cap — and
 // gone entirely the moment nothing is outstanding, which is the whole of what
-// separates it from the Picker (`CONTEXT.md`).
+// separates it from the Picker (`GLOSSARY.md`).
 //
 // A minimized Panel is the submitted form of the Panel the Pick was written in:
 // one line with its traffic light, the component, the Note's first line and a

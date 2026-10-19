@@ -4,7 +4,7 @@ A Vite dev-server plugin that lets a developer pick an element in the running ap
 type a request about it, and have it reach the Claude Code session they are already
 working in, with the element's source location attached.
 
-See `README.md` for the idea and `CONTEXT.md` for the domain language.
+See `README.md` for the idea and `GLOSSARY.md` for the domain language.
 
 ## Start here
 
@@ -57,5 +57,5 @@ Targeted, non-UI and credited: a per-file provenance header plus an entry in
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` at the root, ADRs in `docs/adr/`. See
+Single-context: `GLOSSARY.md` at the root, ADRs in `docs/adr/`. See
 `docs/agents/domain.md`.

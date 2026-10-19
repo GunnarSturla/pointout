@@ -10,7 +10,7 @@
 import type { ReactNode } from 'react'
 
 const articles = [
-  { id: 'a1', title: 'Picking an element', badge: 'draft' },
+  { id: 'a1', title: 'Picking an element or component', badge: 'draft' },
   { id: 'a2', title: 'Writing the note', badge: 'review' },
 ]
 

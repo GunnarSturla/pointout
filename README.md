@@ -386,7 +386,7 @@ covers the page the way a real app's scrim does, is off when the page loads; add
 `?decoy` to the URL to load with it on, or press **Show decoy**, bottom left.
 
 The conventions every change follows start at [`CLAUDE.md`](CLAUDE.md), and the domain
-language is in [`CONTEXT.md`](CONTEXT.md).
+language is in [`GLOSSARY.md`](GLOSSARY.md).
 
 ### The canary suites
 

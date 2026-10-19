@@ -1,6 +1,6 @@
 // The Picker (spec §8): the Overlay's persistent affordance, bottom-centre. It
 // is there before any Pick exists and after the last one, which is what
-// separates it from the Stack (`CONTEXT.md`).
+// separates it from the Stack (`GLOSSARY.md`).
 //
 // It **peeks** when idle: part of it sits below the bottom edge and the rest is
 // visibly there, so it is found by looking rather than by discovering an

@@ -245,7 +245,7 @@ export const Panel = memo(function Panel({
           ...pointer(),
           ...(capture ? { capture } : {}),
           // An empty Note is no Note at all: a Pick without one is meaningful
-          // rather than degenerate (`CONTEXT.md`), and the payload says so.
+          // rather than degenerate (`GLOSSARY.md`), and the payload says so.
           note: text.length > 0 ? text : null,
           target: target ? { sessionId: target.sessionId, pid: target.pid } : null,
         }

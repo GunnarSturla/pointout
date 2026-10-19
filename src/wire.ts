@@ -24,7 +24,7 @@ export const NOTE_MAX_CHARACTERS = 4000
 /**
  * The kinds of Excerpt v0 lifts. The set is closed because the kind is written
  * into the Fence, and a kind the page chose would be a Fence whose shape the
- * page chose (`CONTEXT.md`, spec §13).
+ * page chose (`GLOSSARY.md`, spec §13).
  */
 export const EXCERPT_KINDS = [
   'rendered-text',
@@ -42,7 +42,7 @@ export const REDACTION_REASONS = ['password', 'hidden'] as const
 
 export type RedactionReason = (typeof REDACTION_REASONS)[number]
 
-/** Content lifted from the page and carried as evidence (`CONTEXT.md`). */
+/** Content lifted from the page and carried as evidence (`GLOSSARY.md`). */
 export interface Excerpt {
   kind: ExcerptKind
   text: string
@@ -123,7 +123,7 @@ export interface PickBody {
   excerpts: Excerpt[]
   /** Which redaction rules fired; the server writes the sentence (spec §13). */
   redactions: RedactionReason[]
-  /** Null is no Note at all, which is meaningful (`CONTEXT.md`). */
+  /** Null is no Note at all, which is meaningful (`GLOSSARY.md`). */
   note: string | null
   target: Target | null
   /** Absent is the ordinary case: most Picks carry no Screen Capture. */
@@ -174,7 +174,7 @@ export type RegistryState =
   | typeof SHAPE_UNRECOGNISED
 
 /**
- * A live agent session a Pick could be addressed to (`CONTEXT.md`: Candidate).
+ * A live agent session a Pick could be addressed to (`GLOSSARY.md`: Candidate).
  * Candidacy is existence, not readiness.
  */
 export interface Candidate {
@@ -352,7 +352,7 @@ export interface PickActionAnswer {
 export const WITHDRAWABLE: readonly PickState[] = [QUEUED_UNADDRESSED, FAILED, UNKNOWN]
 
 /**
- * Whether a Pick, as `/status` reports it, can be withdrawn (`CONTEXT.md`:
+ * Whether a Pick, as `/status` reports it, can be withdrawn (`GLOSSARY.md`:
  * Withdraw). One rule for both halves: the Overlay offers the action exactly
  * where the server takes it. A Pick an agent acknowledged, finished or is
  * holding for an approval is past the point where taking it back means anything.

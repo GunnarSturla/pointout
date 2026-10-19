@@ -6,7 +6,7 @@ import { repoRoot } from '../harness/paths.js'
 import { replyTo } from '../harness/session-socket.js'
 
 // Seam 2: Withdraw, as a developer meets it on a minimized Panel
-// (`CONTEXT.md`: Withdraw; spec §8, §20, §21; overlay-polish ticket 10). The ×
+// (`GLOSSARY.md`: Withdraw; spec §8, §20, §21; overlay-polish ticket 10). The ×
 // is on a Pick exactly where the dev server would take it back, the DELETE is
 // the real server's, and what it answers is said on the Panel before it goes:
 // a write cannot be recalled, and a Panel that went quietly would imply it had

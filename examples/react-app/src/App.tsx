@@ -29,8 +29,8 @@ export function App() {
         <header className="page-header">
           <h1>pointout — test bed</h1>
           <p>
-            The development target and the fixture set. Nothing here moves: the only
-            motion in the project is the Overlay's, and it is behind a media query.
+            Every section is a case that is hard to point at correctly, and the tests
+            check each sends the agent to the right line. Hold Alt/Option to try one.
           </p>
         </header>
         <NestedOwners />

@@ -47,7 +47,7 @@ function pointerRows({ pointer, captureLine }: Pick): Array<[string, string]> {
   ])
   // The whole chain, innermost first, one link per line under one label: the
   // value a developer wants changed is as often set by an ancestor as by the
-  // element's own line (`CONTEXT.md`, spec §13).
+  // element's own line (`GLOSSARY.md`, spec §13).
   const { ownerChain, walkUp } = pointer
   if (ownerChain.length === 0) {
     // An empty chain is the one case where the walk-up distance is the whole of
@@ -85,7 +85,7 @@ function pointerRows({ pointer, captureLine }: Pick): Array<[string, string]> {
  * One link of the Owner chain: who wrote the call site, where, and what that
  * position says about itself. A link that could not be placed keeps its name and
  * states its reason — a Pick degrades by annotation, never by refusal
- * (`CONTEXT.md`, spec §12).
+ * (`GLOSSARY.md`, spec §12).
  *
  * The Confidence is stated per link and only per link. There is no such row for
  * the Pick: a Pick has no Confidence, and one stated over a mixed chain would be
@@ -114,7 +114,7 @@ function redactionLine(reason: string): string {
   )
 }
 
-/** The Fence (`CONTEXT.md`): the nonce is what the text inside cannot forge. */
+/** The Fence (`GLOSSARY.md`): the nonce is what the text inside cannot forge. */
 const noteFence = (nonce: string) => `--- note ${nonce} ---`
 const endNoteFence = (nonce: string) => `--- end note ${nonce} ---`
 
@@ -194,7 +194,7 @@ function renderPick(
 /**
  * The Excerpts, each one fenced and each one introduced as what it is: content
  * lifted from the page as evidence, never a request the agent honours
- * (`CONTEXT.md`, spec §13).
+ * (`GLOSSARY.md`, spec §13).
  *
  * The introduction sits *outside* the fence on purpose. A trim note written
  * inside it would be a sentence the page's own text could imitate; outside, the
@@ -225,7 +225,7 @@ function introduceExcerpt(excerpt: Excerpt): string {
 }
 
 function noteLines(pick: Pick): string[] {
-  // A note-less Pick is meaningful rather than degenerate (`CONTEXT.md`): it
+  // A note-less Pick is meaningful rather than degenerate (`GLOSSARY.md`): it
   // asks the agent to locate the element and stand by. So it is stated, not
   // left as an absence the reader has to notice.
   if (pick.note === null) return ['The developer sent no note with this pick.']

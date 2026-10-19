@@ -25,7 +25,7 @@ import type { Parsed } from './parse.js'
 /** Spec §13: an introduction, never a selector. */
 const DESCRIPTOR_CLASS_MAX = 2
 
-/** The machine-generated half of a Pick (`CONTEXT.md`). */
+/** The machine-generated half of a Pick (`GLOSSARY.md`). */
 export interface Pointer {
   url: string
   viewport: Viewport

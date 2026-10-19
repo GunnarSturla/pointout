@@ -114,7 +114,7 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
   extension the emit will have; type-only imports use `import type`.
 - **Nothing is imported from any `spike-*` directory** — a test enforces it. The spikes
   are labelled dead ends, readable as evidence of what was measured.
-- **`CONTEXT.md` is binding on identifiers as well as prose**, including its `_Avoid_`
+- **`GLOSSARY.md` is binding on identifiers as well as prose**, including its `_Avoid_`
   lists. Pick, Pointer, Note, Fence, Guard, Candidate, Target, Receipt, Ack, Overlay,
   Picker, Highlight, Panel, Stack, Confidence, Screen Capture.
 - **Movement is opt-in, and lives in one place.** Everything that travels, resizes or
@@ -276,11 +276,11 @@ tree an agent reported green, and then once per batch of merges, not once per me
   the Overlay imports, exports the hook budget and `DRAIN_PATH`. Ticket 16's
   "no reference to Claude or hooks" box is met in substance only; a follow-up needs a
   harness-neutral wire name and the hook budget out of `api.ts`.
-- **`CONTEXT.md`'s Receipt says "bad outcomes only"**, but a `delivered` Receipt
+- **`GLOSSARY.md`'s Receipt says "bad outcomes only"**, but a `delivered` Receipt
   releases a `held` Pick. The definition needs that clause.
 - **"reply" is on Ack's _Avoid_ list**, yet the code says "reply address" and the
   harness has `replyTo()`. Settle the word.
-- **`CONTEXT.md`'s Screen Capture says "a cropped image"**, with *crop* and *image*
+- **`GLOSSARY.md`'s Screen Capture says "a cropped image"**, with *crop* and *image*
   both on its own _Avoid_ list. The server's sentences no longer say "crop" (ticket 19).
 - **Ticket 19 left three small gaps**: the temp directory's "not opened" posture line
   has no test; a capture-able server that refuses the page's capture request still
@@ -290,14 +290,14 @@ tree an agent reported green, and then once per batch of merges, not once per me
   Receipt does not exist; "every state except idle and you never type again" is false
   for a session started below the root; the origin record carries a fourth field,
   `msg_id`; the Stop drain leaves three records, not one; "default mode" is `manual`.
-- **`CONTEXT.md` has no term for the report-back offer and no definition of
+- **`GLOSSARY.md` has no term for the report-back offer and no definition of
   `unknown`** (ticket 14), and none for the Shutter (ticket 18), which is now in
   `data-shutter`, `styles.ts` and `docs/motion.md`.
 - **The `review-animations` gate needs a re-run** before v0 is called done. Its
   2026-09-23 outcome covers the build at `2640572`; everything the overlay-polish
   tickets 03 to 10 made move came after it. `docs/motion.md` › *The re-run owed* lists
   what it has to see. It is run by the human, by name; no agent runs it.
-- **`CONTEXT.md` lags the Overlay** (overlay-polish): the Picker's _Avoid_ says no
+- **`GLOSSARY.md` lags the Overlay** (overlay-polish): the Picker's _Avoid_ says no
   form is chosen, and the design plan now calls it an edge tab; the glossary says the
   **current** and **live** Highlight where the code says *mark* (`marks.ts`,
   `data-mark`); and there is no term for a frame shield.

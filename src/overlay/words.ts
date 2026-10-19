@@ -223,7 +223,7 @@ export function noneAcknowledgedYet(sent: number): string {
 
 /**
  * The × on a minimized Panel, by name: what a screen reader announces, and the
- * pointer's `title` (`CONTEXT.md`: Withdraw).
+ * pointer's `title` (`GLOSSARY.md`: Withdraw).
  */
 export const WITHDRAW = 'Withdraw this pick'
 

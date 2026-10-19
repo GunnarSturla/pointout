@@ -31,11 +31,10 @@ Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 
 ## State of this repo
 
-There is no git remote, and no hosted tracker. Everything lives in this repo.
+The repo has a GitHub remote (`GunnarSturla/pointout`), but issues are not tracked
+there: everything lives in `.scratch/`, and no skill should call `gh issue`.
 
-The effort currently in flight is `.scratch/vite-agent-inspect/`, holding `map.md`,
-`spec.md`, a `research/` directory of findings, and `issues/` numbered from `01`.
-Its issue files already follow the conventions above: a `Type:` line, a `Status:`
-line, a `Blocked by:` line, and answers appended under `## Answer`.
-
-New efforts get their own sibling directory under `.scratch/`.
+Each effort is a sibling directory under `.scratch/` holding `map.md`, `issues/`
+numbered from `01`, and optionally `spec.md` and a `research/` directory. Issue files
+carry a `Type:` line, a `Status:` line and a `Blocked by:` line, with answers appended
+under `## Answer`. The effort currently in flight is `.scratch/nextjs-connector/`.

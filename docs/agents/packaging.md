@@ -64,7 +64,7 @@ the dev server, or between the drain CLI and the dev server, is written once in
 kinds, the Note cap — and both halves import it. A wire shape spelled twice by hand is
 a shape that drifts; `api.ts` names the paths, `wire.ts` names what travels on them.
 
-Types are named in `CONTEXT.md`'s vocabulary. The glossary applies to type names exactly
+Types are named in `GLOSSARY.md`'s vocabulary. The glossary applies to type names exactly
 as it applies to prose: a `Candidate` is a Candidate, and nothing else gets called one.
 
 ## The commands

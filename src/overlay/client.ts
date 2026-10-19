@@ -184,7 +184,7 @@ export type Withdrawn =
   | { ok: false; reason: string }
 
 /**
- * Withdraw a submitted Pick (`CONTEXT.md`: Withdraw; spec §20). The browser's
+ * Withdraw a submitted Pick (`GLOSSARY.md`: Withdraw; spec §20). The browser's
  * own Origin is what the guard reads, so nothing else is sent.
  */
 export async function withdrawPick(pickId: string): Promise<Withdrawn> {

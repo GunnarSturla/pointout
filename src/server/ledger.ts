@@ -97,7 +97,7 @@ export interface LedgerRecord {
 }
 
 /**
- * Who may have this Pick now, whatever this server does next (`CONTEXT.md`:
+ * Who may have this Pick now, whatever this server does next (`GLOSSARY.md`:
  * Withdraw). A socket write opens a Pick at `sent`, so the first transition
  * says whether its Target was written to; the floor's claim is any later move
  * from `queued-unaddressed` to `sent`. A Receipt that refused it is the only

@@ -52,7 +52,7 @@ the linter is scoped differently — see below.
 
 **Format everything, including Markdown.** Tried, and reverted the same hour. oxfmt
 formats Markdown, and the default run rewrote **56 prose files**: the spec, every
-resolved map ticket, every closed build ticket, the research notes and `CONTEXT.md`.
+resolved map ticket, every closed build ticket, the research notes and `GLOSSARY.md`.
 Those are a record of what was decided and when. A formatter run over a closed ticket
 does not tidy it, it falsifies it.
 

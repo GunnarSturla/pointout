@@ -9,7 +9,7 @@ import type { HarnessServer } from '../harness/dev-server.js'
 
 // The server half of §14's re-resolve at Send: a Target named in the body is
 // re-checked, and a Target that has left is reported with the replacement the
-// chain now yields — never silently exchanged for it (`CONTEXT.md`, spec §21).
+// chain now yields — never silently exchanged for it (`GLOSSARY.md`, spec §21).
 //
 // Every string here is written out rather than imported: the endpoint path, the
 // refusal's field names and the registry's file naming are the contract

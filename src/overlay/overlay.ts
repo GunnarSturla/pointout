@@ -389,7 +389,7 @@ export function startOverlay(document: Document): OverlayHandle {
   const onClick = (event: MouseEvent) => {
     if (mode === 'off' || ours(event)) return
     // With a Panel already open, only Alt-click means anything: a plain click is
-    // the developer using their app, and the Panel is not modal (`CONTEXT.md`).
+    // the developer using their app, and the Panel is not modal (`GLOSSARY.md`).
     if (mode === 'picked' && !event.altKey) return
     // The app never sees the click that made the Pick.
     event.preventDefault()

@@ -487,7 +487,7 @@ async function resolveReport(
 }
 
 /**
- * Withdraw (`CONTEXT.md`, spec §20): the developer takes back a submitted Pick
+ * Withdraw (`GLOSSARY.md`, spec §20): the developer takes back a submitted Pick
  * that went wrong. Everything this server still holds of it goes — the queue
  * entry, the report-back clock, the Screen Capture, the ledger row — and the
  * answer says whether a session already has it, because nothing here can take

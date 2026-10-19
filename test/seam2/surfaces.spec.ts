@@ -286,7 +286,7 @@ test('a Pick rests as a minimized Panel that says only what is known, and clears
   await page.clock.install()
   await open(page, token)
 
-  // An idle page: the Picker is there and the Stack is not (`CONTEXT.md`).
+  // An idle page: the Picker is there and the Stack is not (`GLOSSARY.md`).
   await expect(page.locator(STACK)).toHaveCount(0)
   const idle = await boxOf(page, PICKER)
   const seen = await viewport(page)

@@ -31,7 +31,7 @@ Measured on `NestedOwners.tsx`, picking the badge:
 
 A Pick carries a developer saying *"this element needs more padding"* or *"change this
 text"*. The line they mean is the tag they pointed at, not the expression that produced
-it. `CONTEXT.md` defines the Owner chain as "the place a component wrote the tag, or
+it. `GLOSSARY.md` defines the Owner chain as "the place a component wrote the tag, or
 passed the props" — line 42 is where ArticleList wrote the tag; line 37 is where it
 started a loop.
 

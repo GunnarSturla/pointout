@@ -11,7 +11,7 @@ import { readAppFrame } from './stack.js'
 // raw stack string per link and no parser; everything that turns those strings
 // into repo-relative positions happens here.
 //
-// The raw strings are Excerpts (`CONTEXT.md`): validated on the way in, read by
+// The raw strings are Excerpts (`GLOSSARY.md`): validated on the way in, read by
 // the parser, and never interpolated into the body an agent reads. What the
 // Pointer prints is only ever built here, out of a component name, a path this
 // server computed, and numbers.
@@ -39,7 +39,7 @@ export type DegradedMode =
   | 'unmapped-position'
 
 /**
- * What one frame of an Owner chain says about itself (`CONTEXT.md`): exact,
+ * What one frame of an Owner chain says about itself (`GLOSSARY.md`): exact,
  * approximate with a reason, or absent with a reason. A property of a frame and
  * never of a Pick — it is the rule that a Pick degrades by annotation rather
  * than by refusal.

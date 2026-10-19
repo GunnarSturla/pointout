@@ -13,7 +13,7 @@ export type TargetChoice =
 
 /**
  * A named Target is re-checked, never silently exchanged for another
- * (`CONTEXT.md`). A Target that has left and has a successor is a 409 naming it,
+ * (`GLOSSARY.md`). A Target that has left and has a successor is a 409 naming it,
  * which the Overlay asks about in place; one with no successor is a plain
  * refusal, because there is nothing to offer instead.
  */
