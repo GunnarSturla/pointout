@@ -8,6 +8,10 @@ import {
 import { startExampleServer } from '../harness/dev-server.js'
 import type { HarnessServer } from '../harness/dev-server.js'
 
+// Vite only: this holds the in-process Vite harness itself, its environment
+// patch and its virtual module. The Next harness is next-harness.test.ts's
+// (Next.js Connector ticket 05).
+//
 // How Vite serves the Overlay's virtual module. Written out rather than
 // imported: no test imports a server module (docs/agents/testing.md).
 const OVERLAY_MODULE_URL = '/@id/__x00__virtual:pointout/overlay'

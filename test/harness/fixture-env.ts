@@ -73,7 +73,10 @@ const REAL_GIT = resolveRealGit()
 // The fake reads its behaviour at call time, so a test can change its mind
 // between picks: `png` (default) writes the known file, `empty` writes a
 // zero-byte one, `sleep` hangs, `fail` exits non-zero. The real CLI takes the
-// output path last.
+// output path last. The mode comes from the environment the server was started
+// with, unless `captureBecomes` has written one to the mode file since: a `next
+// dev` is a process of its own, which a change to this process's environment
+// never reaches (Next.js Connector ticket 05).
 //
 // Every call records its own pid and its arguments, which is how a test reads
 // the rectangle the server asked for and how it sees that an aborted capture
@@ -84,9 +87,15 @@ const FAKE_SCREENCAPTURE = `#!/bin/sh
 if [ -n "$CAPTURE_LOG" ]; then printf '%s\\t%s\\n' "$$" "$*" >> "$CAPTURE_LOG"; fi
 out=""
 for arg in "$@"; do out="$arg"; done
-case "\${FAKE_SCREENCAPTURE_MODE:-png}" in
+mode="\${FAKE_SCREENCAPTURE_MODE:-png}"
+seconds="\${FAKE_SCREENCAPTURE_SLEEP:-30}"
+if [ -n "$CAPTURE_MODE_FILE" ] && [ -s "$CAPTURE_MODE_FILE" ]; then
+  read -r mode seconds < "$CAPTURE_MODE_FILE"
+  seconds="\${seconds:-30}"
+fi
+case "$mode" in
   empty) : > "$out" ;;
-  sleep) exec sleep "\${FAKE_SCREENCAPTURE_SLEEP:-30}" ;;
+  sleep) exec sleep "$seconds" ;;
   fail)  echo "fake screencapture: refused" >&2; exit 1 ;;
   *)     cp "$KNOWN_PNG" "$out" ;;
 esac
@@ -114,6 +123,11 @@ export interface FixtureEnv {
   captureCalls(): string[]
   /** The pid of each of those calls, in the same order. */
   capturePids(): number[]
+  /**
+   * Switch the fake `screencapture` into `mode` from its next call on, in
+   * whichever process the server runs; `sleep` hangs for `seconds` (30).
+   */
+  captureBecomes(mode: 'png' | 'empty' | 'sleep' | 'fail', seconds?: number): void
   env: Record<string, string>
   cleanup(): void
 }
@@ -154,6 +168,8 @@ export function createFixtureEnv({
       .filter(Boolean)
       .map((line) => line.split('\t'))
 
+  const captureModeFile = join(dir, 'capture-mode')
+
   const gitLog = join(dir, 'git-calls.log')
   if (gitShim) {
     writeFileSync(gitLog, '')
@@ -186,6 +202,9 @@ export function createFixtureEnv({
     },
     captureCalls: () => captureLines().map(([, args]) => args ?? ''),
     capturePids: () => captureLines().map(([pid]) => Number(pid)),
+    captureBecomes(mode, seconds) {
+      writeFileSync(captureModeFile, `${mode} ${seconds ?? ''}\n`)
+    },
     env: {
       [ENV_REGISTRY_DIR]: registryDir,
       [ENV_SOCKET_DIR]: socketDir,
@@ -194,6 +213,7 @@ export function createFixtureEnv({
       [ENV_PLATFORM]: platform,
       KNOWN_PNG: knownPng,
       CAPTURE_LOG: captureLog,
+      CAPTURE_MODE_FILE: captureModeFile,
     },
     cleanup() {
       rmSync(dir, { recursive: true, force: true })
