@@ -39,9 +39,18 @@ describe('the spikes are labelled dead ends', () => {
   })
 })
 
+/** Installed or generated, never written here: `.next` is Next's build output. */
+const SKIPPED = new Set(['node_modules', 'dist', '.next'])
+
 describe('nothing imports a spike', () => {
   const selfPath = fileURLToPath(import.meta.url)
-  const roots = ['src', 'examples/react-app/src', 'test']
+  const roots = [
+    'src',
+    'examples/react-app/src',
+    'examples/shared',
+    'examples/next-app',
+    'test',
+  ]
   // Named rather than globbed, and every one of them has to be there: a config
   // that is silently skipped because it was renamed is a check that passes
   // while checking nothing.
@@ -50,11 +59,12 @@ describe('nothing imports a spike', () => {
     'vitest.seam3.config.ts',
     'playwright.config.ts',
     'examples/react-app/vite.config.ts',
+    'examples/next-app/next.config.ts',
   ]
 
   function* sourceFiles(dir: string): Generator<string> {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === 'node_modules' || entry.name === 'dist') continue
+      if (SKIPPED.has(entry.name)) continue
       const full = join(dir, entry.name)
       if (entry.isDirectory()) yield* sourceFiles(full)
       else if (/\.(js|jsx|mjs|cjs|ts|tsx|cts|mts)$/.test(entry.name)) yield full
@@ -90,12 +100,18 @@ describe('nothing imports a spike', () => {
 describe('the repository is TypeScript', () => {
   // Ticket 23. Asserted rather than assumed, so a later ticket cannot quietly
   // add a JavaScript module back into a source tree.
-  const sourceTrees = ['src', 'test', 'examples/react-app/src']
+  const sourceTrees = [
+    'src',
+    'test',
+    'examples/react-app/src',
+    'examples/shared',
+    'examples/next-app',
+  ]
   const javascript = /\.(js|jsx|mjs|cjs)$/
 
   function* everyFile(dir: string): Generator<string> {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name === 'node_modules' || entry.name === 'dist') continue
+      if (SKIPPED.has(entry.name)) continue
       const full = join(dir, entry.name)
       if (entry.isDirectory()) yield* everyFile(full)
       else yield full

@@ -22,8 +22,10 @@ import type { FakeSession } from '../harness/session-socket.js'
 const PICK = '/__agent/pick'
 
 /** The fixture module, as the browser asks for it and as the repo holds it. */
-const MODULE_URL = '/src/fixtures/OwnerChainDepth.tsx'
-const MODULE_PATH = 'examples/react-app/src/fixtures/OwnerChainDepth.tsx'
+const MODULE_PATH = 'examples/shared/fixtures/OwnerChainDepth.tsx'
+// The shared fixtures sit outside the Vite root, so Vite serves them under
+// its own `/@fs/` prefix, by absolute path.
+const MODULE_URL = '/@fs' + join(repoRoot, MODULE_PATH)
 
 const SESSION_PID = 500_101
 

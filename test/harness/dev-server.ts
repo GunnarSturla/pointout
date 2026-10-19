@@ -5,6 +5,8 @@ import type { FixtureEnv } from './fixture-env.js'
 import { createRecordingLogger } from './logger.js'
 import type { LogEntry } from './logger.js'
 import { exampleAppRoot } from './paths.js'
+import { startNextServer } from './next-server.js'
+import type { HostName } from './hosts.js'
 
 export interface StartServerOptions {
   /** The Vite root. */
@@ -115,13 +117,33 @@ export async function startServer({
   }
 }
 
+export interface ExampleServerOptions extends Partial<StartServerOptions> {
+  /**
+   * Which Host serves the example: `vite` (the default) is
+   * `examples/react-app` in this process, `next` is `examples/next-app` under
+   * a `next dev` of its own (next-server.ts). Both render `examples/shared/`.
+   */
+  on?: HostName
+}
+
 /**
  * Seam 1's default server: the real example app, so the module graph and the
- * sourcemaps are real.
+ * sourcemaps are real. A test names the Host it wants with `on`.
  */
-export async function startExampleServer(
-  options: Partial<StartServerOptions> = {},
-): Promise<HarnessServer> {
+export async function startExampleServer({
+  on = 'vite',
+  ...options
+}: ExampleServerOptions = {}): Promise<HarnessServer> {
+  if (on === 'next') {
+    const { root, configFile, port, ...next } = options
+    if (root !== undefined || configFile !== undefined || port !== undefined) {
+      throw new Error(
+        'the Next.js example takes no root, config file or port: it is always ' +
+          'examples/next-app, and Next chooses its port',
+      )
+    }
+    return startNextServer(next)
+  }
   return startServer({
     root: exampleAppRoot,
     configFile: exampleAppRoot + '/vite.config.ts',

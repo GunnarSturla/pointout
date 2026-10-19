@@ -23,7 +23,7 @@ const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
  * `<CardHeading>` as an argument to another JSX call, so its own frame survives
  * everywhere — which is what makes this fixture the mixed chain this ticket needs.
  */
-const NESTED_FIXTURE = 'examples/react-app/src/fixtures/NestedOwners.tsx'
+const NESTED_FIXTURE = 'examples/shared/fixtures/NestedOwners.tsx'
 const CARD_HEADING = '[data-fixture="card-heading"]'
 
 /** The element whose owner lives in a package Vite pre-bundled. */

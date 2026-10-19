@@ -1,3 +1,5 @@
+'use client'
+
 import { NestedOwners } from './fixtures/NestedOwners.tsx'
 import { OwnerChainDepth } from './fixtures/OwnerChainDepth.tsx'
 import { DependencyComponent } from './fixtures/DependencyComponent.tsx'
@@ -13,7 +15,10 @@ import { HotUpdatable } from './fixtures/HotUpdatable.tsx'
 import { ElementExcerpts } from './fixtures/ElementExcerpts.tsx'
 import { DensePage } from './fixtures/DensePage.tsx'
 
-// The test bed. Every section is a hard case the Pointer has to survive; each
+// The test bed, shared by both example apps: `examples/react-app` renders it on
+// Vite, and `examples/next-app` on both of Next's routers. It is a client
+// component, so on Next every fixture is a client component, as on Vite, and an
+// Owner chain names the same file on either Host. Every section is a hard case the Pointer has to survive; each
 // one carries a `data-fixture` attribute that tests select on.
 //
 // Ticket 01 shipped four, ticket 05 a fifth and ticket 08 the four its hit test

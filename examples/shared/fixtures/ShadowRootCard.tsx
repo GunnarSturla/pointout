@@ -13,17 +13,24 @@ import { createPortal } from 'react-dom'
 
 const TAG = 'fixture-shadow-card'
 
-class ShadowCardElement extends HTMLElement {
-  constructor() {
-    super()
-    // In the constructor rather than on connect: the root is then there the
-    // moment React has a ref, and the portal needs no second render to find it.
-    this.attachShadow({ mode: 'open' })
-  }
-}
-
 // Vite re-executes this module on a hot update; defining the tag twice throws.
-if (!customElements.get(TAG)) customElements.define(TAG, ShadowCardElement)
+// A server render (examples/next-app) has no `customElements` and no
+// `HTMLElement`, so it defines nothing, and the browser upgrades the tag it
+// rendered when this module runs there, before hydration.
+if (typeof customElements !== 'undefined' && !customElements.get(TAG)) {
+  customElements.define(
+    TAG,
+    class ShadowCardElement extends HTMLElement {
+      constructor() {
+        super()
+        // In the constructor rather than on connect: the root is then there the
+        // moment React has a ref, and the portal needs no second render to find
+        // it.
+        this.attachShadow({ mode: 'open' })
+      }
+    },
+  )
+}
 
 /** What React renders **inside** the shadow root. */
 function ShadowCardBody() {

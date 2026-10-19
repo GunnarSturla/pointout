@@ -40,7 +40,11 @@
     "coverage/**",
     "test-results/**",
     // Committed dead ends, never edited (spec §1).
-    "spike-*/**"
+    "spike-*/**",
+    // What `next dev` writes into examples/next-app, and the harness's
+    // per-server tsconfigs beside it.
+    "**/.next/**",
+    "**/.harness/**"
   ],
 
   "overrides": [
@@ -62,6 +66,14 @@
       "plugins": ["react"],
       // React 19's automatic JSX runtime: nothing needs `React` in scope.
       "rules": { "react/react-in-jsx-scope": "off" }
+    },
+    {
+      // The Next test bed's framed route is this app's own page on its own
+      // origin, and it must run its scripts there to hydrate: scripts and the
+      // same origin together are the case the fixture exists to hold.
+      "files": ["examples/next-app/fixtures/FramedRoute.tsx"],
+      "plugins": ["react"],
+      "rules": { "react/iframe-missing-sandbox": "off" }
     }
   ]
 }

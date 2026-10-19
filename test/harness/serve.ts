@@ -10,6 +10,7 @@ import { clearDrainLock } from './drain-lock.js'
 import { clearHotUpdateLock } from './hot-update-lock.js'
 import { takeSeam2Lock } from './seam2-lock.js'
 import { listeningSession } from './session-socket.js'
+import { NEXT_URL_ENV } from './hosts.js'
 
 export const SEAM2_PORT = Number(process.env.SEAM2_PORT ?? 5178)
 
@@ -70,10 +71,20 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
   clearHotUpdateLock()
   clearDrainLock()
 
+  // The Next.js test bed boots beside it, in a process of its own, on a port
+  // Next chooses; a spec reaches it through `hostURL('next', …)` (hosts.ts).
+  const nextStarting = startExampleServer({ on: 'next', claudePid: SESSION_PID })
+  // Awaited below; a failure there is reported there, not as an unhandled one.
+  nextStarting.catch(() => {})
+
   let server
   try {
     server = await startExampleServer({ port: SEAM2_PORT, claudePid: SESSION_PID })
   } catch (error) {
+    await nextStarting.then(
+      (next) => next.close(),
+      () => {},
+    )
     releaseLock()
     // The port is bound with `strictPort`, so a leftover dev server is a hard
     // failure rather than a silent attach to whatever is already there.
@@ -84,6 +95,18 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
       { cause: error },
     )
   }
+
+  let next
+  try {
+    next = await nextStarting
+  } catch (error) {
+    await server.close()
+    releaseLock()
+    throw new Error('seam 2 could not start examples/next-app under next dev', {
+      cause: error,
+    })
+  }
+  process.env[NEXT_URL_ENV] = next.url
 
   const framesLog = join(server.fixture.dir, 'frames.ndjson')
   const secondFramesLog = join(server.fixture.dir, 'frames-second.ndjson')
@@ -135,12 +158,14 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
     }),
   ])
 
-  process.stdout.write(`seam 2 dev server listening on ${server.url}\n`)
+  process.stdout.write(
+    `seam 2 dev server listening on ${server.url}, and next dev on ${next.url}\n`,
+  )
 
   return async function stopServingSeam2() {
     try {
       for (const session of sessions) await session.close()
-      await server.close()
+      await Promise.all([server.close(), next.close()])
     } finally {
       releaseLock()
     }

@@ -13,7 +13,7 @@ the element even when they cannot be told *where*.
 A link reads as one line:
 
 ```
-  owner chain  ChainLeaf — examples/react-app/src/fixtures/OwnerChainDepth.tsx:28:7 (exact)
+  owner chain  ChainLeaf — examples/shared/fixtures/OwnerChainDepth.tsx:28:7 (exact)
                ArticleList — no location (absent: call-site-frame-elided-by-engine — this engine's proper tail calls deleted …)
                Skeleton — no location (dependency, absent: module-not-in-graph — …)
 ```

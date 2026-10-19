@@ -22,11 +22,11 @@ const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
  * it an argument to another JSX call rather than a tail call — so no engine's
  * proper tail calls delete a frame and the chain is exact in all three.
  */
-const FIXTURE = 'examples/react-app/src/fixtures/OwnerChainDepth.tsx'
+const FIXTURE = 'examples/shared/fixtures/OwnerChainDepth.tsx'
 const LEAF = '[data-fixture="chain-leaf"]'
 
 /** The forwarding case: ArticleList creates the badge, ArticleCard only places it. */
-const NESTED_FIXTURE = 'examples/react-app/src/fixtures/NestedOwners.tsx'
+const NESTED_FIXTURE = 'examples/shared/fixtures/NestedOwners.tsx'
 const BADGE = '[data-fixture="passed-down-badge"]'
 
 const PICKER = '[data-part="picker"]'

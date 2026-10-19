@@ -21,3 +21,10 @@ coverage/
 
 # agent worktrees (Claude Code isolation: "worktree")
 .claude/worktrees/
+
+# next (examples/next-app): its output folder, the type file it rewrites
+# for whichever output folder the last `next dev` used, and the harness's
+# per-server tsconfigs
+.next/
+next-env.d.ts
+.harness/

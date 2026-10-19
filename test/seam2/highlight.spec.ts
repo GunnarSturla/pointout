@@ -44,7 +44,7 @@ const HOT_BOX = '[data-fixture="hot-update-box"]'
 
 /** The one declaration a hot update rewrites, and what it says at rest. */
 const HOT_CSS = fileURLToPath(
-  new URL('../../examples/react-app/src/fixtures/hot-update.css', import.meta.url),
+  new URL('../../examples/shared/fixtures/hot-update.css', import.meta.url),
 )
 const HOT_AT_REST = 'height: 3rem'
 const HOT_UPDATED = 'height: 7rem'

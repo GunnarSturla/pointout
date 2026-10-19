@@ -1,4 +1,4 @@
-import { rmSync } from 'node:fs'
+import { rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { advanceClock, createFixtureEnv } from '../harness/fixture-env.js'
@@ -290,6 +290,29 @@ describe('the 30-minute TTL', () => {
     expect(expired.reason).toBe(TTL_SENTENCE)
     expect(expired.queued).toBe(false)
     expect(server.log()).toContain(TTL_SENTENCE)
+  })
+
+  it('passes for a server that reads its clock from a skew file', async () => {
+    // A Next.js dev server runs in a process of its own, which `process.env`
+    // here never reaches, so the harness moves its clock through a file the
+    // server re-reads on every call. Written out: `POINTOUT_CLOCK_SKEW_FILE`.
+    const env = createFixtureEnv({ claudePid: 0 })
+    fixture = env
+    const skewFile = join(env.dir, 'clock-skew')
+    writeFileSync(skewFile, '0')
+    const app = apps.create({ git: true })
+    const server = await apps.serve(app, {
+      env: { ...env.env, POINTOUT_CLOCK_SKEW_FILE: skewFile },
+    })
+
+    const { pickId } = await postPick(server, pointerBody({ note: 'later' }))
+    expect(rowFor(await getStatus(server), pickId).state).toBe('queued-unaddressed')
+
+    writeFileSync(skewFile, String(PAST_THE_TTL))
+
+    const expired = rowFor(await getStatus(server), pickId)
+    expect(expired.state).toBe('failed')
+    expect(expired.reason).toBe(TTL_SENTENCE)
   })
 
   it('never writes an expired Pick to a session that appears afterwards', async () => {

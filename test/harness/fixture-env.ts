@@ -34,12 +34,32 @@ export const ENV_PLATFORM = 'POINTOUT_PLATFORM'
 export const ENV_CLOCK_SKEW = 'POINTOUT_CLOCK_SKEW_MS'
 
 /**
- * Make time pass for every dev server in this process. `0` puts the clock back,
- * which is what a test does in `afterEach`.
+ * The same skew, in a file, for a dev server in a process of its own (a `next
+ * dev` the harness spawned), which `process.env` here never reaches. The server
+ * re-reads the file on every call. Test-only, like the variable above.
+ */
+export const ENV_CLOCK_SKEW_FILE = 'POINTOUT_CLOCK_SKEW_FILE'
+
+/**
+ * This test process's skew file, one per process. Seam 1 runs each file in a
+ * forked process of its own, so a file's clock reaches the Next servers it
+ * started and no other file's.
+ */
+export const clockSkewFile = join(tmpdir(), `pointout-clock-skew-${process.pid}`)
+
+/**
+ * Make time pass for every dev server this process started, whether it runs in
+ * this process or was spawned by it. `0` puts the clock back, which is what a
+ * test does in `afterEach`.
  */
 export function advanceClock(milliseconds: number): void {
-  if (milliseconds === 0) delete process.env[ENV_CLOCK_SKEW]
-  else process.env[ENV_CLOCK_SKEW] = String(milliseconds)
+  if (milliseconds === 0) {
+    delete process.env[ENV_CLOCK_SKEW]
+    rmSync(clockSkewFile, { force: true })
+  } else {
+    process.env[ENV_CLOCK_SKEW] = String(milliseconds)
+    writeFileSync(clockSkewFile, String(milliseconds))
+  }
 }
 
 /** A 1×1 PNG. What the fake `screencapture` writes when it is asked to succeed. */

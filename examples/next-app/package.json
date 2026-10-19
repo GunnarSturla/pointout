@@ -1,0 +1,21 @@
+{
+  "name": "pointout-example-next",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The in-repo Next.js 16 test bed for pointout, built from the same fixtures as the Vite one.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -H localhost"
+  },
+  "dependencies": {
+    "next": "16.4.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-loading-skeleton": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^7.0.2"
+  }
+}
