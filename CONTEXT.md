@@ -163,3 +163,18 @@ is what separates it from the Picker: the Picker is there before any Pick and af
 one, the Stack only in between.
 _Avoid_: dock, tray, list, queue (the last means the claim-once delivery queue, which is a
 different thing and lives on the dev server)
+
+### Where pointout runs
+
+**Host**:
+The development server pointout runs inside and serves the app the developer is picking in:
+Vite, or Next.js. The Host decides how pointout is set up; it never changes what the developer
+sees in the page. "The dev server" elsewhere in this file means the Host.
+_Avoid_: framework (React is the framework, and both Hosts serve React), bundler, platform
+
+**Connector**:
+pointout's layer for one Host: what puts the Overlay in the page, serves the Guard's
+endpoints, turns the Host's served positions back into source positions, and says where the
+Host is listening. Everything else belongs to no Host, and one Connector exists per Host.
+_Avoid_: adapter (that word belongs to delivery, for other harnesses), integration, plugin
+(that is only how the Vite Connector is installed)
