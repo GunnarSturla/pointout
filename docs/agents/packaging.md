@@ -35,6 +35,7 @@ bare `pointout` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`, so no Host is the de
 | `pointout/vite` | the Vite plugin, `pointout()`, also the default export | `src/vite/index.ts` |
 | `pointout/vite`, `require` | throws, naming `await import("pointout/vite")` | `src/vite/cjs-entry.cts` |
 | `pointout/next` | `withPointout()`, also the default export; ESM, and `require()`able on Node ≥ 22.12, so a CommonJS `next.config.js` works | `src/next/index.ts` |
+| `pointout/next/overlay` | the Overlay's entry on a Next page: `withPointout()` adds it to `instrumentationClientInject`, and it draws the Overlay once React has hydrated; a consumer never imports it | `src/next/overlay.ts` |
 
 The bin, `pointout`, is the CLI and belongs to no Host. `vite` is an **optional** peer
 (`peerDependenciesMeta`); `next` joins it the same way. Each is needed only by its own
