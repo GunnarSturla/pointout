@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { isRecord } from '../../server/parse.js'
 import { INSTALLED_DRAIN_BIN } from '../setup.js'
 import type { HarnessSetup, Project, SetupItem, SetupPlan } from '../setup.js'
-import { SKILL } from './skill.js'
+import { skillFor } from './skill.js'
 
 // What "set up" means to Claude Code (spec §18): two hook entries in the
 // project's own settings, and the setup skill in the project's skills
@@ -155,14 +155,15 @@ function planSkill(project: Project): SetupPlan {
   const path = join(project.root, '.claude', 'skills', 'pointout', 'SKILL.md')
   const before = existsSync(path) ? readFileSync(path, 'utf8') : null
   const what = 'setup skill'
-  if (before === SKILL)
+  const skill = skillFor(project.host)
+  if (before === skill)
     return { items: [{ what, path, action: 'already present' }], writes: [] }
   // A copy that differs is replaced, and the report says so: the skill's
   // words are part of what keeps a Pick from being taken for approval, and
   // an edited copy is not a version this package can vouch for.
   return {
     items: [{ what, path, action: before === null ? 'wrote' : 'updated' }],
-    writes: [{ path, content: SKILL }],
+    writes: [{ path, content: skill }],
   }
 }
 

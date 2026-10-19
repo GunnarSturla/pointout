@@ -12,8 +12,20 @@
 // file — and a seam-1 test reads the installed copy for each. The ingress
 // check is not described either: a Pick written straight into the inbox never
 // passed it, so its arrival proves nothing about where it came from.
+//
+// One line differs by Host: the dev server the Picks come from, and the setup
+// it needs (Next.js Connector ticket 09). It is a fact about how the floor
+// fails, not an instruction, and `init` writes the copy for the Host it chose.
 
-export const SKILL = `---
+import type { HostSetup } from '../hosts.js'
+
+/** A bullet's continuation lines sit under its first word. */
+function indent(text: string): string {
+  return text.replaceAll('\n', '\n  ')
+}
+
+/** The setup skill as `init` writes it for `host`. */
+export const skillFor = (host: HostSetup): string => `---
 name: pointout
 description: What a pointout pick is and how to handle one. Use when a message or added context contains "pointout — N pick(s) from the browser", or carries a "--- note <nonce> ---" fence.
 ---
@@ -103,6 +115,8 @@ by its own URLs.
 
 ## How it fails
 
+- ${indent(host.skillSetup)} When no pick arrives, either that setup is missing or
+  the dev server is not running.
 - A pick into a session in manual permission mode will stall on a permission
   prompt until a human approves it.
 - A pick is delivered only within 30 minutes of being picked. The \`picked\` line
