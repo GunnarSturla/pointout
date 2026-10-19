@@ -5,6 +5,9 @@ import { startExampleServer } from '../harness/dev-server.js'
 import { sharedFixturesRoot } from '../harness/paths.js'
 import { tempApps } from '../harness/temp-app.js'
 
+// Vite only: `server.fs.allow` is Vite's own setting, and the Next.js Connector
+// contributes nothing to Next's config (Next.js Connector ticket 05).
+//
 // Ticket 25. The plugin contributes `server.fs.allow` so the Overlay can be
 // served from inside its own package, and Vite treats any contribution as a
 // replacement for its workspace-root default. A consumer whose app is not

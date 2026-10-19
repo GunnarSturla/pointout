@@ -5,6 +5,8 @@ import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { advanceClock, createFixtureEnv } from '../harness/fixture-env.js'
 import type { FixtureEnv } from '../harness/fixture-env.js'
+import { groupMembers } from '../harness/next-server.js'
+import type { NextHarnessServer } from '../harness/next-server.js'
 import { repoRoot } from '../harness/paths.js'
 import { fakeSessions } from '../harness/session-socket.js'
 import { tempApps } from '../harness/temp-app.js'
@@ -53,423 +55,437 @@ interface HookOutput {
   hookSpecificOutput: { hookEventName: string; additionalContext: string }
 }
 
-const apps = tempApps()
-const sessions = fakeSessions()
-const fixtures: FixtureEnv[] = []
+/** Every Host this suite is the same on (Next.js Connector ticket 05). */
+const HOSTS = ['vite', 'next'] as const
 
-afterEach(async () => {
-  advanceClock(0)
-  await apps.cleanup()
-  await sessions.closeAll()
-  while (fixtures.length) fixtures.pop()!.cleanup()
-})
+describe.each(HOSTS)('on %s', (on) => {
+  const apps = tempApps(on)
+  const sessions = fakeSessions()
+  const fixtures: FixtureEnv[] = []
 
-/** A dev server on a checkout of its own, with a registry nothing else shares. */
-async function startDrainServer(
-  app?: TempApp,
-  host?: string,
-): Promise<{ app: TempApp; server: HarnessServer; env: FixtureEnv }> {
-  const env = createFixtureEnv({ claudePid: 0 })
-  fixtures.push(env)
-  const checkout = app ?? apps.create({ git: true })
-  const server = await apps.serve(checkout, { env: env.env, ...(host ? { host } : {}) })
-  return { app: checkout, server, env }
-}
+  afterEach(async () => {
+    advanceClock(0)
+    await apps.cleanup()
+    await sessions.closeAll()
+    while (fixtures.length) fixtures.pop()!.cleanup()
+  })
 
-/** The path the posture block says this dev server wrote its entry to. */
-function entryPath(server: HarnessServer): string {
-  const found = new RegExp(`${POSTURE_LABEL}\\s+(\\S+\\.json)`).exec(server.log())
-  if (!found?.[1]) {
-    throw new Error(`no ${POSTURE_LABEL} line in the posture block:\n${server.log()}`)
+  /** A dev server on a checkout of its own, with a registry nothing else shares. */
+  async function startDrainServer(
+    app?: TempApp,
+    host?: string,
+  ): Promise<{ app: TempApp; server: HarnessServer; env: FixtureEnv }> {
+    const env = createFixtureEnv({ claudePid: 0 })
+    fixtures.push(env)
+    const checkout = app ?? apps.create({ git: true })
+    const server = await apps.serve(checkout, { env: env.env, ...(host ? { host } : {}) })
+    return { app: checkout, server, env }
   }
-  return found[1]
-}
 
-function readEntry(server: HarnessServer): DiscoveryEntry {
-  return JSON.parse(readFileSync(entryPath(server), 'utf8')) as DiscoveryEntry
-}
-
-async function postPick(
-  server: HarnessServer,
-  note: string | null = 'make this blue',
-): Promise<string> {
-  const response = await fetch(server.url + PICK, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', origin: server.url },
-    body: JSON.stringify({
-      note,
-      url: 'http://localhost:5173/settings',
-      viewport: { width: 1280, height: 800 },
-      descriptor: { tag: 'button', id: 'save' },
-      geometry: { width: 120, height: 40, x: 24, y: 560 },
-    }),
-  })
-  expect(response.status).toBe(200)
-  const json = (await response.json()) as { pickId: string }
-  return json.pickId
-}
-
-/** What `GET /__agent/status` says about one Pick, by the fields used here. */
-async function statusRow(
-  server: HarnessServer,
-  pickId: string,
-): Promise<{ state: string; reason: string | null }> {
-  const response = await fetch(server.url + STATUS)
-  const json = (await response.json()) as {
-    picks: Array<{ pickId: string; state: string; reason: string | null }>
+  /** The path the posture block says this dev server wrote its entry to. */
+  function entryPath(server: HarnessServer): string {
+    const found = new RegExp(`${POSTURE_LABEL}\\s+(\\S+\\.json)`).exec(server.log())
+    if (!found?.[1]) {
+      throw new Error(`no ${POSTURE_LABEL} line in the posture block:\n${server.log()}`)
+    }
+    return found[1]
   }
-  const row = json.picks.find((pick) => pick.pickId === pickId)
-  if (!row) throw new Error(`no status row for ${pickId}`)
-  return row
-}
 
-async function stateOf(server: HarnessServer, pickId: string): Promise<string> {
-  return (await statusRow(server, pickId)).state
-}
-
-interface DrainAnswer {
-  status: number
-  text?: string
-  drained?: number
-  remaining?: number
-  error?: string
-  reason?: string
-}
-
-async function drain(
-  server: HarnessServer,
-  body: Record<string, unknown>,
-  method = 'POST',
-): Promise<DrainAnswer> {
-  const response = await fetch(server.url + DRAIN, {
-    method,
-    headers: { 'content-type': 'application/json' },
-    ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
-  })
-  return { status: response.status, ...((await response.json()) as object) }
-}
-
-/** The drain body a working CLI would send for this server. */
-function drainBody(server: HarnessServer, app: TempApp): Record<string, unknown> {
-  return {
-    cwd: app.checkout,
-    secret: readEntry(server).secret,
-    event: 'UserPromptSubmit',
+  function readEntry(server: HarnessServer): DiscoveryEntry {
+    return JSON.parse(readFileSync(entryPath(server), 'utf8')) as DiscoveryEntry
   }
-}
 
-interface CliRun {
-  code: number | null
-  stdout: string
-  stderr: string
-}
-
-/** The CLI as a hook runs it: JSON on stdin, JSON or nothing on stdout. */
-function runCli(input: Record<string, unknown>): Promise<CliRun> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [CLI, 'drain'], { stdio: 'pipe' })
-    let stdout = ''
-    let stderr = ''
-    child.stdout.setEncoding('utf8')
-    child.stderr.setEncoding('utf8')
-    child.stdout.on('data', (chunk: string) => (stdout += chunk))
-    child.stderr.on('data', (chunk: string) => (stderr += chunk))
-    child.on('error', reject)
-    child.on('close', (code) => resolve({ code, stdout, stderr }))
-    child.stdin.end(JSON.stringify(input))
-  })
-}
-
-function hookOutput(run: CliRun): HookOutput {
-  expect(run.code).toBe(0)
-  return JSON.parse(run.stdout) as HookOutput
-}
-
-describe('the discovery entry', () => {
-  it('is written under the OS temp root, readable only by this user', async () => {
-    const { server, app } = await startDrainServer()
-    const path = entryPath(server)
-
-    expect(path.startsWith(tmpdir())).toBe(true)
-    expect(statSync(path).mode & 0o777).toBe(0o600)
-    expect(statSync(dirname(path)).mode & 0o777).toBe(0o700)
-
-    const entry = readEntry(server)
-    expect(entry.root).toBe(app.checkout)
-    expect(entry.port).toBe(server.port)
-    expect(entry.host).toBe('127.0.0.1')
-    expect(entry.secret).toMatch(/^[0-9a-f]{32,}$/)
-    expect(entry.pid).toBe(process.pid)
-  })
-
-  it('is removed at shutdown, and the other server on that root keeps its own', async () => {
-    const { server: first, app } = await startDrainServer(apps.create({ git: true }))
-    const { server: second } = await startDrainServer(app)
-
-    const paths = [entryPath(first), entryPath(second)]
-    // Several dev servers for one root each have an entry (spec §18).
-    expect(new Set(paths).size).toBe(2)
-    expect(dirname(paths[0]!)).toBe(dirname(paths[1]!))
-    expect(paths.every((path) => existsSync(path))).toBe(true)
-
-    await first.close()
-
-    expect(existsSync(paths[0]!)).toBe(false)
-    expect(existsSync(paths[1]!)).toBe(true)
-  })
-})
-
-describe('POST /__agent/drain', () => {
-  it('answers POST only', async () => {
-    const { server, app } = await startDrainServer()
-
-    const answer = await drain(server, drainBody(server, app), 'GET')
-
-    expect(answer.status).toBe(405)
-    expect(answer.reason).toContain('POST')
-  })
-
-  it('refuses a wrong secret, and a wrong cwd, each with its reason', async () => {
-    const { server, app } = await startDrainServer()
-    await postPick(server)
-
-    const wrongSecret = await drain(server, {
-      ...drainBody(server, app),
-      secret: 'ffffffffffffffffffffffffffffffff',
+  async function postPick(
+    server: HarnessServer,
+    note: string | null = 'make this blue',
+  ): Promise<string> {
+    const response = await fetch(server.url + PICK, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: server.url },
+      body: JSON.stringify({
+        note,
+        url: 'http://localhost:5173/settings',
+        viewport: { width: 1280, height: 800 },
+        descriptor: { tag: 'button', id: 'save' },
+        geometry: { width: 120, height: 40, x: 24, y: 560 },
+      }),
     })
-    expect(wrongSecret.status).toBeGreaterThanOrEqual(400)
-    expect(wrongSecret.status).toBeLessThan(500)
-    expect(wrongSecret.reason).toBeTruthy()
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as { pickId: string }
+    return json.pickId
+  }
 
-    const wrongCwd = await drain(server, {
-      ...drainBody(server, app),
-      cwd: app.addSiblingRepo('elsewhere'),
+  /** What `GET /__agent/status` says about one Pick, by the fields used here. */
+  async function statusRow(
+    server: HarnessServer,
+    pickId: string,
+  ): Promise<{ state: string; reason: string | null }> {
+    const response = await fetch(server.url + STATUS)
+    const json = (await response.json()) as {
+      picks: Array<{ pickId: string; state: string; reason: string | null }>
+    }
+    const row = json.picks.find((pick) => pick.pickId === pickId)
+    if (!row) throw new Error(`no status row for ${pickId}`)
+    return row
+  }
+
+  async function stateOf(server: HarnessServer, pickId: string): Promise<string> {
+    return (await statusRow(server, pickId)).state
+  }
+
+  interface DrainAnswer {
+    status: number
+    text?: string
+    drained?: number
+    remaining?: number
+    error?: string
+    reason?: string
+  }
+
+  async function drain(
+    server: HarnessServer,
+    body: Record<string, unknown>,
+    method = 'POST',
+  ): Promise<DrainAnswer> {
+    const response = await fetch(server.url + DRAIN, {
+      method,
+      headers: { 'content-type': 'application/json' },
+      ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
     })
-    expect(wrongCwd.status).toBeGreaterThanOrEqual(400)
-    expect(wrongCwd.status).toBeLessThan(500)
-    expect(wrongCwd.reason).toBeTruthy()
+    return { status: response.status, ...((await response.json()) as object) }
+  }
 
-    // Neither refusal touched the queue.
-    const drained = await drain(server, drainBody(server, app))
-    expect(drained.drained).toBe(1)
-  })
+  /** The drain body a working CLI would send for this server. */
+  function drainBody(server: HarnessServer, app: TempApp): Record<string, unknown> {
+    return {
+      cwd: app.checkout,
+      secret: readEntry(server).secret,
+      event: 'UserPromptSubmit',
+    }
+  }
 
-  it('returns the queued pick, rendered with its age, and claims it', async () => {
-    const { server, app } = await startDrainServer()
-    const pickId = await postPick(server, 'this button is the wrong blue')
+  interface CliRun {
+    code: number | null
+    stdout: string
+    stderr: string
+  }
 
-    const first = await drain(server, drainBody(server, app))
-
-    expect(first.status).toBe(200)
-    expect(first.drained).toBe(1)
-    expect(first.text).toContain(pickId)
-    expect(first.text).toContain('this button is the wrong blue')
-    // Ticket 03's renderer, list-shaped, with the age stated (spec §15).
-    expect(first.text).toContain('pick 1 of 1')
-    expect(first.text).toContain('just now')
-    expect(await stateOf(server, pickId)).toBe('sent')
-
-    const second = await drain(server, drainBody(server, app))
-
-    expect(second.status).toBe(200)
-    expect(second.drained).toBe(0)
-    expect(second.text).toBe('')
-  })
-
-  // Never a silent truncation (spec §21), on the floor too: a Pick bigger than
-  // what the hook has left is named and kept, not cut to fit (ticket 19). The
-  // CLI states the budget, so a small one is how a test makes it happen.
-  it('keeps a pick too big for the budget it was handed, and says so', async () => {
-    const { server, app } = await startDrainServer()
-    const pickId = await postPick(
-      server,
-      'this one is longer than two hundred characters',
-    )
-
-    const small = await drain(server, { ...drainBody(server, app), budget: 200 })
-
-    expect(small.status).toBe(200)
-    expect(small.drained).toBe(0)
-    expect(small.remaining).toBe(1)
-    expect(small.reason).toBe(
-      `pointout — pick ${pickId} is larger than the 200 characters this ` +
-        'hook had left to carry, so it was not delivered. It stays queued for a later ' +
-        'prompt, and fails if nothing carries it within its 30 minutes.',
-    )
-    expect(server.log()).toContain(small.reason)
-    expect(await stateOf(server, pickId)).toBe('queued-unaddressed')
-
-    const whole = await drain(server, drainBody(server, app))
-    expect(whole.drained).toBe(1)
-    expect(whole.text).toContain(pickId)
-  })
-
-  it('never hands out a pick the TTL has already taken', async () => {
-    // Ticket 11 put the sweep ahead of every route so this would hold for
-    // routes that did not exist yet. This is the first one that re-reads the
-    // queue, so it is the first that could have handed the pick out anyway.
-    const { server, app } = await startDrainServer()
-    const pickId = await postPick(server)
-    advanceClock(PAST_THE_TTL)
-
-    const answer = await drain(server, drainBody(server, app))
-
-    expect(answer.drained).toBe(0)
-    expect(answer.text).toBe('')
-    const row = await statusRow(server, pickId)
-    expect(row.state).toBe('failed')
-    expect(row.reason).toBe(TTL_SENTENCE)
-  })
-
-  it('never takes a pick already written to a session socket', async () => {
-    const { server, app, env } = await startDrainServer()
-    await sessions.open(env, { cwd: app.checkout, name: 'the session' })
-    const pickId = await postPick(server)
-    expect(await stateOf(server, pickId)).toBe('sent')
-
-    const answer = await drain(server, drainBody(server, app))
-
-    expect(answer.drained).toBe(0)
-    expect(answer.text).toBe('')
-  })
-})
-
-describe('the drain CLI', () => {
-  it('prints the rendered pick as additionalContext for UserPromptSubmit', async () => {
-    const { server, app } = await startDrainServer()
-    const pickId = await postPick(server, 'the label is cut off')
-
-    const run = await runCli({
-      session_id: 'abc123',
-      // The Vite root, not the checkout: the CLI normalizes what the hook hands it.
-      cwd: app.appDir,
-      hook_event_name: 'UserPromptSubmit',
-      prompt: 'have a look at this',
+  /** The CLI as a hook runs it: JSON on stdin, JSON or nothing on stdout. */
+  function runCli(input: Record<string, unknown>): Promise<CliRun> {
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [CLI, 'drain'], { stdio: 'pipe' })
+      let stdout = ''
+      let stderr = ''
+      child.stdout.setEncoding('utf8')
+      child.stderr.setEncoding('utf8')
+      child.stdout.on('data', (chunk: string) => (stdout += chunk))
+      child.stderr.on('data', (chunk: string) => (stderr += chunk))
+      child.on('error', reject)
+      child.on('close', (code) => resolve({ code, stdout, stderr }))
+      child.stdin.end(JSON.stringify(input))
     })
+  }
 
-    const output = hookOutput(run)
-    expect(output.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit')
-    expect(output.hookSpecificOutput.additionalContext).toContain(pickId)
-    expect(output.hookSpecificOutput.additionalContext).toContain('the label is cut off')
-    expect(await stateOf(server, pickId)).toBe('sent')
-  })
-
-  it('reaches a dev server bound to IPv6 loopback only, by the host its entry names', async () => {
-    // Vite's default `localhost` is `::1` alone on a machine whose resolver lists
-    // it first; a drain that dialled 127.0.0.1 would never reach it.
-    const { server, app } = await startDrainServer(undefined, '::1')
-    expect(readEntry(server).host).toBe('[::1]')
-    const pickId = await postPick(server, 'the label is cut off')
-
-    const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
-
-    expect(hookOutput(run).hookSpecificOutput.additionalContext).toContain(pickId)
-    expect(await stateOf(server, pickId)).toBe('sent')
-  })
-
-  it('names Stop when a turn ending is what invoked it', async () => {
-    const { server, app } = await startDrainServer()
-
-    const pickId = await postPick(server)
-
-    const run = await runCli({ cwd: app.checkout, hook_event_name: 'Stop' })
-
-    const output = hookOutput(run)
-    expect(output.hookSpecificOutput.hookEventName).toBe('Stop')
-    expect(output.hookSpecificOutput.additionalContext).toContain(pickId)
-    expect(await stateOf(server, pickId)).toBe('sent')
-  })
-
-  it('drains one pick exactly once, however many times it is invoked', async () => {
-    const { server, app } = await startDrainServer()
-    const pickId = await postPick(server)
-
-    const first = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
-    const second = await runCli({ cwd: app.checkout, hook_event_name: 'Stop' })
-
-    expect(hookOutput(first).hookSpecificOutput.additionalContext).toContain(pickId)
-    expect(second.code).toBe(0)
-    expect(second.stdout).toBe('')
-    expect(await stateOf(server, pickId)).toBe('sent')
-  })
-
-  it('drains every dev server serving that checkout, in one turn', async () => {
-    const app = apps.create({ git: true })
-    const { server: first } = await startDrainServer(app)
-    const { server: second } = await startDrainServer(app)
-    const onFirst = await postPick(first, 'the header overlaps')
-    const onSecond = await postPick(second, 'the footer is cut off')
-
-    const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
-
-    const context = hookOutput(run).hookSpecificOutput.additionalContext
-    expect(context).toContain(onFirst)
-    expect(context).toContain(onSecond)
-    expect(run.stdout.length).toBeLessThanOrEqual(HOOK_OUTPUT_LIMIT)
-  })
-
-  it('exits 0 with empty stdout when no dev server is running', async () => {
-    const app = apps.create({ git: true })
-
-    const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
-
+  function hookOutput(run: CliRun): HookOutput {
     expect(run.code).toBe(0)
-    expect(run.stdout).toBe('')
+    return JSON.parse(run.stdout) as HookOutput
+  }
+
+  describe('the discovery entry', () => {
+    it('is written under the OS temp root, readable only by this user', async () => {
+      const { server, app } = await startDrainServer()
+      const path = entryPath(server)
+
+      expect(path.startsWith(tmpdir())).toBe(true)
+      expect(statSync(path).mode & 0o777).toBe(0o600)
+      expect(statSync(dirname(path)).mode & 0o777).toBe(0o700)
+
+      const entry = readEntry(server)
+      expect(entry.root).toBe(app.checkout)
+      expect(entry.port).toBe(server.port)
+      expect(entry.host).toBe('127.0.0.1')
+      expect(entry.secret).toMatch(/^[0-9a-f]{32,}$/)
+      // The process that serves: this one on Vite; on Next, the worker `next dev`
+      // forked, which is in the group the harness started.
+      const serving =
+        on === 'vite' ? [process.pid] : groupMembers((server as NextHarnessServer).pid)
+      expect(serving).toContain(entry.pid)
+    })
+
+    it('is removed at shutdown, and the other server on that root keeps its own', async () => {
+      const { server: first, app } = await startDrainServer(apps.create({ git: true }))
+      const { server: second } = await startDrainServer(app)
+
+      const paths = [entryPath(first), entryPath(second)]
+      // Several dev servers for one root each have an entry (spec §18).
+      expect(new Set(paths).size).toBe(2)
+      expect(dirname(paths[0]!)).toBe(dirname(paths[1]!))
+      expect(paths.every((path) => existsSync(path))).toBe(true)
+
+      await first.close()
+
+      expect(existsSync(paths[0]!)).toBe(false)
+      expect(existsSync(paths[1]!)).toBe(true)
+    })
   })
 
-  it('exits 0, never 2, when the dev server refuses it, and says why on stderr', async () => {
-    const { server, app } = await startDrainServer()
-    await postPick(server)
-    // The secret the entry publishes is the credential; a CLI holding the wrong
-    // one is refused, and a refused hook must still leave the prompt alone.
-    const path = entryPath(server)
-    const entry = readEntry(server)
-    writeFileSync(path, JSON.stringify({ ...entry, secret: 'f'.repeat(32) }))
+  describe('POST /__agent/drain', () => {
+    it('answers POST only', async () => {
+      const { server, app } = await startDrainServer()
 
-    const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
+      const answer = await drain(server, drainBody(server, app), 'GET')
 
-    expect(run.code).toBe(0)
-    expect(run.code).not.toBe(2)
-    expect(run.stdout).toBe('')
-    expect(run.stderr).toContain('pointout')
+      expect(answer.status).toBe(405)
+      expect(answer.reason).toContain('POST')
+    })
+
+    it('refuses a wrong secret, and a wrong cwd, each with its reason', async () => {
+      const { server, app } = await startDrainServer()
+      await postPick(server)
+
+      const wrongSecret = await drain(server, {
+        ...drainBody(server, app),
+        secret: 'ffffffffffffffffffffffffffffffff',
+      })
+      expect(wrongSecret.status).toBeGreaterThanOrEqual(400)
+      expect(wrongSecret.status).toBeLessThan(500)
+      expect(wrongSecret.reason).toBeTruthy()
+
+      const wrongCwd = await drain(server, {
+        ...drainBody(server, app),
+        cwd: app.addSiblingRepo('elsewhere'),
+      })
+      expect(wrongCwd.status).toBeGreaterThanOrEqual(400)
+      expect(wrongCwd.status).toBeLessThan(500)
+      expect(wrongCwd.reason).toBeTruthy()
+
+      // Neither refusal touched the queue.
+      const drained = await drain(server, drainBody(server, app))
+      expect(drained.drained).toBe(1)
+    })
+
+    it('returns the queued pick, rendered with its age, and claims it', async () => {
+      const { server, app } = await startDrainServer()
+      const pickId = await postPick(server, 'this button is the wrong blue')
+
+      const first = await drain(server, drainBody(server, app))
+
+      expect(first.status).toBe(200)
+      expect(first.drained).toBe(1)
+      expect(first.text).toContain(pickId)
+      expect(first.text).toContain('this button is the wrong blue')
+      // Ticket 03's renderer, list-shaped, with the age stated (spec §15).
+      expect(first.text).toContain('pick 1 of 1')
+      expect(first.text).toContain('just now')
+      expect(await stateOf(server, pickId)).toBe('sent')
+
+      const second = await drain(server, drainBody(server, app))
+
+      expect(second.status).toBe(200)
+      expect(second.drained).toBe(0)
+      expect(second.text).toBe('')
+    })
+
+    // Never a silent truncation (spec §21), on the floor too: a Pick bigger than
+    // what the hook has left is named and kept, not cut to fit (ticket 19). The
+    // CLI states the budget, so a small one is how a test makes it happen.
+    it('keeps a pick too big for the budget it was handed, and says so', async () => {
+      const { server, app } = await startDrainServer()
+      const pickId = await postPick(
+        server,
+        'this one is longer than two hundred characters',
+      )
+
+      const small = await drain(server, { ...drainBody(server, app), budget: 200 })
+
+      expect(small.status).toBe(200)
+      expect(small.drained).toBe(0)
+      expect(small.remaining).toBe(1)
+      expect(small.reason).toBe(
+        `pointout — pick ${pickId} is larger than the 200 characters this ` +
+          'hook had left to carry, so it was not delivered. It stays queued for a later ' +
+          'prompt, and fails if nothing carries it within its 30 minutes.',
+      )
+      expect(server.log()).toContain(small.reason)
+      expect(await stateOf(server, pickId)).toBe('queued-unaddressed')
+
+      const whole = await drain(server, drainBody(server, app))
+      expect(whole.drained).toBe(1)
+      expect(whole.text).toContain(pickId)
+    })
+
+    it('never hands out a pick the TTL has already taken', async () => {
+      // Ticket 11 put the sweep ahead of every route so this would hold for
+      // routes that did not exist yet. This is the first one that re-reads the
+      // queue, so it is the first that could have handed the pick out anyway.
+      const { server, app } = await startDrainServer()
+      const pickId = await postPick(server)
+      advanceClock(PAST_THE_TTL)
+
+      const answer = await drain(server, drainBody(server, app))
+
+      expect(answer.drained).toBe(0)
+      expect(answer.text).toBe('')
+      const row = await statusRow(server, pickId)
+      expect(row.state).toBe('failed')
+      expect(row.reason).toBe(TTL_SENTENCE)
+    })
+
+    it('never takes a pick already written to a session socket', async () => {
+      const { server, app, env } = await startDrainServer()
+      await sessions.open(env, { cwd: app.checkout, name: 'the session' })
+      const pickId = await postPick(server)
+      expect(await stateOf(server, pickId)).toBe('sent')
+
+      const answer = await drain(server, drainBody(server, app))
+
+      expect(answer.drained).toBe(0)
+      expect(answer.text).toBe('')
+    })
   })
 
-  it('stays under the hook output cap and says how many picks remain', async () => {
-    const { server, app } = await startDrainServer()
-    const note = 'the spacing here is wrong. '.repeat(24)
-    const pickIds: string[] = []
-    for (let n = 0; n < 24; n++) pickIds.push(await postPick(server, note))
+  describe('the drain CLI', () => {
+    it('prints the rendered pick as additionalContext for UserPromptSubmit', async () => {
+      const { server, app } = await startDrainServer()
+      const pickId = await postPick(server, 'the label is cut off')
 
-    const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
-    const context = hookOutput(run).hookSpecificOutput.additionalContext
+      const run = await runCli({
+        session_id: 'abc123',
+        // The Vite root, not the checkout: the CLI normalizes what the hook hands it.
+        cwd: app.appDir,
+        hook_event_name: 'UserPromptSubmit',
+        prompt: 'have a look at this',
+      })
 
-    expect(run.stdout.length).toBeLessThanOrEqual(HOOK_OUTPUT_LIMIT)
-    expect(context).toContain(pickIds[0]!)
-    expect(context).not.toContain(pickIds.at(-1)!)
-    const last = context.trimEnd().split('\n').at(-1) ?? ''
-    expect(last).toMatch(/\d+ more picks? still queued/)
+      const output = hookOutput(run)
+      expect(output.hookSpecificOutput.hookEventName).toBe('UserPromptSubmit')
+      expect(output.hookSpecificOutput.additionalContext).toContain(pickId)
+      expect(output.hookSpecificOutput.additionalContext).toContain(
+        'the label is cut off',
+      )
+      expect(await stateOf(server, pickId)).toBe('sent')
+    })
 
-    // The rest are still queued, and the next drain takes the next batch.
-    const next = await runCli({ cwd: app.checkout, hook_event_name: 'Stop' })
-    expect(hookOutput(next).hookSpecificOutput.additionalContext.length).toBeGreaterThan(
-      0,
-    )
-  })
+    it('reaches a dev server bound to IPv6 loopback only, by the host its entry names', async () => {
+      // Vite's default `localhost` is `::1` alone on a machine whose resolver lists
+      // it first; a drain that dialled 127.0.0.1 would never reach it.
+      const { server, app } = await startDrainServer(undefined, '::1')
+      expect(readEntry(server).host).toBe('[::1]')
+      const pickId = await postPick(server, 'the label is cut off')
 
-  it('delivers a pick the unreadable registry left unaddressed', async () => {
-    const { server, app, env } = await startDrainServer()
-    rmSync(env.registryDir, { recursive: true, force: true })
+      const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
 
-    const pickId = await postPick(server, 'this row is misaligned')
-    // Spec §17: the chip reads Sent with the next-prompt sub-line, which is the
-    // queue's own word published unchanged (ticket 11).
-    expect(await stateOf(server, pickId)).toBe('queued-unaddressed')
+      expect(hookOutput(run).hookSpecificOutput.additionalContext).toContain(pickId)
+      expect(await stateOf(server, pickId)).toBe('sent')
+    })
 
-    const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
+    it('names Stop when a turn ending is what invoked it', async () => {
+      const { server, app } = await startDrainServer()
 
-    expect(hookOutput(run).hookSpecificOutput.additionalContext).toContain(
-      'this row is misaligned',
-    )
-    expect(await stateOf(server, pickId)).toBe('sent')
+      const pickId = await postPick(server)
+
+      const run = await runCli({ cwd: app.checkout, hook_event_name: 'Stop' })
+
+      const output = hookOutput(run)
+      expect(output.hookSpecificOutput.hookEventName).toBe('Stop')
+      expect(output.hookSpecificOutput.additionalContext).toContain(pickId)
+      expect(await stateOf(server, pickId)).toBe('sent')
+    })
+
+    it('drains one pick exactly once, however many times it is invoked', async () => {
+      const { server, app } = await startDrainServer()
+      const pickId = await postPick(server)
+
+      const first = await runCli({
+        cwd: app.checkout,
+        hook_event_name: 'UserPromptSubmit',
+      })
+      const second = await runCli({ cwd: app.checkout, hook_event_name: 'Stop' })
+
+      expect(hookOutput(first).hookSpecificOutput.additionalContext).toContain(pickId)
+      expect(second.code).toBe(0)
+      expect(second.stdout).toBe('')
+      expect(await stateOf(server, pickId)).toBe('sent')
+    })
+
+    it('drains every dev server serving that checkout, in one turn', async () => {
+      const app = apps.create({ git: true })
+      const { server: first } = await startDrainServer(app)
+      const { server: second } = await startDrainServer(app)
+      const onFirst = await postPick(first, 'the header overlaps')
+      const onSecond = await postPick(second, 'the footer is cut off')
+
+      const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
+
+      const context = hookOutput(run).hookSpecificOutput.additionalContext
+      expect(context).toContain(onFirst)
+      expect(context).toContain(onSecond)
+      expect(run.stdout.length).toBeLessThanOrEqual(HOOK_OUTPUT_LIMIT)
+    })
+
+    it('exits 0 with empty stdout when no dev server is running', async () => {
+      const app = apps.create({ git: true })
+
+      const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
+
+      expect(run.code).toBe(0)
+      expect(run.stdout).toBe('')
+    })
+
+    it('exits 0, never 2, when the dev server refuses it, and says why on stderr', async () => {
+      const { server, app } = await startDrainServer()
+      await postPick(server)
+      // The secret the entry publishes is the credential; a CLI holding the wrong
+      // one is refused, and a refused hook must still leave the prompt alone.
+      const path = entryPath(server)
+      const entry = readEntry(server)
+      writeFileSync(path, JSON.stringify({ ...entry, secret: 'f'.repeat(32) }))
+
+      const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
+
+      expect(run.code).toBe(0)
+      expect(run.code).not.toBe(2)
+      expect(run.stdout).toBe('')
+      expect(run.stderr).toContain('pointout')
+    })
+
+    it('stays under the hook output cap and says how many picks remain', async () => {
+      const { server, app } = await startDrainServer()
+      const note = 'the spacing here is wrong. '.repeat(24)
+      const pickIds: string[] = []
+      for (let n = 0; n < 24; n++) pickIds.push(await postPick(server, note))
+
+      const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
+      const context = hookOutput(run).hookSpecificOutput.additionalContext
+
+      expect(run.stdout.length).toBeLessThanOrEqual(HOOK_OUTPUT_LIMIT)
+      expect(context).toContain(pickIds[0]!)
+      expect(context).not.toContain(pickIds.at(-1)!)
+      const last = context.trimEnd().split('\n').at(-1) ?? ''
+      expect(last).toMatch(/\d+ more picks? still queued/)
+
+      // The rest are still queued, and the next drain takes the next batch.
+      const next = await runCli({ cwd: app.checkout, hook_event_name: 'Stop' })
+      expect(
+        hookOutput(next).hookSpecificOutput.additionalContext.length,
+      ).toBeGreaterThan(0)
+    })
+
+    it('delivers a pick the unreadable registry left unaddressed', async () => {
+      const { server, app, env } = await startDrainServer()
+      rmSync(env.registryDir, { recursive: true, force: true })
+
+      const pickId = await postPick(server, 'this row is misaligned')
+      // Spec §17: the chip reads Sent with the next-prompt sub-line, which is the
+      // queue's own word published unchanged (ticket 11).
+      expect(await stateOf(server, pickId)).toBe('queued-unaddressed')
+
+      const run = await runCli({ cwd: app.checkout, hook_event_name: 'UserPromptSubmit' })
+
+      expect(hookOutput(run).hookSpecificOutput.additionalContext).toContain(
+        'this row is misaligned',
+      )
+      expect(await stateOf(server, pickId)).toBe('sent')
+    })
   })
 })
