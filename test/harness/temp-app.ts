@@ -74,7 +74,12 @@ export function createTempApp({
   writeFileSync(join(appDir, 'index.html'), INDEX_HTML)
   writeFileSync(
     join(appDir, 'package.json'),
-    JSON.stringify({ name: 'temp-app', private: true, type: 'module' }, null, 2) + '\n',
+    // `vite` is named so `init` reads this app as a Vite one, as a consumer's is.
+    JSON.stringify(
+      { name: 'temp-app', private: true, type: 'module', devDependencies: { vite: '*' } },
+      null,
+      2,
+    ) + '\n',
   )
   writeConfig(appDir, pluginOptions, viteConfig)
 
