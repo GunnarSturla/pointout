@@ -20,7 +20,7 @@ import type { Point, ViewportBox } from './deep-element.js'
 import { describeElement } from './describe.js'
 import { readOwner, readOwnerChain } from './fiber.js'
 import { createFrames } from './frames.js'
-import { elementAtPoint } from './hit-test.js'
+import { elementAtPoint, isHostTool } from './hit-test.js'
 import { createMarks } from './marks.js'
 import type { Accepted, PanelCamera, PointerInputs } from './panel.js'
 import { inViewport } from './placement.js'
@@ -327,6 +327,12 @@ export function startOverlay(document: Document): OverlayHandle {
   }
 
   /**
+   * On a Host's own dev tools, such as Next's indicator: theirs, as the
+   * Overlay's chrome is its own, so a press or click there is left to them.
+   */
+  const theirs = (event: Event): boolean => event.composedPath().some(isHostTool)
+
+  /**
    * The event is about the submitted Panel open above the Stack: in it, or on
    * the minimized line that opened it. Anywhere else, Escape is as it was.
    */
@@ -387,7 +393,7 @@ export function startOverlay(document: Document): OverlayHandle {
   }
 
   const onClick = (event: MouseEvent) => {
-    if (mode === 'off' || ours(event)) return
+    if (mode === 'off' || ours(event) || theirs(event)) return
     // With a Panel already open, only Alt-click means anything: a plain click is
     // the developer using their app, and the Panel is not modal (`GLOSSARY.md`).
     if (mode === 'picked' && !event.altKey) return
@@ -424,7 +430,7 @@ export function startOverlay(document: Document): OverlayHandle {
    * the Note is where the developer is still typing (spec §7, story 19).
    */
   const onPress = (event: MouseEvent) => {
-    if (mode === 'off' || ours(event)) return
+    if (mode === 'off' || ours(event) || theirs(event)) return
     if (mode === 'picked' && !event.altKey) return
     event.preventDefault()
     event.stopPropagation()

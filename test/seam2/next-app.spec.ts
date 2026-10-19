@@ -93,3 +93,36 @@ test('the same-origin frame loads its route, which hydrates inside it', async ({
   await expect(page.locator(OVERLAY_HOST)).toHaveCount(1)
   await expect(frame.locator(OVERLAY_HOST)).toHaveCount(0)
 })
+
+const HIGHLIGHT = '[data-part="highlight"]'
+const PANEL = '[data-part="panel"]'
+/** Next's dev indicator, inside the `nextjs-portal` Next draws its tools in. */
+const NEXT_INDICATOR = 'nextjs-portal #next-logo'
+
+for (const route of ['/', '/pages-router']) {
+  test(`${route}: Next's dev indicator is never highlighted or picked`, async ({
+    page,
+  }) => {
+    await page.goto(hostURL('next', route))
+    await expect(page.locator(PICKER)).toBeVisible()
+    const indicator = page.locator(NEXT_INDICATOR)
+    await expect(indicator).toBeVisible()
+    const box = await indicator.boundingBox()
+    if (!box) throw new Error("Next's dev indicator has no box")
+    const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+
+    await page.locator(PICKER).click()
+    // Somewhere else first, so a Highlight missing over the indicator is
+    // missing because of the indicator, not because nothing was hovered.
+    const heading = await page.getByRole('heading', { level: 1 }).boundingBox()
+    if (!heading) throw new Error('the heading has no box')
+    await page.mouse.move(heading.x + 10, heading.y + heading.height / 2)
+    await expect(page.locator(HIGHLIGHT)).toBeVisible()
+
+    await page.mouse.move(at.x, at.y, { steps: 4 })
+    await expect(page.locator(HIGHLIGHT)).toBeHidden()
+
+    await page.mouse.click(at.x, at.y)
+    await expect(page.locator(PANEL)).toHaveCount(0)
+  })
+}

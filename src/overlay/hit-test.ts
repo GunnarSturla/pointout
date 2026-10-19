@@ -1,5 +1,11 @@
 // The hit test (spec §4): four rules, applied in order, that turn a point into
-// the element the developer meant.
+// the element the developer meant — and one refusal ahead of them all.
+//
+//   0. a point on a Host's own dev tools is no point on the page. Next.js draws
+//      its indicator and its error overlay in a `nextjs-portal`, and those are
+//      treated as the Overlay's own chrome is: nothing there is highlighted or
+//      picked, and nothing beneath it either (ticket 06 of the Next.js
+//      Connector). They are not full-viewport, so rule 1 does not reach them.
 //
 //   1. ignore any fixed, full-viewport element. Written as the general rule it
 //      is, so the Overlay's own host, the shield it lays over a dense page, a
@@ -21,14 +27,26 @@ const EDGE_TOLERANCE = 1
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 
+/** The tags a Host draws its own dev tools under, each in a shadow root. */
+const HOST_TOOL_TAGS = ['nextjs-portal']
+
 /** The element under a point that a Pick may be made of, or null. */
 export function elementAtPoint(document: Document, x: number, y: number): Element | null {
   for (const element of document.elementsFromPoint(x, y)) {
+    if (isHostTool(element)) return null
     if (coversViewport(element)) continue
     const deep = deepElementFrom(element, x, y)
     if (deep) return nearestSvg(deep)
   }
   return null
+}
+
+/**
+ * A Host's dev tools, or inside them. True of any event whose path runs
+ * through one, too: the Overlay leaves a click there to the tool.
+ */
+export function isHostTool(node: EventTarget): boolean {
+  return node instanceof Element && HOST_TOOL_TAGS.includes(node.localName)
 }
 
 /** Fixed, and reaching every edge of the viewport. */
