@@ -29,8 +29,31 @@ const URL_IN_FRAME = /https?:\/\/[^\s)]+/
 
 interface FiberLike {
   type?: unknown
-  _debugOwner?: FiberLike | null
+  _debugOwner?: OwnerLike | null
   _debugStack?: { stack?: string } | null
+}
+
+/**
+ * What React keeps for a Server Component, where a client fiber's owner can be
+ * one (React Server Components, the Next.js App Router): not a fiber but the
+ * server's record of the component, with its own owner and the stack the
+ * server captured where it was created, replayed in the browser.
+ */
+interface ServerComponentLike {
+  name?: unknown
+  env?: unknown
+  owner?: OwnerLike | null
+  debugStack?: { stack?: string } | null
+}
+
+type OwnerLike = FiberLike | ServerComponentLike
+
+/**
+ * A Server Component's record carries the name of the environment it ran in;
+ * a fiber never does. `name` and `debugStack` are what the walk then reads.
+ */
+function isServerComponent(owner: OwnerLike): owner is ServerComponentLike {
+  return typeof (owner as ServerComponentLike).env === 'string'
 }
 
 /** What the Overlay knows about a picked element before the server is asked. */
@@ -61,7 +84,7 @@ export function readOwner(element: Element): OwnerFacts {
   if (!fiber || !owner) return { name: null, file: null, walkUp }
 
   return {
-    name: componentName(owner.type),
+    name: ownerName(owner),
     file: appFrameBasename(rawStack(fiber)),
     walkUp,
   }
@@ -77,20 +100,26 @@ export function readOwner(element: Element): OwnerFacts {
  * The chain is sent whole and uncapped (spec §6). Nothing is filtered: React's
  * own notion of ownership already leaves out a component that merely forwards a
  * node, and no DOM ancestor is ever added.
+ *
+ * An owner can be a Server Component's record rather than a fiber. The walk
+ * goes on through it, by its `owner`, with its `debugStack` as the stack of what
+ * it wrote: a Server Component is a link like any other, and the chain does not
+ * stop at the first one (ticket 06 of the Next.js Connector). Where its frames
+ * resolve is the server's to say.
  */
 export function readOwnerChain(element: Element): OwnerChain {
   const { fiber, walkUp } = findFiber(element)
   const links: OwnerChainLink[] = []
-  const seen = new Set<FiberLike>()
+  const seen = new Set<OwnerLike>()
 
-  let node = fiber
+  let node: OwnerLike | null = fiber
   while (node && !seen.has(node)) {
     seen.add(node)
-    const owner = node._debugOwner ?? null
+    const owner = ownerOf(node)
     if (!owner) break
     const stack = rawStack(node)
     if (stack === null) break
-    links.push({ name: componentName(owner.type), stack })
+    links.push({ name: ownerName(owner), stack })
     node = owner
   }
 
@@ -125,20 +154,30 @@ function fiberOf(node: Element): FiberLike | null {
   return null
 }
 
+function ownerOf(node: OwnerLike): OwnerLike | null {
+  return (isServerComponent(node) ? node.owner : node._debugOwner) ?? null
+}
+
+function ownerName(owner: OwnerLike): string | null {
+  if (!isServerComponent(owner)) return componentName(owner.type)
+  return typeof owner.name === 'string' && owner.name ? owner.name : null
+}
+
 /**
- * One fiber's raw `_debugStack` string. `Error.prepareStackTrace` is held at
+ * One fiber's raw `_debugStack` string, or a Server Component's `debugStack`. `Error.prepareStackTrace` is held at
  * `undefined` across the read and put back afterwards, so a dev-mode error SDK
  * that installs a formatter cannot hand over an already-source-mapped string
  * the server would then remap a second time (spec §6).
  */
-function rawStack(fiber: FiberLike): string | null {
+function rawStack(node: OwnerLike): string | null {
   const previous = Error.prepareStackTrace
   try {
     // `undefined` is what V8 accepts for "format it the default way". The types
     // in scope here are Node's, and they do not admit that; the engine does, and
     // React's own owner-stack code sets exactly this.
     Error.prepareStackTrace = undefined as unknown as typeof Error.prepareStackTrace
-    const stack = fiber._debugStack?.stack
+    const captured = isServerComponent(node) ? node.debugStack : node._debugStack
+    const stack = captured?.stack
     return typeof stack === 'string' ? stack : null
   } finally {
     Error.prepareStackTrace = previous

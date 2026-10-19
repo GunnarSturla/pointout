@@ -71,20 +71,10 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
   clearHotUpdateLock()
   clearDrainLock()
 
-  // The Next.js test bed boots beside it, in a process of its own, on a port
-  // Next chooses; a spec reaches it through `hostURL('next', …)` (hosts.ts).
-  const nextStarting = startExampleServer({ on: 'next', claudePid: SESSION_PID })
-  // Awaited below; a failure there is reported there, not as an unhandled one.
-  nextStarting.catch(() => {})
-
   let server
   try {
     server = await startExampleServer({ port: SEAM2_PORT, claudePid: SESSION_PID })
   } catch (error) {
-    await nextStarting.then(
-      (next) => next.close(),
-      () => {},
-    )
     releaseLock()
     // The port is bound with `strictPort`, so a leftover dev server is a hard
     // failure rather than a silent attach to whatever is already there.
@@ -96,9 +86,18 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
     )
   }
 
+  // The Next.js test bed boots after it, in a process of its own, on a port
+  // Next chooses; a spec reaches it through `hostURL('next', …)` (hosts.ts). It
+  // is handed Vite's fixture environment, so both Hosts read one registry and
+  // one socket folder, and every session below is a Candidate on either — a
+  // spec parameterized by Host addresses the same sessions on both.
   let next
   try {
-    next = await nextStarting
+    next = await startExampleServer({
+      on: 'next',
+      claudePid: SESSION_PID,
+      env: server.fixture.env,
+    })
   } catch (error) {
     await server.close()
     releaseLock()

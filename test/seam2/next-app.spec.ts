@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { hostURL } from '../harness/hosts.js'
@@ -96,6 +97,71 @@ test('the same-origin frame loads its route, which hydrates inside it', async ({
 
 const HIGHLIGHT = '[data-part="highlight"]'
 const PANEL = '[data-part="panel"]'
+
+/** Where the fake session's inbox writes what it received (test/harness/serve.ts). */
+const FRAMES_LOG_ENV = 'SEAM2_FRAMES_LOG'
+
+/** The one delivered body that carries this token. */
+async function delivered(token: string): Promise<string> {
+  const log = process.env[FRAMES_LOG_ENV]
+  if (!log)
+    throw new Error(`${FRAMES_LOG_ENV} is unset: seam 2's globalSetup did not run`)
+  let found: string | undefined
+  await expect
+    .poll(
+      () => {
+        found = readFileSync(log, 'utf8')
+          .split('\n')
+          .filter((line) => line.trim())
+          .map((line) => JSON.parse(line) as Record<string, unknown>)
+          .filter((frame) => frame.type === 'user')
+          .map((frame) => (frame.message as { content: string }).content)
+          .find((content) => content.includes(token))
+        return found !== undefined
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true)
+  return found ?? ''
+}
+
+/** Until ticket 08, a Server Component's link, as the Pointer says it. */
+const serverLink = (name: string, mode = 'no-resolver-for-host') =>
+  `${name} — no location (absent: ${mode} — `
+
+test("picking the Server Component's client child carries the Server Component links, each absent", async ({
+  page,
+}, info) => {
+  const token = `server-owner-${Math.random().toString(16).slice(2)}`
+  await page.goto(hostURL('next', `/?probe=${token}`))
+  await expect(page.locator(PICKER)).toBeVisible()
+  const leaf = page.locator('[data-fixture="server-owner"] [data-fixture="client-leaf"]')
+  await leaf.scrollIntoViewIfNeeded()
+  const box = await leaf.boundingBox()
+  if (!box) throw new Error('the client leaf has no box')
+  const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+
+  await page.locator(PICKER).click()
+  await page.mouse.move(at.x, at.y)
+  await expect(page.locator(HIGHLIGHT)).toBeVisible()
+  await page.mouse.click(at.x, at.y)
+  await expect(page.locator(PANEL)).toBeVisible()
+  await page.keyboard.type(`the server-owned leaf ${token}`)
+  await page.keyboard.press('Enter')
+
+  const content = await delivered(token)
+  // The client component, then the Server Component that rendered it, then the
+  // page that rendered that: the chain runs through the server's records and
+  // does not stop at the first of them.
+  expect(content).toMatch(/ClientLeaf — /)
+  // Measured, and filed as issue 11: WebKit replays the server's stacks with
+  // neither a location in the Server Component's frame nor React's bottom
+  // frame, so the server finds no app frame in them at all. The links are
+  // still there, named and annotated; what they say differs.
+  const mode = info.project.name === 'webkit' ? 'no-react-boundary' : undefined
+  expect(content).toContain(serverLink('ServerOwner', mode))
+  expect(content).toContain(serverLink('AppRouterPage', mode))
+})
 /** Next's dev indicator, inside the `nextjs-portal` Next draws its tools in. */
 const NEXT_INDICATOR = 'nextjs-portal #next-logo'
 
