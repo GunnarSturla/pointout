@@ -1,18 +1,39 @@
 // The one lookup this server needs from a source map: which original position a
 // transformed one came from (spec §12). The Connector's frame resolver finds the
-// map (for Vite, `transformResult.map` on the module), so nothing here fetches,
-// parses JSON or resolves a `sourceMappingURL`; it decodes the `mappings` field
-// and answers.
+// map (for Vite, `transformResult.map` on the module; for Next.js, the `.map`
+// Turbopack wrote beside a chunk), so nothing here fetches, reads a file or
+// resolves a `sourceMappingURL`; it decodes the `mappings` and answers.
+//
+// It reads both shapes a map comes in: a flat map, one `mappings` string over
+// the whole generated file, and an index map (ECMA-426, "index source map"),
+// whose `sections` each hold a flat map starting at an offset into it.
+// Turbopack writes one section per module of a chunk; Vite writes flat maps.
 //
 // Written rather than depended on. The package ships one runtime dependency, on
 // the Overlay's side (spec §1), and the whole of what a source-map library
-// would be used for here is the fifty lines below.
+// would be used for here is the hundred lines below.
 
-/** What this reads off a source map; a Host's own type is usually wider. */
-export interface SourceMapLike {
+/** A map with one `mappings` string over the whole generated file. */
+export interface FlatSourceMap {
   mappings: string
   sources?: readonly (string | null)[]
+  /** Indices into `sources` the map's writer marks as not the developer's code. */
+  ignoreList?: readonly number[]
 }
+
+/** A map made of flat maps, each starting at `offset` into the generated file. */
+export interface IndexSourceMap {
+  sections: readonly MapSection[]
+}
+
+export interface MapSection {
+  /** Both 0-based: where in the generated file this section's map begins. */
+  offset: { line: number; column: number }
+  map: FlatSourceMap
+}
+
+/** What this reads off a source map; a Host's own type is usually wider. */
+export type SourceMapLike = FlatSourceMap | IndexSourceMap
 
 export interface OriginalPosition {
   /** 1-based, the way an editor and a stack frame both count lines. */
@@ -21,6 +42,13 @@ export interface OriginalPosition {
   column: number
   /** The map's own name for the file, which may be relative to it. */
   source: string | null
+  /** The map's `ignoreList` names this source: its writer says it is vendor code. */
+  ignored: boolean
+}
+
+/** A map with nothing in it to decode against. */
+export function isEmptyMap(map: SourceMapLike): boolean {
+  return 'sections' in map ? map.sections.length === 0 : map.mappings === ''
 }
 
 const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
@@ -45,7 +73,34 @@ export function originalPositionFor(
   generatedColumn: number,
 ): OriginalPosition | null {
   if (generatedLine < 1 || generatedColumn < 0) return null
+  if (!('sections' in map)) return flatPositionFor(map, generatedLine, generatedColumn)
 
+  // The section a position falls in is the last one starting at or before it:
+  // sections are in order and do not overlap (ECMA-426). Its column offset
+  // moves only its first line; every line after that starts at column 0.
+  const line = generatedLine - 1
+  let section: MapSection | undefined
+  for (const candidate of map.sections) {
+    const { offset } = candidate
+    if (offset.line > line) break
+    if (offset.line === line && offset.column > generatedColumn) break
+    section = candidate
+  }
+  if (!section) return null
+
+  const { offset } = section
+  return flatPositionFor(
+    section.map,
+    line - offset.line + 1,
+    line === offset.line ? generatedColumn - offset.column : generatedColumn,
+  )
+}
+
+function flatPositionFor(
+  map: FlatSourceMap,
+  generatedLine: number,
+  generatedColumn: number,
+): OriginalPosition | null {
   const groups = map.mappings.split(';')
   if (generatedLine > groups.length) return null
 
@@ -83,6 +138,7 @@ export function originalPositionFor(
             line: sourceLine + 1,
             column: sourceColumn,
             source: map.sources?.[sourceIndex] ?? null,
+            ignored: map.ignoreList?.includes(sourceIndex) ?? false,
           }
         : null
     }

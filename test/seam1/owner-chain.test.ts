@@ -1,8 +1,8 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { startExampleServer } from '../harness/dev-server.js'
-import type { HarnessServer } from '../harness/dev-server.js'
+import { CHAIN_FIXTURE, originalOf, startCallSiteBed } from '../harness/call-sites.js'
+import type { CallSiteBed, Frame } from '../harness/call-sites.js'
+import type { NextHarnessServer } from '../harness/next-server.js'
+import { capturedStack } from '../harness/next-frames.js'
 import { repoRoot } from '../harness/paths.js'
 import { fakeSessions } from '../harness/session-socket.js'
 import type { FakeSession } from '../harness/session-socket.js'
@@ -13,190 +13,163 @@ import type { FakeSession } from '../harness/session-socket.js'
 // label, the grammar of a stack frame — because those are the contract
 // (docs/agents/testing.md). Nothing imports a server module.
 //
-// The stacks are built rather than captured: seam 1 has no browser. The
-// positions in them are not invented either — they are read out of the running
-// server's own transform output for the fixture, so what is asserted is that the
-// transformed position a real engine would print remaps to the original line and
-// column the fixture really has.
+// It runs on both Hosts, and gives the same file, line and Confidence on each
+// for the same fixture. Seam 1 has no browser, so the frames come from what
+// each Host really served (`test/harness/call-sites.ts`): on Vite, positions
+// read out of the fixture's transform; on Next.js, the frames a real engine
+// printed against a Turbopack chunk (`test/fixtures/next-frames/`).
 
 const PICK = '/__agent/pick'
 
-/** The fixture module, as the browser asks for it and as the repo holds it. */
-const MODULE_PATH = 'examples/shared/fixtures/OwnerChainDepth.tsx'
-// The shared fixtures sit outside the Vite root, so Vite serves them under
-// its own `/@fs/` prefix, by absolute path.
-const MODULE_URL = '/@fs' + join(repoRoot, MODULE_PATH)
+const HOSTS = ['vite', 'next'] as const
+const NEXT_TIMEOUT = 120_000
 
-const SESSION_PID = 500_101
+const SESSION_PIDS = { vite: 500_101, next: 500_102 } as const
 
-const sessions = fakeSessions()
-let server!: HarnessServer
-let session!: FakeSession
-let transformed!: string
+describe.each(HOSTS)('the Owner chain, exact path, on %s', (on) => {
+  const sessions = fakeSessions()
+  let bed!: CallSiteBed
+  let session!: FakeSession
 
-beforeAll(async () => {
-  server = await startExampleServer({ claudePid: SESSION_PID })
-  session = await sessions.open(server.fixture, { cwd: repoRoot, pid: SESSION_PID })
+  beforeAll(async () => {
+    bed = await startCallSiteBed(on, { claudePid: SESSION_PIDS[on] })
+    session = await sessions.open(bed.server.fixture, {
+      cwd: repoRoot,
+      pid: SESSION_PIDS[on],
+    })
+  }, NEXT_TIMEOUT)
 
-  // The request that puts the fixture in the module graph with its transform
-  // and its map — which is what a browser would have done, and what the remap
-  // reads.
-  transformed = await (await fetch(server.url + MODULE_URL)).text()
-})
-
-afterAll(async () => {
-  await sessions.closeAll()
-  await server?.close()
-})
-
-/** Where a JSX call site sits in the fixture's own source, as `line:col`. */
-function original(marker: string): string {
-  const lines = readFileSync(join(repoRoot, MODULE_PATH), 'utf8').split('\n')
-  const index = lines.findIndex((line) => line.includes(marker))
-  const line = lines[index]
-  if (index === -1 || line === undefined) {
-    throw new Error(`the fixture no longer contains ${marker}`)
-  }
-  return `${index + 1}:${line.indexOf(marker) + 1}`
-}
-
-/**
- * Where the same call site sits in what the dev server actually served, as the
- * engine would print it: 1-based line, 1-based column, at the start of the JSX
- * runtime call.
- */
-function inTransform(callee: string): { line: number; column: number } {
-  const lines = transformed.split('\n')
-  const index = lines.findIndex((line) => line.includes(callee))
-  const line = lines[index]
-  if (index === -1 || line === undefined) {
-    throw new Error(`the served module no longer calls ${callee}`)
-  }
-  return { line: index + 1, column: line.indexOf(callee) + 1 }
-}
-
-/** The url a frame from this dev server's page would carry. */
-const served = (path: string) => server.url + path
-
-/** A V8 stack: `    at NAME (URL:LINE:COLUMN)`, under its message line. */
-function v8Stack(name: string, at: { line: number; column: number }): string {
-  return [
-    'Error: react-stack-top-frame',
-    `    at exports.jsxDEV (${served('/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=abcd1234')}:197:25)`,
-    `    at ${name} (${served(MODULE_URL)}:${at.line}:${at.column})`,
-    `    at Object.react_stack_bottom_frame (${served('/node_modules/.vite/deps/react-dom_client.js?v=abcd1234')}:14142:12)`,
-    `    at renderWithHooksAgain (${served('/node_modules/.vite/deps/react-dom_client.js?v=abcd1234')}:4457:16)`,
-  ].join('\n')
-}
-
-/** The shared Gecko and JavaScriptCore stack: `NAME@URL:LINE:COLUMN`. */
-function geckoStack(name: string, at: { line: number; column: number }): string {
-  return [
-    `require_react_jsx_dev_runtime_development</exports.jsxDEV@${served('/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=abcd1234')}:197:30`,
-    `${name}@${served(MODULE_URL)}:${at.line}:${at.column}`,
-    `react_stack_bottom_frame@${served('/node_modules/.vite/deps/react-dom_client.js?v=abcd1234')}:14142:12`,
-    `renderWithHooksAgain@${served('/node_modules/.vite/deps/react-dom_client.js?v=abcd1234')}:4457:16`,
-    '',
-  ].join('\n')
-}
-
-interface PickBody {
-  url: string
-  viewport: { width: number; height: number }
-  descriptor: { tag: string }
-  geometry: { width: number; height: number; x: number; y: number }
-  ownerChain?: unknown
-  walkUp?: unknown
-  note?: string | null
-  target?: { sessionId: string; pid: number } | null
-}
-
-function body(overrides: Partial<PickBody> = {}): PickBody {
-  return {
-    url: server.url + '/',
-    viewport: { width: 1280, height: 800 },
-    descriptor: { tag: 'span' },
-    geometry: { width: 120, height: 20, x: 10, y: 20 },
-    target: { sessionId: session.sessionId, pid: session.pid },
-    ...overrides,
-  }
-}
-
-async function postPick(sent: PickBody): Promise<{
-  status: number
-  json: { pickId?: string; error?: string; reason?: string }
-}> {
-  const response = await fetch(server.url + PICK, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', origin: server.url },
-    body: JSON.stringify(sent),
+  afterAll(async () => {
+    await sessions.closeAll()
+    await bed?.server.close()
   })
-  return { status: response.status, json: await response.json() }
-}
 
-/** The rendered content of the last `user` frame this session received. */
-async function delivered(count: number): Promise<string> {
-  await session.awaitLines(count)
-  const users = session
-    .frames()
-    .filter((frame) => frame.type === 'user')
-    .map((frame) => (frame.message as { content?: string } | undefined)?.content ?? '')
-  return users[users.length - 1] ?? ''
-}
+  const at = ({ url, line, column }: Frame) => `${url}:${line}:${column}`
 
-/** How many `user` frames have to have arrived before the nth Pick's is read. */
-let sent = 0
-async function send(sentBody: PickBody): Promise<string> {
-  const { status } = await postPick(sentBody)
-  expect(status).toBe(200)
-  sent += 1
-  // auth, user, control per Pick.
-  return delivered(sent * 3)
-}
+  /** A V8 stack: `    at NAME (URL:LINE:COLUMN)`, under its message line. */
+  function v8Stack(name: string, frame: Frame): string {
+    return [
+      'Error: react-stack-top-frame',
+      `    at exports.jsxDEV (${at(bed.runtime.jsx)})`,
+      `    at ${name} (${at(frame)})`,
+      `    at Object.react_stack_bottom_frame (${at(bed.runtime.reactDom)})`,
+      `    at renderWithHooksAgain (${at(bed.runtime.reactDom)})`,
+    ].join('\n')
+  }
 
-describe('the Owner chain, exact path', () => {
+  /** The shared Gecko and JavaScriptCore stack: `NAME@URL:LINE:COLUMN`. */
+  function geckoStack(name: string, frame: Frame): string {
+    return [
+      `require_react_jsx_dev_runtime_development</exports.jsxDEV@${at(bed.runtime.jsx)}`,
+      `${name}@${at(frame)}`,
+      `react_stack_bottom_frame@${at(bed.runtime.reactDom)}`,
+      `renderWithHooksAgain@${at(bed.runtime.reactDom)}`,
+      '',
+    ].join('\n')
+  }
+
+  interface PickBody {
+    url: string
+    viewport: { width: number; height: number }
+    descriptor: { tag: string }
+    geometry: { width: number; height: number; x: number; y: number }
+    ownerChain?: unknown
+    walkUp?: unknown
+    note?: string | null
+    target?: { sessionId: string; pid: number } | null
+  }
+
+  function body(overrides: Partial<PickBody> = {}): PickBody {
+    return {
+      url: bed.server.url + '/',
+      viewport: { width: 1280, height: 800 },
+      descriptor: { tag: 'span' },
+      geometry: { width: 120, height: 20, x: 10, y: 20 },
+      target: { sessionId: session.sessionId, pid: session.pid },
+      ...overrides,
+    }
+  }
+
+  async function postPick(sent: PickBody): Promise<{
+    status: number
+    json: { pickId?: string; error?: string; reason?: string }
+  }> {
+    const response = await fetch(bed.server.url + PICK, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: bed.server.url },
+      body: JSON.stringify(sent),
+    })
+    return { status: response.status, json: await response.json() }
+  }
+
+  /** The rendered content of the last `user` frame this session received. */
+  async function delivered(count: number): Promise<string> {
+    await session.awaitLines(count)
+    const users = session
+      .frames()
+      .filter((frame) => frame.type === 'user')
+      .map((frame) => (frame.message as { content?: string } | undefined)?.content ?? '')
+    return users[users.length - 1] ?? ''
+  }
+
+  /** How many `user` frames have to have arrived before the nth Pick's is read. */
+  let sent = 0
+  async function send(sentBody: PickBody): Promise<string> {
+    const { status } = await postPick(sentBody)
+    expect(status).toBe(200)
+    sent += 1
+    // auth, user, control per Pick.
+    return delivered(sent * 3)
+  }
+
+  const leaf = () => `ChainLeaf — ${CHAIN_FIXTURE}:${originalOf('span')} (exact)`
+
   it('remaps a V8 app frame to the fixture original line and column', async () => {
-    const at = inTransform('_jsxDEV("span"')
     const content = await send(
-      body({ ownerChain: [{ name: 'ChainLeaf', stack: v8Stack('ChainLeaf', at) }] }),
+      body({
+        ownerChain: [
+          { name: 'ChainLeaf', stack: v8Stack('ChainLeaf', bed.frame('span')) },
+        ],
+      }),
     )
 
-    expect(content).toContain(
-      `ChainLeaf — ${MODULE_PATH}:${original('<span data-fixture="chain-leaf">')} (exact)`,
-    )
+    expect(content).toContain(leaf())
   })
 
   it('remaps the same call site written in the Gecko and JSC grammar the same way', async () => {
-    const at = inTransform('_jsxDEV("span"')
     const content = await send(
-      body({ ownerChain: [{ name: 'ChainLeaf', stack: geckoStack('ChainLeaf', at) }] }),
+      body({
+        ownerChain: [
+          {
+            name: 'ChainLeaf',
+            stack: geckoStack('ChainLeaf', bed.frame('span', 'gecko')),
+          },
+        ],
+      }),
     )
 
-    expect(content).toContain(
-      `ChainLeaf — ${MODULE_PATH}:${original('<span data-fixture="chain-leaf">')} (exact)`,
-    )
+    expect(content).toContain(leaf())
   })
 
   it('renders three nested owners innermost first', async () => {
     const chain = [
-      { name: 'ChainLeaf', stack: v8Stack('ChainLeaf', inTransform('_jsxDEV("span"')) },
+      { name: 'ChainLeaf', stack: v8Stack('ChainLeaf', bed.frame('span')) },
       {
         name: 'ChainMiddle',
-        stack: geckoStack('ChainMiddle', inTransform('_jsxDEV(ChainLeaf')),
+        stack: geckoStack('ChainMiddle', bed.frame('ChainLeaf', 'gecko')),
       },
       {
         name: 'OwnerChainDepth',
-        stack: v8Stack('OwnerChainDepth', inTransform('_jsxDEV(ChainMiddle')),
+        stack: v8Stack('OwnerChainDepth', bed.frame('ChainMiddle')),
       },
     ]
     const content = await send(body({ ownerChain: chain }))
 
-    const leaf = `ChainLeaf — ${MODULE_PATH}:${original('<span data-fixture="chain-leaf">')} (exact)`
-    const middle = `ChainMiddle — ${MODULE_PATH}:${original('<ChainLeaf />')} (exact)`
-    const outer = `OwnerChainDepth — ${MODULE_PATH}:${original('<ChainMiddle />')} (exact)`
+    const middle = `ChainMiddle — ${CHAIN_FIXTURE}:${originalOf('ChainLeaf')} (exact)`
+    const outer = `OwnerChainDepth — ${CHAIN_FIXTURE}:${originalOf('ChainMiddle')} (exact)`
 
-    for (const link of [leaf, middle, outer]) expect(content).toContain(link)
-    expect(content.indexOf(leaf)).toBeLessThan(content.indexOf(middle))
+    for (const link of [leaf(), middle, outer]) expect(content).toContain(link)
+    expect(content.indexOf(leaf())).toBeLessThan(content.indexOf(middle))
     expect(content.indexOf(middle)).toBeLessThan(content.indexOf(outer))
     // One label, three links under it.
     expect(content.match(/owner chain/g)).toHaveLength(1)
@@ -207,10 +180,7 @@ describe('the Owner chain, exact path', () => {
       body({
         walkUp: 2,
         ownerChain: [
-          {
-            name: 'ChainLeaf',
-            stack: v8Stack('ChainLeaf', inTransform('_jsxDEV("span"')),
-          },
+          { name: 'ChainLeaf', stack: v8Stack('ChainLeaf', bed.frame('span')) },
         ],
       }),
     )
@@ -222,10 +192,7 @@ describe('the Owner chain, exact path', () => {
     const content = await send(
       body({
         ownerChain: [
-          {
-            name: 'ChainLeaf',
-            stack: v8Stack('ChainLeaf', inTransform('_jsxDEV("span"')),
-          },
+          { name: 'ChainLeaf', stack: v8Stack('ChainLeaf', bed.frame('span')) },
         ],
       }),
     )
@@ -244,16 +211,18 @@ describe('the Owner chain, exact path', () => {
     // Two real call sites in the served fixture stand in for the two frames, so
     // nothing here has to know how the remap works: send each alone, see what
     // it renders as, then send both and see which answer comes back.
-    const inner = inTransform('_jsxDEV("span"')
-    const outer = inTransform('_jsxDEV(ChainMiddle')
+    const inner = bed.frame('span')
+    const outer = bed.frame('ChainMiddle')
 
     const lineOf = (content: string): string | undefined =>
       /ChainLeaf — \S+:(\d+:\d+) \(exact\)/.exec(content)?.[1]
 
-    const alone = async (at: { line: number; column: number }) =>
+    const alone = async (frame: Frame) =>
       lineOf(
         await send(
-          body({ ownerChain: [{ name: 'ChainLeaf', stack: v8Stack('ChainLeaf', at) }] }),
+          body({
+            ownerChain: [{ name: 'ChainLeaf', stack: v8Stack('ChainLeaf', frame) }],
+          }),
         ),
       )
 
@@ -267,11 +236,11 @@ describe('the Owner chain, exact path', () => {
 
     const both = [
       'Error: react-stack-top-frame',
-      `    at exports.jsxDEV (${served('/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=abcd1234')}:197:25)`,
-      `    at ChainLeaf (${served(MODULE_URL)}:${inner.line}:${inner.column})`,
+      `    at exports.jsxDEV (${at(bed.runtime.jsx)})`,
+      `    at ChainLeaf (${at(inner)})`,
       '    at Array.map (<anonymous>)',
-      `    at ChainLeaf (${served(MODULE_URL)}:${outer.line}:${outer.column})`,
-      `    at Object.react_stack_bottom_frame (${served('/node_modules/.vite/deps/react-dom_client.js?v=abcd1234')}:14142:12)`,
+      `    at ChainLeaf (${at(outer)})`,
+      `    at Object.react_stack_bottom_frame (${at(bed.runtime.reactDom)})`,
     ].join('\n')
 
     const reported = lineOf(
@@ -287,8 +256,8 @@ describe('the Owner chain, exact path', () => {
     // app frame to take and the link says so (spec §21).
     const stack = [
       'Error: react-stack-top-frame',
-      `    at exports.jsxDEV (${served('/node_modules/.vite/deps/react_jsx-dev-runtime.js')}:197:25)`,
-      `    at ${served('/src/main.tsx')}:9:89`,
+      `    at exports.jsxDEV (${at(bed.runtime.jsx)})`,
+      `    at ${bed.server.url}/src/main.tsx:9:89`,
     ].join('\n')
 
     const content = await send(body({ ownerChain: [{ name: 'App', stack }] }))
@@ -328,4 +297,41 @@ describe('the Owner chain, exact path', () => {
     expect(json.error).toBe('owner-chain-unreadable')
     expect(json.reason).toMatch(/walk-up/)
   })
+
+  // Only Next.js has captured stacks to send untouched: the whole chain React
+  // kept, as each engine printed it, on each router. Vite's are built above.
+  it.runIf(on === 'next')(
+    'resolves the whole captured chain, in every engine and on both routers, to the same lines',
+    async () => {
+      const server = bed.server as NextHarnessServer
+      const expected = [
+        ['span', 'ChainLeaf', originalOf('span')],
+        ['ChainLeaf', 'ChainMiddle', originalOf('ChainLeaf')],
+        ['ChainMiddle', 'OwnerChainDepth', originalOf('ChainMiddle')],
+      ] as const
+
+      for (const engine of ['chromium', 'firefox', 'webkit'] as const) {
+        for (const route of ['/', '/pages-router']) {
+          const content = await send(
+            body({
+              ownerChain: expected.map(([link, owner]) => ({
+                name: owner,
+                stack: capturedStack(server, engine, {
+                  route,
+                  element: '[data-fixture="chain-leaf"]',
+                  link,
+                }),
+              })),
+            }),
+          )
+
+          for (const [, owner, line] of expected) {
+            expect(content, `${engine} on ${route}`).toContain(
+              `${owner} — ${CHAIN_FIXTURE}:${line} (exact)`,
+            )
+          }
+        }
+      }
+    },
+  )
 })

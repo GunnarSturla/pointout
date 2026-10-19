@@ -121,7 +121,7 @@ async function start(options: PointoutOptions): Promise<void> {
       logger,
       ownOrigins: () => ownOrigins(scheme, address.port),
       loopbackOrigin: () => loopbackOrigin,
-      resolveFrame: nextFrameResolver,
+      resolveFrame: nextFrameResolver(server, loopbackOrigin),
     },
     facts,
     services,
