@@ -2,10 +2,11 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { hostURL } from '../harness/hosts.js'
 
-// Ticket 03 of the Next.js Connector: the Next.js test bed in a browser, with no
-// pointout in it yet. Both routers render the shared fixtures and hydrate, the
-// framed route hydrates inside its frame, and nothing warns about hydration —
-// so when ticket 06 puts the Overlay in, any hydration warning is its own.
+// Tickets 03 and 06 of the Next.js Connector: the Next.js test bed in a browser,
+// with pointout in it. Both routers render the shared fixtures and hydrate, the
+// framed route hydrates inside its frame, the Overlay is drawn on both routers
+// once React has hydrated, and nothing warns about hydration — not the page, and
+// not the Overlay, which waits for hydration before it draws anything.
 
 /** What the page printed to its console at `warning` or `error`. */
 function complaints(page: Page): string[] {
@@ -19,6 +20,9 @@ function complaints(page: Page): string[] {
 }
 
 const HYDRATION = /hydrat/i
+
+const PICKER = '[data-part="picker"]'
+const OVERLAY_HOST = 'pointout-overlay'
 
 for (const route of ['/', '/pages-router']) {
   test(`${route} renders the shared fixtures and hydrates, with no hydration warning`, async ({
@@ -38,6 +42,10 @@ for (const route of ['/', '/pages-router']) {
     // Only a hydrated page answers a click.
     await page.locator('[data-fixture="full-viewport-decoy-restore"]').click()
     await expect(page.locator('[data-fixture="full-viewport-decoy"]')).toBeVisible()
+
+    // The Overlay is there, and there is exactly one of it.
+    await expect(page.locator(PICKER)).toBeVisible()
+    await expect(page.locator(OVERLAY_HOST)).toHaveCount(1)
 
     expect(said.filter((text) => HYDRATION.test(text))).toEqual([])
   })
@@ -79,4 +87,9 @@ test('the same-origin frame loads its route, which hydrates inside it', async ({
         ) !== null,
     )
   expect(readable).toBe(true)
+
+  // The page's Overlay reaches into the frame, so the frame draws none of its
+  // own: one Picker, one Alt.
+  await expect(page.locator(OVERLAY_HOST)).toHaveCount(1)
+  await expect(frame.locator(OVERLAY_HOST)).toHaveCount(0)
 })

@@ -15,6 +15,7 @@
       "types": "./dist/next/index.d.ts",
       "default": "./dist/next/index.js"
     },
+    "./next/overlay": "./dist/next/overlay.js",
     "./package.json": "./package.json"
   },
   "bin": {

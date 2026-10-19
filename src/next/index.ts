@@ -21,6 +21,9 @@ export type { PointoutOptions }
 /** The phase Next reads the config in under `next dev` (`next/constants`). */
 const PHASE_DEVELOPMENT_SERVER = 'phase-development-server'
 
+/** The Overlay's entry for Next, as the consumer's project resolves it. */
+const OVERLAY_ENTRY = 'pointout/next/overlay'
+
 /** Next's function form of a config, for a config object of type `Config`. */
 export type NextConfigFunction<Config extends object = object> = (
   phase: string,
@@ -39,10 +42,27 @@ export function withPointout<Config extends object>(
   // script that imported the config. The config is handed back untouched.
   if (process.env.NEXT_PRIVATE_WORKER !== '1') return config
 
-  return (phase, context) => {
-    if (phase === PHASE_DEVELOPMENT_SERVER) startPointout(options)
-    return typeof config === 'function' ? config(phase, context) : config
+  return async (phase, context) => {
+    const given = typeof config === 'function' ? await config(phase, context) : config
+    if (phase !== PHASE_DEVELOPMENT_SERVER) return given
+    startPointout(options)
+    // Under `--webpack` pointout serves nothing, so the page gets no Overlay
+    // that could not reach it (`start.ts` says so in the log).
+    if (!process.env.TURBOPACK) return given
+    return withOverlay(given)
   }
+}
+
+/**
+ * The page's half: the Overlay's entry, run on every page of both routers
+ * ahead of hydration (`instrumentationClientInject`, Next 16.3). It is added to
+ * whatever the config already injects, never in place of it.
+ */
+function withOverlay<Config extends object>(config: Config): Config {
+  const given = (config as { instrumentationClientInject?: unknown })
+    .instrumentationClientInject
+  const already = Array.isArray(given) ? (given as unknown[]) : []
+  return { ...config, instrumentationClientInject: [...already, OVERLAY_ENTRY] }
 }
 
 export default withPointout
