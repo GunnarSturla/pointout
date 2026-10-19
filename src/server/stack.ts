@@ -9,7 +9,7 @@
 //   at `undefined` around the read, as upstream also does — and answers one
 //   parsed frame, because the server wants a location rather than a trace. The
 //   source-map lookup upstream performs in the browser is dropped: the remap
-//   here goes through Vite's own module graph. The two regexes, the sniff that
+//   here goes through the Connector's frame resolver. The two regexes, the sniff that
 //   tries V8 before the shared Gecko/JavaScriptCore grammar, and the trim
 //   between React's top frame and its bottom-frame sentinel are upstream's.
 

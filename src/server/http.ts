@@ -1,5 +1,4 @@
-import type { ServerResponse } from 'node:http'
-import type { Connect, Logger, ViteDevServer } from 'vite'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import {
   API_BASE,
   CAPTURE_PATH,
@@ -42,17 +41,18 @@ import type {
   StatusResponse,
   WithdrawAnswer,
 } from '../wire.js'
-import { boundAddress } from './bound-host.js'
 import type { CaptureService } from './capture/index.js'
 import { parseCaptureBody } from './capture/region.js'
 import { now } from './clock.js'
 import type { DeliveryOutcome, DeliveryRoute } from './delivery.js'
 import type { Discovery } from './discovery.js'
+import type { FrameResolver } from './frame-resolver.js'
 import { drainQueue, parseDrainBody, refuseDrainCaller } from './drain.js'
 import { refuseForeignOrigin, refuseNonLoopback, refuseWrongNonce } from './guard.js'
 import type { Refusal } from './guard.js'
 import { createLedger, writtenTo } from './ledger.js'
 import type { Ledger } from './ledger.js'
+import type { Logger } from './logger.js'
 import { resolveOwnerChain } from './owner-chain.js'
 import { readRequestBody } from './parse.js'
 import { fitPayload } from './payload.js'
@@ -68,9 +68,9 @@ import { pickStatuses } from './status.js'
 import { resolveTarget } from './targeting.js'
 import type { ServerFacts, Services } from './index.js'
 
-// The HTTP surface (spec §20). Mounted inside `configureServer`'s body, so it
-// runs ahead of Vite's own middlewares and the SPA fallback never swallows an
-// unknown `/__agent` path.
+// The HTTP surface (spec §20). It belongs to no Host (ADR-0005): a Connector
+// mounts the handler this returns wherever its Host lets every `/__agent` request
+// reach it ahead of the Host's own routes, and hands over what only it knows.
 
 /**
  * `read` is loopback-only, like everything here. `ingress` additionally requires
@@ -85,8 +85,8 @@ type Policy = 'read' | 'ingress' | 'credential'
 /** Everything the endpoints share, worked out once per dev server. */
 interface RequestContext {
   facts: ServerFacts
-  /** The dev server itself: the module graph is where an Owner chain is remapped. */
-  server: ViteDevServer
+  /** The Connector's way of finding a served frame's map (`frame-resolver.ts`). */
+  resolveFrame: FrameResolver
   /** What became of every Pick, and which of them may still be delivered. */
   ledger: Ledger
   /** When each Target last finished a turn. Never moves a Pick (spec §17). */
@@ -104,7 +104,7 @@ interface RequestContext {
 }
 
 type Handler = (
-  request: Connect.IncomingMessage,
+  request: IncomingMessage,
   response: ServerResponse,
   context: RequestContext,
 ) => void | Promise<void>
@@ -162,17 +162,42 @@ const ENDPOINTS: Endpoint[] = [
   { method: 'POST', path: DRAIN_PATH, policy: 'credential', handle: drainPicks },
 ]
 
-export function installAgentEndpoints(
-  server: ViteDevServer,
+/**
+ * What the endpoints need from the Connector they are mounted by: the things
+ * only the Host knows.
+ */
+export interface Connector {
+  logger: Logger
+  /**
+   * Every origin the Host is serving the page on, for the Guard's `Origin`
+   * check (spec §11). Asked on each guarded request, after the Host listens.
+   */
+  ownOrigins(): Set<string>
+  /** The Host's own loopback origin, which the ack and done URLs hang off. */
+  loopbackOrigin(): string
+  resolveFrame: FrameResolver
+}
+
+/**
+ * Answers one request beneath `/__agent`. `path` is what follows `API_BASE`,
+ * with or without its query: the Connector strips its Host's prefix.
+ */
+export type AgentEndpoints = (
+  request: IncomingMessage,
+  response: ServerResponse,
+  path: string,
+) => void
+
+export function createAgentEndpoints(
+  connector: Connector,
   facts: ServerFacts,
   { route, captures, discovery }: Services,
-): void {
-  const { logger } = server.config
-  const ownOrigins = onceOwnOrigins(server)
+): AgentEndpoints {
+  const { logger } = connector
   const ledger = createLedger(now)
   const context: RequestContext = {
     facts,
-    server,
+    resolveFrame: connector.resolveFrame,
     route,
     captures,
     discovery,
@@ -180,17 +205,17 @@ export function installAgentEndpoints(
     ledger,
     idle: createIdleLog(),
     clock: createReportBackClock({ ledger, logger }),
-    origin: () => loopbackOrigin(server),
+    origin: () => connector.loopbackOrigin(),
   }
 
   // The route bound its reply address before this server had a ledger to move.
   // It has one now, so what comes back stops being logged and starts counting.
   recordReplies(route, context)
 
-  // Nothing here calls `next`: every `/__agent` path is answered or refused,
-  // and Vite's SPA fallback never sees one.
-  server.middlewares.use(API_BASE, (request, response) => {
-    const path = (request.url ?? '/').split('?')[0] ?? '/'
+  // Nothing here falls through to the Host: every `/__agent` path is answered
+  // or refused, and no SPA fallback ever sees one.
+  return (request, response, requestPath) => {
+    const path = requestPath.split('?')[0] ?? '/'
 
     // Loopback first, and for every path: whether an endpoint exists here is
     // not something a caller off this machine gets to learn, and a caller off
@@ -234,7 +259,7 @@ export function installAgentEndpoints(
       endpoint.policy === 'ingress' ||
       (endpoint.policy === 'credential' && request.headers.origin !== undefined)
     if (originMatters) {
-      const foreign = refuseForeignOrigin(request, ownOrigins())
+      const foreign = refuseForeignOrigin(request, connector.ownOrigins())
       if (foreign) return sendRefusal(logger, response, foreign)
     }
 
@@ -250,11 +275,11 @@ export function installAgentEndpoints(
       }
     })
     return undefined
-  })
+  }
 }
 
 function sessions(
-  request: Connect.IncomingMessage,
+  request: IncomingMessage,
   response: ServerResponse,
   { facts }: RequestContext,
 ): void {
@@ -277,7 +302,7 @@ function sessions(
  * and no Origin requirement: the Overlay polls it on a same-origin GET.
  */
 function reportStatus(
-  request: Connect.IncomingMessage,
+  request: IncomingMessage,
   response: ServerResponse,
   { facts, ledger, idle, clock }: RequestContext,
 ): void {
@@ -293,7 +318,7 @@ function reportStatus(
  */
 function recordPickAction(
   action: PickAction,
-  request: Connect.IncomingMessage,
+  request: IncomingMessage,
   response: ServerResponse,
   { ledger, logger }: RequestContext,
 ): void {
@@ -332,7 +357,7 @@ function recordPickAction(
  * developer it happened — the harness writes no transcript entry for a hook.
  */
 async function drainPicks(
-  request: Connect.IncomingMessage,
+  request: IncomingMessage,
   response: ServerResponse,
   { facts, ledger, discovery, logger, origin }: RequestContext,
 ): Promise<void> {
@@ -391,7 +416,7 @@ function tickReportBack({ facts, clock }: RequestContext): void {
  * offered back, is refused with what it is instead, and nothing moves.
  */
 async function resolveReport(
-  request: Connect.IncomingMessage,
+  request: IncomingMessage,
   response: ServerResponse,
   context: RequestContext,
 ): Promise<void> {
@@ -495,7 +520,7 @@ async function resolveReport(
  * is refused with the state it is in, and nothing moves.
  */
 function withdrawPick(
-  request: Connect.IncomingMessage,
+  request: IncomingMessage,
   response: ServerResponse,
   { ledger, clock, captures, logger }: RequestContext,
 ): void {
@@ -583,7 +608,7 @@ async function deliverRendered(
  * well as in the startup posture block (spec §21).
  */
 async function startCapture(
-  request: Connect.IncomingMessage,
+  request: IncomingMessage,
   response: ServerResponse,
   { captures, logger }: RequestContext,
 ): Promise<void> {
@@ -610,7 +635,7 @@ async function startCapture(
  * longer holds, and says so.
  */
 function abortCapture(
-  request: Connect.IncomingMessage,
+  request: IncomingMessage,
   response: ServerResponse,
   { captures, logger }: RequestContext,
 ): void {
@@ -638,7 +663,7 @@ function abortCapture(
  * says so.
  */
 async function ingestPick(
-  request: Connect.IncomingMessage,
+  request: IncomingMessage,
   response: ServerResponse,
   context: RequestContext,
 ): Promise<void> {
@@ -654,7 +679,11 @@ async function ingestPick(
   // Resolved here, at ingest, against the module graph as it stands now: a Pick
   // drained an hour later must carry the position its frames meant when it was
   // made, not one remapped through a transform that has moved since (spec §12).
-  const ownerChain = await resolveOwnerChain(context.server, facts.root, input.ownerChain)
+  const ownerChain = await resolveOwnerChain(
+    context.resolveFrame,
+    facts.root,
+    input.ownerChain,
+  )
 
   // The Pick carries the Target it was resolved to, not the one the body named:
   // a preselected Pick was addressed here, and the ledger is what knows it.
@@ -722,56 +751,6 @@ async function ingestPick(
     ...(pick.trimNote ? { trimmed: pick.trimNote } : {}),
   }
   sendJson(response, 200, accepted)
-}
-
-/**
- * The origins this dev server is actually serving on. Vite knows them only once
- * it is listening, and no request can arrive before that, so they are worked
- * out on the first one and kept.
- */
-function onceOwnOrigins(server: ViteDevServer): () => Set<string> {
-  let origins: Set<string> | null = null
-
-  return () => {
-    if (origins) return origins
-    origins = new Set<string>()
-
-    const resolved = server.resolvedUrls
-    for (const url of [...(resolved?.local ?? []), ...(resolved?.network ?? [])]) {
-      try {
-        origins.add(new URL(url).origin)
-      } catch {
-        // Vite printed something that is not a URL. Nothing to allow.
-      }
-    }
-
-    // Vite lists the URLs it advertises; the Overlay can also be loaded through
-    // any loopback spelling of the port it is bound to.
-    const address = server.httpServer?.address()
-    if (address && typeof address === 'object') {
-      const scheme = server.config.server.https ? 'https' : 'http'
-      for (const host of ['localhost', '127.0.0.1', '[::1]']) {
-        origins.add(`${scheme}://${host}:${address.port}`)
-      }
-    }
-    return origins
-  }
-}
-
-/**
- * The origin the ack and done URLs are printed with: the address this server is
- * bound to, not a name (`bound-host.ts`). The caller is the agent's shell on
- * this machine, and a hostname it would have to resolve is one more thing that
- * can be wrong.
- *
- * In middleware mode there is no `httpServer` and no port to print — but there
- * are also no `resolvedUrls`, so `onceOwnOrigins` is empty and every Pick is
- * already refused at the Origin check before a body is ever rendered.
- */
-function loopbackOrigin(server: ViteDevServer): string {
-  const { host, port } = boundAddress(server)
-  const scheme = server.config.server.https ? 'https' : 'http'
-  return `${scheme}://${host}:${port}`
 }
 
 function sendRefusal(logger: Logger, response: ServerResponse, refusal: Refusal): void {

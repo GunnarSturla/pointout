@@ -178,7 +178,7 @@ function writeConfig(
   writeFileSync(
     join(appDir, 'vite.config.js'),
     [
-      "import { pointout } from 'pointout'",
+      "import { pointout } from 'pointout/vite'",
       '',
       'export default ' +
         JSON.stringify(config, null, 2).replace(

@@ -1,13 +1,14 @@
 // The one lookup this server needs from a source map: which original position a
-// transformed one came from (spec §12). Vite already holds the map — it is
-// `transformResult.map` on the module — so nothing here fetches, parses JSON or
-// resolves a `sourceMappingURL`; it decodes the `mappings` field and answers.
+// transformed one came from (spec §12). The Connector's frame resolver finds the
+// map (for Vite, `transformResult.map` on the module), so nothing here fetches,
+// parses JSON or resolves a `sourceMappingURL`; it decodes the `mappings` field
+// and answers.
 //
 // Written rather than depended on. The package ships one runtime dependency, on
 // the Overlay's side (spec §1), and the whole of what a source-map library
 // would be used for here is the fifty lines below.
 
-/** What this reads off `transformResult.map`; Vite's own type is wider. */
+/** What this reads off a source map; a Host's own type is usually wider. */
 export interface SourceMapLike {
   mappings: string
   sources?: readonly (string | null)[]

@@ -2,13 +2,13 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { searchForWorkspaceRoot } from 'vite'
 import type { Plugin, UserConfig } from 'vite'
-import { createCaptureService } from './server/capture/index.js'
-import { createClaudeRoute } from './server/claude/route.js'
-import { createDiscovery } from './server/discovery.js'
-import { installAgentEndpoints } from './server/http.js'
-import { boundAddress } from './server/bound-host.js'
-import { announcePosture, createServerFacts } from './server/index.js'
-import type { PointoutOptions, ServerFacts, Services } from './server/index.js'
+import { boundAddress } from '../server/bound-host.js'
+import { createCaptureService } from '../server/capture/index.js'
+import { createClaudeRoute } from '../server/claude/route.js'
+import { createDiscovery } from '../server/discovery.js'
+import { announcePosture, createServerFacts } from '../server/index.js'
+import type { PointoutOptions, ServerFacts, Services } from '../server/index.js'
+import { installAgentEndpoints } from './endpoints.js'
 
 export type { PointoutOptions, ServerFacts }
 
@@ -27,15 +27,16 @@ const OVERLAY_MODULE_URL = '/@id/__x00__' + OVERLAY_MODULE_ID
 const OVERLAY_DEPENDENCIES = ['react/jsx-runtime', 'react-dom/client']
 
 // Both of these read off the emitted layout rather than the source layout: this
-// module is `dist/index.js` in a consumer's node_modules, so the package root is
-// one level up and the Overlay is a sibling directory. `tsc` emits one file per
-// module for exactly this reason (ADR-0001) — a build that nested the output a
-// level deeper would break `server.fs.allow` with no test naming it.
-const packageRoot = fileURLToPath(new URL('..', import.meta.url))
-const overlayEntry = fileURLToPath(new URL('./overlay/index.js', import.meta.url))
+// module is `dist/vite/index.js` in a consumer's node_modules, so the package
+// root is two levels up and the Overlay is a sibling of this Connector's
+// directory. `tsc` emits one file per module for exactly this reason (ADR-0001)
+// — a build that nested the output a level deeper would break `server.fs.allow`
+// with no test naming it.
+const packageRoot = fileURLToPath(new URL('../..', import.meta.url))
+const overlayEntry = fileURLToPath(new URL('../overlay/index.js', import.meta.url))
 
 /**
- * The Vite plugin. Dev only: it applies to `serve`, so a production build
+ * The Vite plugin: how the Vite Connector is installed. Dev only: it applies to `serve`, so a production build
  * contains no Overlay code and no `/__agent` string.
  */
 export function pointout(options: PointoutOptions = {}): Plugin {
@@ -83,7 +84,7 @@ export function pointout(options: PointoutOptions = {}): Plugin {
     },
 
     configResolved(config) {
-      facts = createServerFacts({ viteRoot: config.root, options })
+      facts = createServerFacts({ hostRoot: config.root, options })
     },
 
     async configureServer(server) {
@@ -112,8 +113,16 @@ export function pointout(options: PointoutOptions = {}): Plugin {
       // two happen together and cannot disagree about whether it happened
       // (spec §18, §21).
       const listening = () => {
-        discovery.publish(boundAddress(server))
-        announcePosture(server, resolved, services!)
+        const address = server.httpServer?.address()
+        discovery.publish(boundAddress(address))
+        announcePosture(
+          {
+            logger,
+            host: address && typeof address === 'object' ? address.address : null,
+          },
+          resolved,
+          services!,
+        )
       }
       if (server.httpServer) server.httpServer.once('listening', listening)
       else listening()

@@ -1,4 +1,4 @@
-import type { Logger } from 'vite'
+import type { Logger } from './logger.js'
 import {
   CLOCK_OFFERED,
   CLOCK_PAUSED,

@@ -1,8 +1,8 @@
-import type { ViteDevServer } from 'vite'
 import type { CaptureService } from './capture/index.js'
 import { socketDirectory } from './claude/reply-socket.js'
 import type { DeliveryRoute } from './delivery.js'
 import type { Discovery } from './discovery.js'
+import type { Logger } from './logger.js'
 import { discoverRepoRoot } from './paths.js'
 import type { RootMethod } from './paths.js'
 import { harnessVersionLine } from './claude/harness-version.js'
@@ -23,8 +23,8 @@ export interface PointoutOptions {
 }
 
 /**
- * Everything the plugin works out once, at `configResolved`, and every request
- * reads afterwards.
+ * Everything worked out once, when the Connector knows the Host's root, and
+ * every request reads afterwards.
  */
 export interface ServerFacts {
   root: string
@@ -43,8 +43,8 @@ export interface ServerFacts {
 }
 
 /**
- * The three things `configureServer` brings up before anything is served, each
- * with a line of its own in the posture block and a `close` of its own.
+ * The three things a Connector brings up before anything is served, each with
+ * a line of its own in the posture block and a `close` of its own.
  */
 export interface Services {
   route: DeliveryRoute
@@ -53,13 +53,14 @@ export interface Services {
 }
 
 export function createServerFacts({
-  viteRoot,
+  hostRoot,
   options,
 }: {
-  viteRoot: string
+  /** The directory the Host serves the app from, where root discovery starts. */
+  hostRoot: string
   options: PointoutOptions
 }): ServerFacts {
-  const { root, method } = discoverRepoRoot(viteRoot, options.root)
+  const { root, method } = discoverRepoRoot(hostRoot, options.root)
 
   return {
     root,
@@ -76,7 +77,14 @@ export function createServerFacts({
  * survives `logLevel: 'warn'`; otherwise it is information.
  */
 export function announcePosture(
-  server: ViteDevServer,
+  {
+    logger,
+    host,
+  }: {
+    logger: Logger
+    /** The address the Host is listening on, as its server answered it; null without one. */
+    host: string | null
+  },
   facts: ServerFacts,
   { route, captures, discovery }: Services,
 ): void {
@@ -92,13 +100,11 @@ export function announcePosture(
     .add('temp directory', captures.directoryLine)
     .add('discovery entry', discovery.postureLine)
 
-  const address = server.httpServer?.address()
-  const host = address && typeof address === 'object' ? address.address : null
   if (host && !isLoopbackHost(host)) posture.add('host', lanLine(host))
 
   const block = '\n' + posture.render() + '\n'
-  if (posture.warns()) server.config.logger.warn(block)
-  else server.config.logger.info(block)
+  if (posture.warns()) logger.warn(block)
+  else logger.info(block)
 }
 
 function parsePid(value: string | undefined): number | null {

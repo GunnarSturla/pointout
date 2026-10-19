@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { Logger } from 'vite'
+import type { Logger } from '../logger.js'
 import { says, warns } from '../posture.js'
 import type { PostureLine } from '../posture.js'
 import { NO_CAPTURE } from '../../wire.js'

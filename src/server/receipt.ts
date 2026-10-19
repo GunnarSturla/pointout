@@ -1,4 +1,4 @@
-import type { Logger } from 'vite'
+import type { Logger } from './logger.js'
 import { HELD, SENT } from '../wire.js'
 import type { Target } from '../wire.js'
 import { now } from './clock.js'

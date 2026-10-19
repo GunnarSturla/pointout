@@ -1,6 +1,6 @@
 import { relative, sep } from 'node:path'
-import type { ViteDevServer } from 'vite'
 import type { OwnerChainLink } from '../wire.js'
+import type { FrameResolver } from './frame-resolver.js'
 import { refuse } from './parse.js'
 import type { Parsed } from './parse.js'
 import { originalPositionFor } from './sourcemap.js'
@@ -122,22 +122,26 @@ export function parseOwnerChain(
 
 /**
  * Resolve every link to a repo-relative position, innermost first and in the
- * order the Overlay sent them. Done once, at ingest: the module graph is what it
- * is at the moment of the Pick, and a Pick drained an hour later must not be
- * remapped through a transform that has moved since.
+ * order the Overlay sent them. Done once, at ingest: the Host's modules are what
+ * they are at the moment of the Pick, and a Pick drained an hour later must not
+ * be remapped through a transform that has moved since.
+ *
+ * Where a frame's map is, whether it has moved and whether it is vendor code are
+ * the Connector's to say (`frame-resolver.ts`); what that makes the link's
+ * Confidence is decided here.
  */
 export async function resolveOwnerChain(
-  server: ViteDevServer,
+  resolveFrame: FrameResolver,
   root: string,
   links: readonly OwnerChainLink[],
 ): Promise<OwnerLink[]> {
   const resolved: OwnerLink[] = []
-  for (const link of links) resolved.push(await resolveLink(server, root, link))
+  for (const link of links) resolved.push(await resolveLink(resolveFrame, root, link))
   return resolved
 }
 
 async function resolveLink(
-  server: ViteDevServer,
+  resolveFrame: FrameResolver,
   root: string,
   link: OwnerChainLink,
 ): Promise<OwnerLink> {
@@ -181,17 +185,16 @@ async function resolveLink(
   }
   const frame = read.frame
 
-  // The query string belongs to the request and not to the module: Vite's own
-  // `?v=` and `?t=` are how a transform is addressed, not what it is.
-  const url = frameUrl(frame.url)
-  if (!url) {
-    return absent('unreadable-frame', 'its frame names no url this server can read')
-  }
-  const path = url.pathname
+  const answer = await resolveFrame({
+    url: frame.url,
+    line: frame.line,
+    column: frame.column,
+  })
+  if (answer.kind === 'absent')
+    return absent(answer.mode, answer.reason, answer.dependency)
 
-  // From the path alone, before anything is looked up: a dependency is a
-  // dependency whether or not its module turns out to be findable.
-  const dependency = isDependency(path)
+  const { dependency, served } = answer
+  const file = repoRelative(root, answer.file)
   const approximate = (
     mode: DegradedMode,
     reason: string,
@@ -203,27 +206,14 @@ async function resolveLink(
     dependency,
   })
 
-  const module = await server.environments.client.moduleGraph.getModuleByUrl(path)
-  if (!module?.file) {
-    // Where a prebundled dependency lands: Vite keys an optimized dep by the
-    // `?v=` hash it serves it under, so the bare path is in no graph. The
-    // `dependency` flag is what says the rest.
-    return absent(
-      'module-not-in-graph',
-      `no module in this dev server's graph at ${path}`,
-      dependency,
-    )
-  }
-  const file = repoRelative(root, module.file)
-
-  const map = module.transformResult?.map
+  const map = answer.map
   if (!map || map.mappings === '') {
     // §12 keeps the transformed position rather than dropping the link. It is a
     // real position in a real file, and the reason says which coordinates it is
     // in, so nobody edits line 4,431 of a file that has 60 lines.
     return approximate(
       'no-sourcemap',
-      `the module at ${path} was served without a sourcemap, so the line and ` +
+      `the module at ${served} was served without a sourcemap, so the line and ` +
         "column are the served module's own rather than the source file's",
       `${file}:${frame.line}:${frame.column}`,
     )
@@ -236,68 +226,15 @@ async function resolveLink(
   if (!original) {
     return absent(
       'unmapped-position',
-      `the sourcemap of ${path} maps nothing at ${frame.line}:${frame.column}`,
+      `the sourcemap of ${served} maps nothing at ${frame.line}:${frame.column}`,
       dependency,
     )
   }
   const location = `${file}:${original.line}:${original.column + 1}`
 
-  const moved = transformDrift(url, module.lastHMRTimestamp)
-  if (moved) return approximate(moved.mode, moved.reason, location)
+  if (answer.drift) return approximate(answer.drift.mode, answer.drift.reason, location)
 
   return { name: link.name, location, confidence: { kind: 'exact' }, dependency }
-}
-
-/** What the module this frame names has done since the page read the frame. */
-function transformDrift(
-  url: URL,
-  lastHMRTimestamp: number,
-): { mode: DegradedMode; reason: string } | null {
-  const stamp = url.searchParams.get('t')
-
-  if (stamp !== null) {
-    if (Number(stamp) === lastHMRTimestamp) return null
-    return {
-      mode: 'stale-transform',
-      reason:
-        'the page made this frame against a transform of the module that this ' +
-        'server has since replaced, so the line is remapped through a sourcemap ' +
-        'that has moved under it',
-    }
-  }
-  if (lastHMRTimestamp > 0) {
-    return {
-      mode: 'no-transform-timestamp',
-      reason:
-        'this module has been re-transformed since the page loaded and the frame ' +
-        'carries no transform timestamp to compare — Safari strips the query from ' +
-        'a stack url — so which transform the frame belongs to is not knowable here',
-    }
-  }
-  return null
-}
-
-/**
- * A frame's url, parsed. Null for a frame that names no url at all, and the
- * frame's own text never travels with the refusal: the raw stacks are Excerpts
- * and nothing lifted from one is ever interpolated into the body (spec §13).
- */
-function frameUrl(url: string): URL | null {
-  try {
-    return new URL(url)
-  } catch {
-    return null
-  }
-}
-
-/**
- * Spec §12's last row, by path: a frame inside a package rather than inside the
- * developer's own source. Both spellings Vite serves one under — the optimizer's
- * `.vite/deps` bundle, and a package served straight from `node_modules`, with or
- * without an `/@fs/` prefix.
- */
-function isDependency(path: string): boolean {
-  return path.includes('/node_modules/') || path.includes('/.vite/deps/')
 }
 
 /**

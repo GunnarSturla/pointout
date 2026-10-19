@@ -11,7 +11,7 @@ describe('the CommonJS entry', () => {
     const require = createRequire(import.meta.url)
     let message = ''
     try {
-      require('pointout')
+      require('pointout/vite')
       throw new Error('require() of the package was expected to throw')
     } catch (error) {
       message = error instanceof Error ? error.message : String(error)
@@ -19,7 +19,7 @@ describe('the CommonJS entry', () => {
 
     expect(message).toMatch(/ESM-only/)
     expect(message).toContain('defineConfig(async () =>')
-    expect(message).toContain('await import("pointout")')
+    expect(message).toContain('await import("pointout/vite")')
   })
 })
 
@@ -41,7 +41,7 @@ describe('the built package', () => {
   })
 
   it('emits the CommonJS stub as CommonJS', () => {
-    expect(existsSync(join(repoRoot, 'dist/cjs-entry.cjs'))).toBe(true)
+    expect(existsSync(join(repoRoot, 'dist/vite/cjs-entry.cjs'))).toBe(true)
   })
 
   it('emits no TypeScript source into dist', () => {
@@ -60,11 +60,11 @@ describe('the built package', () => {
   })
 
   it('leaves the module graph in separate files, rather than bundling it', () => {
-    const entry = readFileSync(join(repoRoot, 'dist/index.js'), 'utf8')
+    const entry = readFileSync(join(repoRoot, 'dist/vite/index.js'), 'utf8')
 
-    for (const specifier of ['./server/http.js', './server/index.js']) {
+    for (const specifier of ['./endpoints.js', '../server/index.js']) {
       expect(entry).toContain(specifier)
-      expect(existsSync(join(repoRoot, 'dist', specifier))).toBe(true)
+      expect(existsSync(join(repoRoot, 'dist/vite', specifier))).toBe(true)
     }
     // The Overlay is a separate module the plugin resolves at runtime, not
     // something inlined into the entry.
