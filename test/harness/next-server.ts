@@ -68,6 +68,12 @@ export interface StartNextOptions {
    * TypeScript, so no tsconfig is written for it.
    */
   app?: string
+  /**
+   * Leave Next's telemetry on, so that stopping the server spawns its detached
+   * flush, which reads the config again. Off by default. A test that turns it
+   * on must keep the flush off the network itself (next-lifecycle.test.ts).
+   */
+  telemetry?: boolean
 }
 
 /** A running `next dev`, read the way a test reads a Vite one. */
@@ -113,6 +119,7 @@ export async function startNextServer({
   webpack = false,
   copy = false,
   app,
+  telemetry = false,
 }: StartNextOptions = {}): Promise<NextHarnessServer> {
   if (app !== undefined && copy) throw new Error('`app` and `copy` are exclusive')
   const fixture = createFixtureEnv({ claudePid, gitShim })
@@ -160,8 +167,8 @@ export async function startNextServer({
     POINTOUT_EXAMPLE_DIST_DIR: distDir,
     ...(app === undefined && { POINTOUT_EXAMPLE_TSCONFIG: tsconfig }),
     // No detached telemetry flush outlives the server, and no test run reports
-    // to Vercel.
-    NEXT_TELEMETRY_DISABLED: '1',
+    // to Vercel, unless the test asked for the flush.
+    ...(telemetry ? {} : { NEXT_TELEMETRY_DISABLED: '1' }),
     ...(pointout ? {} : { POINTOUT_EXAMPLE_WITHOUT_POINTOUT: '1' }),
   }
   // Vitest sets `test`; `next dev` warns about any value but its own.

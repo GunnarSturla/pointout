@@ -388,6 +388,19 @@ written before the Next.js Connector still runs.
   (`POINTOUT_EXAMPLE_WITHOUT_POINTOUT`), `webpack: true` runs `next dev --webpack`,
   and `copy: true` serves a copy of the app at `examples/.harness-next-<name>/`, so a
   test can edit its `next.config.ts` without restarting every other file's server.
+- **Seam 1, temp apps** (Next.js Connector ticket 05): `tempApps('next')` writes a
+  Next.js consumer instead (`next.config.mjs` calling `withPointout(config,
+  options)`, a one-page App Router, `next`, `react` and `react-dom` linked in) and
+  serves each with `startNextServer({ app })`. Its page never compiles, since
+  Turbopack refuses packages linked from outside its root; the suites on temp apps
+  talk only to `/__agent`. Every Host-independent suite on temp apps runs
+  `describe.each(HOSTS)` with `tempApps(on)` inside. A test that cannot run on Next
+  says why beside an `it.runIf(on === 'vite')`: so far, only the ones that need the
+  serving pid before the server starts (a squatter on the reply socket's path), since
+  on Next it is the worker's. The serving pid, once started, is in the capture
+  directory's name. Mid-test, the fake `screencapture` is switched with
+  `fixture.captureBecomes(mode)`, a file the fake reads, since a change to this
+  process's environment never reaches `next dev`.
 - **Seam 2:** `globalSetup` starts both apps. Vite is Playwright's `baseURL`; a spec
   reaches Next with `page.goto(hostURL('next', '/pages-router'))` from
   `test/harness/hosts.ts`.
@@ -409,6 +422,11 @@ not act in. So:
   once nothing is left in the group. `NEXT_TELEMETRY_DISABLED=1` means no detached
   telemetry flush is spawned, and anything still naming the server's output folder is
   killed as a backstop. `next-harness.test.ts` reads the process table to hold it.
+  `telemetry: true` leaves telemetry on, for `next-lifecycle.test.ts`, which stops a
+  server with SIGINT and watches the flush exit; it sets `CI=1`, which keeps Next's
+  telemetry settings in the output folder, and preloads a module through
+  `NODE_OPTIONS` that blackholes the flush's request to Vercel. The same file runs a
+  `next build` (`test/harness/next-build.ts`) and greps its output for pointout.
 
 Next allows one `next dev` per output folder, so every server gets its own:
 `.next/harness-<pid>-<n>`, through `POINTOUT_EXAMPLE_DIST_DIR` in
