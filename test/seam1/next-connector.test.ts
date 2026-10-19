@@ -338,13 +338,13 @@ describe('a Pick on Next', () => {
     expect(await state()).toBe('done')
   })
 
-  it('names each link of an Owner chain as absent, with no resolver for the Host', async () => {
+  it('names a link in a chunk Next does not serve as absent, and says so', async () => {
     const session = await sessions.open(server.fixture, { cwd: repoRoot, pid: 504_003 })
     const chunk = `http://127.0.0.1:${server.port}/_next/static/chunks`
     const stack = [
       'Error: react-stack-top-frame',
       `    at exports.jsxDEV (${chunk}/react.js:197:25)`,
-      `    at ClientLeaf (${chunk}/app.js:1:200)`,
+      `    at ClientLeaf (${chunk}/not-a-chunk._.js:1:200)`,
       `    at Object.react_stack_bottom_frame (${chunk}/react-dom.js:14142:12)`,
     ].join('\n')
 
@@ -357,7 +357,10 @@ describe('a Pick on Next', () => {
     await session.awaitLines(3)
 
     expect(renderedBody(session)).toContain(
-      'ClientLeaf — no location (absent: no-resolver-for-host — ',
+      'ClientLeaf — no location (absent: module-not-in-graph — ',
+    )
+    expect(renderedBody(session)).toContain(
+      'this dev server serves no chunk at /_next/static/chunks/not-a-chunk._.js',
     )
   })
 })

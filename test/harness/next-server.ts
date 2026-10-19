@@ -66,6 +66,19 @@ export interface StartNextOptions {
    * copy's `next.config.ts` without restarting every other file's server.
    */
   copy?: boolean
+  /**
+   * Serve this app directory instead of `examples/next-app`: a throwaway
+   * consumer written by temp-app.ts, whose config reads
+   * `POINTOUT_EXAMPLE_DIST_DIR` the way the example's does. It has no
+   * TypeScript, so no tsconfig is written for it.
+   */
+  app?: string
+  /**
+   * Leave Next's telemetry on, so that stopping the server spawns its detached
+   * flush, which reads the config again. Off by default. A test that turns it
+   * on must keep the flush off the network itself (next-lifecycle.test.ts).
+   */
+  telemetry?: boolean
 }
 
 /** A running `next dev`, read the way a test reads a Vite one. */
@@ -111,13 +124,17 @@ export async function startNextServer({
   pointout = true,
   webpack = false,
   copy = false,
+  app,
+  telemetry = false,
 }: StartNextOptions = {}): Promise<NextHarnessServer> {
+  if (app !== undefined && copy) throw new Error('`app` and `copy` are exclusive')
   const fixture = createFixtureEnv({ claudePid, gitShim })
   const name = `harness-${process.pid}-${++started}`
 
   // A copy sits beside the app, at the same depth, so its imports of
   // `../shared` and the repository's `node_modules` resolve as the app's do.
-  const appRoot = copy ? join(nextAppRoot, '..', `.harness-next-${name}`) : nextAppRoot
+  const appRoot =
+    app ?? (copy ? join(nextAppRoot, '..', `.harness-next-${name}`) : nextAppRoot)
   if (copy) {
     cpSync(nextAppRoot, appRoot, {
       recursive: true,
@@ -136,11 +153,13 @@ export async function startNextServer({
   const tsconfigDir = join(appRoot, '.harness', name)
   const tsconfig = `.harness/${name}/tsconfig.json`
   rmSync(distPath, { recursive: true, force: true })
-  mkdirSync(tsconfigDir, { recursive: true })
-  writeFileSync(
-    join(appRoot, tsconfig),
-    JSON.stringify({ extends: '../../tsconfig.json' }, null, 2) + '\n',
-  )
+  if (app === undefined) {
+    mkdirSync(tsconfigDir, { recursive: true })
+    writeFileSync(
+      join(appRoot, tsconfig),
+      JSON.stringify({ extends: '../../tsconfig.json' }, null, 2) + '\n',
+    )
+  }
 
   // A skew file a dead process with this pid left behind is not this test's.
   if (process.env[ENV_CLOCK_SKEW] === undefined) rmSync(clockSkewFile, { force: true })
@@ -148,13 +167,14 @@ export async function startNextServer({
   const childEnv: Record<string, string> = {
     ...stringEntries(process.env),
     ...fixture.env,
+    // This process's skew file, unless the test names a file of its own.
+    [ENV_CLOCK_SKEW_FILE]: clockSkewFile,
     ...env,
     POINTOUT_EXAMPLE_DIST_DIR: distDir,
-    POINTOUT_EXAMPLE_TSCONFIG: tsconfig,
-    [ENV_CLOCK_SKEW_FILE]: clockSkewFile,
+    ...(app === undefined && { POINTOUT_EXAMPLE_TSCONFIG: tsconfig }),
     // No detached telemetry flush outlives the server, and no test run reports
-    // to Vercel.
-    NEXT_TELEMETRY_DISABLED: '1',
+    // to Vercel, unless the test asked for the flush.
+    ...(telemetry ? {} : { NEXT_TELEMETRY_DISABLED: '1' }),
     ...(pointout ? {} : { POINTOUT_EXAMPLE_WITHOUT_POINTOUT: '1' }),
   }
   // Vitest sets `test`; `next dev` warns about any value but its own.

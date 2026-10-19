@@ -381,13 +381,26 @@ A test names the Host it wants; one that names none gets Vite, which is how ever
 written before the Next.js Connector still runs.
 
 - **Seam 1:** `startExampleServer({ on: 'next' })` from `test/harness/dev-server.ts`.
-  It takes `env`, `claudePid`, `gitShim` and `host`, but no `root`, `configFile` or
-  `port`. A suite that is the same on both Hosts runs `describe.each(['vite', 'next'])`
+  It takes `env`, `claudePid`, `gitShim`, `host` and `port` (Next chooses one unless
+  it is named), but no `root` or `configFile`. A suite that is the same on both Hosts runs `describe.each(['vite', 'next'])`
   over it, as `guard.test.ts` does. `startNextServer` in `test/harness/next-server.ts`
   takes three more: `pointout: false` exports the config bare
   (`POINTOUT_EXAMPLE_WITHOUT_POINTOUT`), `webpack: true` runs `next dev --webpack`,
   and `copy: true` serves a copy of the app at `examples/.harness-next-<name>/`, so a
   test can edit its `next.config.ts` without restarting every other file's server.
+- **Seam 1, temp apps** (Next.js Connector ticket 05): `tempApps('next')` writes a
+  Next.js consumer instead (`next.config.mjs` calling `withPointout(config,
+  options)`, a one-page App Router, `next`, `react` and `react-dom` linked in) and
+  serves each with `startNextServer({ app })`. Its page never compiles, since
+  Turbopack refuses packages linked from outside its root; the suites on temp apps
+  talk only to `/__agent`. Every Host-independent suite on temp apps runs
+  `describe.each(HOSTS)` with `tempApps(on)` inside. A test that cannot run on Next
+  says why beside an `it.runIf(on === 'vite')`: so far, only the ones that need the
+  serving pid before the server starts (a squatter on the reply socket's path), since
+  on Next it is the worker's. The serving pid, once started, is in the capture
+  directory's name. Mid-test, the fake `screencapture` is switched with
+  `fixture.captureBecomes(mode)`, a file the fake reads, since a change to this
+  process's environment never reaches `next dev`.
 - **Seam 2:** `globalSetup` starts both apps: Vite on `SEAM2_PORT`, Next on
   `SEAM2_NEXT_PORT` (the next port up unless set), and Next is handed Vite's fixture
   environment, so both read one registry and every seam-2 session is a Candidate on
@@ -421,6 +434,11 @@ not act in. So:
   once nothing is left in the group. `NEXT_TELEMETRY_DISABLED=1` means no detached
   telemetry flush is spawned, and anything still naming the server's output folder is
   killed as a backstop. `next-harness.test.ts` reads the process table to hold it.
+  `telemetry: true` leaves telemetry on, for `next-lifecycle.test.ts`, which stops a
+  server with SIGINT and watches the flush exit; it sets `CI=1`, which keeps Next's
+  telemetry settings in the output folder, and preloads a module through
+  `NODE_OPTIONS` that blackholes the flush's request to Vercel. The same file runs a
+  `next build` (`test/harness/next-build.ts`) and greps its output for pointout.
 
 Next allows one `next dev` per output folder, so every server gets its own:
 `.next/harness-<pid>-<n>`, through `POINTOUT_EXAMPLE_DIST_DIR` in
@@ -456,6 +474,17 @@ putting a fresh server's origin and folder back. `npm run capture:next-frames`
 Two captures a few minutes apart were identical apart from WebKit's stack depth.
 `next-app.test.ts` fails if a captured chunk is no longer served or written, and then
 the fix is to capture again.
+
+`test/harness/next-frames.ts` puts a capture back on a server (`capturedStack`) and
+loads what a page would have first (`loadCapturedChunks`: both routes, then every chunk
+the captures name). Load before you Pick: the Next.js Connector dates a chunk by when a
+page first loaded it, and calls a frame in a chunk no page loaded from this server, but
+whose file has changed since pointout started, approximate. `test/harness/call-sites.ts`
+gives a suite the three call sites of `OwnerChainDepth.tsx` on either Host — the
+transform's position on Vite, the captured frame on Next — so the Owner chain and
+Confidence suites run as one `describe.each(['vite', 'next'])`. A test that edits a
+source file on Next does it in a `copy: true` server, which owns its fixtures; with no
+browser on the HMR socket, Turbopack rewrites a chunk only when a page next asks.
 
 Nothing in the example app animates. The spec's default is no motion (§9); the Overlay
 opts in under `prefers-reduced-motion: no-preference` and nowhere else (`docs/motion.md`),

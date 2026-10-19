@@ -24,20 +24,33 @@ A link reads as one line:
 | --- | --- |
 | `exact` | the frame remapped through the module's own sourcemap, and the transform it was made against is the one the server still holds |
 | `approximate: stale-transform` | the frame names a transform of the module that this dev server has since replaced. The line is remapped through a sourcemap that has moved under it |
-| `approximate: no-transform-timestamp` | the module has been re-transformed since the page loaded, and the frame carries no timestamp to compare — **Safari strips the query from a stack url** |
+| `approximate: no-transform-timestamp` | the module has been re-transformed since the page loaded, and the frame carries no timestamp to compare — **Safari strips the query from a stack url**. On Next.js, the file has changed since a page first loaded its chunk: a Turbopack frame never carries a version, since the chunk's url and the line a frame names stay the same across hot updates |
 | `approximate: no-sourcemap` | the module was served without one. The line and column are kept, but they are the *served* module's, not the source file's |
+| `absent: no-sourcemap` | on Next.js, the chunk was served without a map. A chunk holds many files, so without one there is no file to name |
 | `absent: call-site-frame-elided-by-engine` | **Safari** deleted the frame. See below |
 | `absent: no-react-boundary` | the stack never came out to app code: React's ten-frame cap, or an element created outside render |
 | `absent: unknown-owner-placeholder` | React stopped recording owner stacks. See the ceiling, below |
 | `absent: unreadable-frame` | the frame above React's own carries no location this server can read |
-| `absent: module-not-in-graph` | nothing in this dev server's module graph answers to the path the frame names |
+| `absent: module-not-in-graph` | nothing in this dev server's module graph answers to the path the frame names; on Next.js, no client chunk is served there |
 | `absent: unmapped-position` | the module's sourcemap has nothing at that position |
-| `absent: no-resolver-for-host` | the Host's Connector cannot read its frames at all yet. Every link on Next.js says this until Next.js Connector tickets 07 and 08 land |
+| `absent: source-not-on-disk` | the chunk's map names a source at that position that is no file on this machine, such as Turbopack's own runtime (`turbopack:///…`) |
+| `absent: no-resolver-for-host` | the Host's Connector cannot read this kind of frame yet. On Next.js, a Server Component's frame (`about://React/Server/…`) says this until Next.js Connector ticket 08 lands |
 
 A link is additionally flagged **`dependency`** when its frame is inside a package —
-`node_modules`, or one of Vite's pre-bundled `.vite/deps` modules. The flag leads the
-parenthesis, because it is the one word that means *do not edit here* whatever the
-rest of it says.
+`node_modules`, or one of Vite's pre-bundled `.vite/deps` modules — or, on Next.js,
+when the chunk's map lists its source in `ignoreList`, which Turbopack does for every
+package. The flag leads the parenthesis, because it is the one word that means *do not
+edit here* whatever the rest of it says.
+
+## Where Next.js reads a frame's map
+
+A Turbopack client chunk is served at `/_next/static/chunks/<name>.js` with its map
+beside it, `<name>.js.map`: an index map with one section per module, whose sources
+are `file:///` urls. The Next.js Connector asks Next for that served map over
+loopback, the way the page got the chunk. The same files sit on disk below
+`<distDir>/dev/static/chunks/`, but the served path is what a frame names, and reading
+the disk would need the config's `distDir` and Next 16's own folder layout. pointout
+never calls Next's internal `__nextjs_*` endpoints.
 
 ## The Safari limitation
 

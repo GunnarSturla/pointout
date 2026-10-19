@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'
 import { normalizeToWorktreeRoot } from '../server/paths.js'
+import type { HostSetup } from './hosts.js'
 
 // `init` (spec §18): the setup half of the second-harness seam. The delivery
 // half is `DeliveryRoute` in `server/delivery.ts`; this is its twin for what a
@@ -56,6 +57,8 @@ export interface Project {
    * directory whichever `node_modules` the package landed in.
    */
   drainBin: string
+  /** The Host the project's dev server is, which the setup skill names. */
+  host: HostSetup
 }
 
 export interface HarnessSetup {
@@ -68,10 +71,20 @@ export interface HarnessSetup {
   plan(project: Project): SetupPlan
 }
 
-/** Run `init` for one harness in `cwd`, and print what it did. */
-export function runSetup(harness: HarnessSetup, cwd: string): void {
+/**
+ * Run `init` for one harness in `cwd`, and print what it did. The Host is
+ * chosen after the package is found and before anything is planned, so a
+ * refusal of either writes nothing.
+ */
+export async function runSetup(
+  harness: HarnessSetup,
+  cwd: string,
+  chooseHost: (cwd: string) => Promise<HostSetup>,
+): Promise<void> {
   const root = normalizeToWorktreeRoot(cwd)
-  const plan = harness.plan({ root, drainBin: drainBinFrom(cwd, root) })
+  const drainBin = drainBinFrom(cwd, root)
+  const host = await chooseHost(cwd)
+  const plan = harness.plan({ root, drainBin, host })
 
   // A write can still fail after the plan was made — a read-only directory, a
   // full disk. The files already written are named in the refusal, so a
@@ -101,6 +114,8 @@ export function runSetup(harness: HarnessSetup, cwd: string): void {
     ...plan.items.map(
       ({ what, path, action }) => `  ${action.padEnd(width)}  ${what} — ${path}`,
     ),
+    // What the Host's own files need is said here and never done.
+    ...host.instructions(cwd),
   ]
   process.stdout.write(lines.join('\n') + '\n')
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { claudeSetup } from './claude/setup.js'
 import { runDrain } from './drain.js'
+import { chooseHost, connectorFlag } from './hosts.js'
 import { runSetup } from './setup.js'
 
 // The package's one binary, `pointout`, with a subcommand per job
@@ -17,7 +18,14 @@ const COMMANDS: Record<string, { run: () => Promise<void>; failsQuietly: boolean
   drain: { run: runDrain, failsQuietly: true },
   // A person at a terminal: a refusal names the file and exits non-zero. The
   // harness is chosen here and nowhere else (the second-harness seam, §18).
-  init: { run: async () => runSetup(claudeSetup, process.cwd()), failsQuietly: false },
+  // The Host is read off the manifest where it runs, or named by --connector.
+  init: {
+    run: async () => {
+      const flag = connectorFlag(process.argv.slice(3))
+      await runSetup(claudeSetup, process.cwd(), (cwd) => chooseHost(cwd, flag))
+    },
+    failsQuietly: false,
+  },
 }
 
 const name = process.argv[2] ?? ''

@@ -1,9 +1,9 @@
 import { relative, sep } from 'node:path'
 import type { OwnerChainLink } from '../wire.js'
-import type { FrameResolver } from './frame-resolver.js'
+import type { FrameAnswer, FrameResolver } from './frame-resolver.js'
 import { refuse } from './parse.js'
 import type { Parsed } from './parse.js'
-import { originalPositionFor } from './sourcemap.js'
+import { isEmptyMap, originalPositionFor } from './sourcemap.js'
 import { readAppFrame } from './stack.js'
 
 // The Owner chain, server side (spec §6, §12, §13): the ordered list of JSX call
@@ -38,6 +38,7 @@ export type DegradedMode =
   | 'unreadable-frame'
   | 'module-not-in-graph'
   | 'unmapped-position'
+  | 'source-not-on-disk'
   | 'no-resolver-for-host'
 
 /**
@@ -194,6 +195,7 @@ async function resolveLink(
   })
   if (answer.kind === 'absent')
     return absent(answer.mode, answer.reason, answer.dependency)
+  if (answer.kind === 'chunk') return resolveInChunk(link, root, frame, answer, absent)
 
   const { dependency, served } = answer
   const file = repoRelative(root, answer.file)
@@ -209,7 +211,7 @@ async function resolveLink(
   })
 
   const map = answer.map
-  if (!map || map.mappings === '') {
+  if (!map || isEmptyMap(map)) {
     // §12 keeps the transformed position rather than dropping the link. It is a
     // real position in a real file, and the reason says which coordinates it is
     // in, so nobody edits line 4,431 of a file that has 60 lines.
@@ -236,6 +238,56 @@ async function resolveLink(
 
   if (answer.drift) return approximate(answer.drift.mode, answer.drift.reason, location)
 
+  return { name: link.name, location, confidence: { kind: 'exact' }, dependency }
+}
+
+/**
+ * A frame in a bundle of many files: the map says which file as well as which
+ * line, so a position it maps to no file of this machine has no location at
+ * all, and a source its `ignoreList` names is vendor code whatever the
+ * bundle's path said.
+ */
+function resolveInChunk(
+  link: OwnerChainLink,
+  root: string,
+  frame: { line: number; column: number },
+  answer: Extract<FrameAnswer, { kind: 'chunk' }>,
+  absent: (mode: DegradedMode, reason: string, dependency?: boolean) => OwnerLink,
+): OwnerLink {
+  const { served } = answer
+  // One column off for the same reason as a module's: engines print 1-based.
+  const original = originalPositionFor(answer.map, frame.line, frame.column - 1)
+  if (!original?.source) {
+    return absent(
+      'unmapped-position',
+      `the sourcemap of ${served} maps nothing at ${frame.line}:${frame.column}`,
+    )
+  }
+
+  const source = answer.source(original.source)
+  if (!source) {
+    return absent(
+      'source-not-on-disk',
+      `the sourcemap of ${served} maps ${frame.line}:${frame.column} into a source ` +
+        "that is no file on this machine, such as the bundler's own runtime",
+      original.ignored,
+    )
+  }
+  const dependency = source.dependency || original.ignored
+  const location = `${repoRelative(root, source.file)}:${original.line}:${original.column + 1}`
+
+  if (source.drift) {
+    return {
+      name: link.name,
+      location,
+      confidence: {
+        kind: 'approximate',
+        mode: source.drift.mode,
+        reason: source.drift.reason,
+      },
+      dependency,
+    }
+  }
   return { name: link.name, location, confidence: { kind: 'exact' }, dependency }
 }
 

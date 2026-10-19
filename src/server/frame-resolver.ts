@@ -41,14 +41,45 @@ export type FrameAnswer =
       dependency: boolean
     }
   | {
+      /**
+       * A bundle of many source files, such as a Turbopack chunk: which file
+       * the frame is in is whichever source the map names at its position.
+       */
+      kind: 'chunk'
+      /** What the frame decodes against. A chunk with no map is `absent`. */
+      map: SourceMapLike
+      /**
+       * The source the map names at the frame's position, as a file: its
+       * absolute path, whether it has moved since the page loaded the chunk,
+       * and whether it is vendor code by its path (the map's `ignoreList` adds
+       * to that). Null for a source that is no file on this machine, such as
+       * a bundler's own runtime. The source's spelling is the Connector's to
+       * read; the core never sees its scheme.
+       */
+      source: (name: string) => ChunkSource | null
+      served: string
+    }
+  | {
       kind: 'absent'
       /**
-       * `no-resolver-for-host`: the Connector cannot read any frame its Host
-       * serves yet, whatever the frame says.
+       * `no-resolver-for-host`: the Connector cannot read this kind of frame
+       * its Host serves yet, whatever the frame says. `no-sourcemap`: the
+       * frame is in a bundle of many files with no map to say which.
        */
-      mode: 'unreadable-frame' | 'module-not-in-graph' | 'no-resolver-for-host'
+      mode:
+        | 'unreadable-frame'
+        | 'module-not-in-graph'
+        | 'no-sourcemap'
+        | 'no-resolver-for-host'
       reason: string
       dependency: boolean
     }
+
+/** One source file of a chunk, as the Connector found it. */
+export interface ChunkSource {
+  file: string
+  drift: Drift | null
+  dependency: boolean
+}
 
 export type FrameResolver = (frame: ServedFrame) => Promise<FrameAnswer>
