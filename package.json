@@ -45,7 +45,8 @@
     "pretest:seam3": "npm run build",
     "test:seam3": "vitest run --config vitest.seam3.config.ts",
     "pretest:seam3:model": "npm run build",
-    "test:seam3:model": "vitest run --config vitest.seam3.config.ts --mode model"
+    "test:seam3:model": "vitest run --config vitest.seam3.config.ts --mode model",
+    "capture:next-frames": "playwright test --config playwright.capture.config.ts"
   },
   "peerDependencies": {
     "react": ">=19.0.0",

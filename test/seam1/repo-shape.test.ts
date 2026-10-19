@@ -58,6 +58,7 @@ describe('nothing imports a spike', () => {
     'vitest.config.ts',
     'vitest.seam3.config.ts',
     'playwright.config.ts',
+    'playwright.capture.config.ts',
     'examples/react-app/vite.config.ts',
     'examples/next-app/next.config.ts',
   ]

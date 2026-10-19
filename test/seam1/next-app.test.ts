@@ -1,13 +1,16 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { startExampleServer } from '../harness/dev-server.js'
-import type { HarnessServer } from '../harness/dev-server.js'
+import type { NextHarnessServer } from '../harness/next-server.js'
+import { nextAppRoot, repoRoot } from '../harness/paths.js'
 
 // Ticket 03 of the Next.js Connector. `examples/next-app` is the second test
 // bed, built from the fixtures `examples/react-app` renders, and the harness
 // starts it as a `next dev` of its own. pointout is not in it yet (ticket 04),
 // so everything here is Next's own behaviour, read over HTTP and off its log.
 
-let server!: HarnessServer
+let server!: NextHarnessServer
 
 beforeAll(async () => {
   server = await startExampleServer({ on: 'next' })
@@ -50,4 +53,69 @@ describe('the Next.js test bed, with no pointout', () => {
   it('answers nothing under /__agent, since pointout is not in it', async () => {
     expect((await fetch(server.url + '/__agent/status')).status).toBe(404)
   }, 60_000)
+})
+
+describe('the captured frames in test/fixtures/next-frames/', () => {
+  // Tickets 07 and 08 test their resolvers against these, through seam 1, by
+  // putting this server's origin and output folder back into the placeholders.
+  // That works only while Turbopack still names and fills its chunks as it did
+  // when they were captured; if this fails, run `npm run capture:next-frames`.
+  const folder = join(repoRoot, 'test', 'fixtures', 'next-frames')
+  const text = readdirSync(folder)
+    .map((file) => readFileSync(join(folder, file), 'utf8'))
+    .join('\n')
+  const clientChunks = [
+    ...new Set(text.match(/\{origin\}\/_next\/static\/chunks\/[^:)\s]+\.js/g)),
+  ]
+  const serverChunks = [
+    ...new Set(
+      text.match(/about:\/\/React\/Server\/file:\/\/\{distDir\}\/[^?:)\s]+\.js/g),
+    ),
+  ]
+
+  it('hold client frames on both routers and Server Component frames', () => {
+    expect(text).toContain('"router": "app"')
+    expect(text).toContain('"router": "pages"')
+    expect(clientChunks.length).toBeGreaterThan(1)
+    expect(serverChunks.length).toBeGreaterThan(0)
+  })
+
+  it('name client chunks this server serves, and the map each one names', async () => {
+    // A page is what makes Turbopack build its chunks.
+    for (const route of ['/', '/pages-router'])
+      await (await fetch(server.url + route)).text()
+    const failed: string[] = []
+    let mapped = 0
+    for (const chunk of clientChunks) {
+      const url = chunk.replace('{origin}', server.url)
+      const response = await fetch(url)
+      if (response.status !== 200) failed.push(`${response.status} ${url}`)
+      // Measured: not every chunk names a map. Turbopack's own runtime chunk
+      // for the Pages Router, `turbopack-…pages__app_….js`, names none, and its
+      // `.map` is a 404.
+      const named = /\/\/# sourceMappingURL=(\S+)\s*$/.exec(await response.text())?.[1]
+      if (!named) continue
+      mapped += 1
+      const map = new URL(named, url).href
+      const mapStatus = (await fetch(map)).status
+      if (mapStatus !== 200) failed.push(`${mapStatus} ${map}`)
+    }
+    expect(failed).toEqual([])
+    expect(mapped).toBeGreaterThan(1)
+  }, 60_000)
+
+  it('name server chunks this server wrote, each with its map beside it', () => {
+    const paths = serverChunks.map((chunk) =>
+      decodeURIComponent(
+        chunk.replace(
+          'about://React/Server/file://{distDir}',
+          join(nextAppRoot, server.distDir),
+        ),
+      ),
+    )
+    const missing = paths
+      .flatMap((path) => [path, path + '.map'])
+      .filter((path) => !existsSync(path))
+    expect(missing).toEqual([])
+  })
 })

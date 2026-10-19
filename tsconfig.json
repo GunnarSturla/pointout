@@ -37,6 +37,7 @@
     "test",
     "vitest.config.ts",
     "vitest.seam3.config.ts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "playwright.capture.config.ts"
   ]
 }

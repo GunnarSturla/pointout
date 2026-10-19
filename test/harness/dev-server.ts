@@ -6,6 +6,7 @@ import { createRecordingLogger } from './logger.js'
 import type { LogEntry } from './logger.js'
 import { exampleAppRoot } from './paths.js'
 import { startNextServer } from './next-server.js'
+import type { NextHarnessServer } from './next-server.js'
 import type { HostName } from './hosts.js'
 
 export interface StartServerOptions {
@@ -130,6 +131,12 @@ export interface ExampleServerOptions extends Partial<StartServerOptions> {
  * Seam 1's default server: the real example app, so the module graph and the
  * sourcemaps are real. A test names the Host it wants with `on`.
  */
+export async function startExampleServer(
+  options: ExampleServerOptions & { on: 'next' },
+): Promise<NextHarnessServer>
+export async function startExampleServer(
+  options?: ExampleServerOptions,
+): Promise<HarnessServer>
 export async function startExampleServer({
   on = 'vite',
   ...options

@@ -1,6 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { startExampleServer } from '../harness/dev-server.js'
+import { sharedFixturesRoot } from '../harness/paths.js'
 import { tempApps } from '../harness/temp-app.js'
 
 // Ticket 25. The plugin contributes `server.fs.allow` so the Overlay can be
@@ -54,5 +56,23 @@ describe("a consumer's own source, from outside the package root", () => {
     const server = await apps.serve(app)
 
     expect((await fetch(server.url + MODULE_PATH)).status).toBe(403)
+  })
+})
+
+describe("the example app's shared fixtures, outside its root", () => {
+  // Next.js Connector 03 moved them to `examples/shared/`, beside both example
+  // apps, so an Owner chain names the same file on either Host. The Vite app's
+  // config lets the folder in, and Vite serves it under `/@fs/`.
+  it('are served under /@fs/', async () => {
+    const server = await startExampleServer()
+    try {
+      const url =
+        server.url + '/@fs' + join(sharedFixturesRoot, 'fixtures', 'OwnerChainDepth.tsx')
+      const response = await fetch(url)
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain('ChainLeaf')
+    } finally {
+      await server.close()
+    }
   })
 })

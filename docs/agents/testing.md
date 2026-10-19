@@ -25,7 +25,7 @@ way it writes out a path. See `packaging.md` for the rest of what TypeScript cha
 
 Test helpers under `test/harness/` are fixture code, not tests, and are held to the
 same rule: they start the server, fake the harness and hand back a URL. They import
-Vite, never `src/`.
+Vite and Next, never `src/`.
 
 A test against the real harness asserts on harness artefacts — registry files, frames,
 the transcript on disk — and never on what the model says.
@@ -313,6 +313,15 @@ forked process of its own, so a file's clock never reaches another file; that is
 makes it safe, and why the pool is pinned to `forks`. Like the four above, a consumer
 never sets it.
 
+A `next dev` the harness spawned is a process of its own, which `process.env` here
+never reaches. So `advanceClock` also writes the skew to a file, one per test process
+(`clockSkewFile` in `fixture-env.ts`), and the Next harness hands the server
+`POINTOUT_CLOCK_SKEW_FILE` naming it. A server given that variable reads the skew from
+the file on every call instead of from `POINTOUT_CLOCK_SKEW_MS`; a missing or empty file
+is no skew. It is test-only in the same way: nothing a consumer runs sets it, and a
+production build carries no pointout at all. `status.test.ts` holds the file route on
+Vite, where the variable can be set in-process.
+
 ## Pretending to be another operating system
 
 `POINTOUT_PLATFORM` is a sixth override, and the last one that is not a
@@ -336,19 +345,99 @@ changes every time the canaries pass. So seam 1 states the version it wants,
 record does. Like the others, a consumer never sets it. `docs/posture.md` lists every
 posture line.
 
-## The example app
+## The example apps
 
-`examples/react-app/` is the test bed and the development target. Fixtures live one per
-file under `examples/react-app/src/fixtures/`, each carrying `data-fixture` attributes
-that tests select on. Add the fixture your ticket needs;
-`examples/react-app/src/App.tsx` lists the ones still to come and which ticket owns each.
+There are two test beds, one per Host, built from the same fixtures:
+
+- `examples/react-app/` is Vite's, and the development target.
+- `examples/next-app/` is Next.js 16.4's, under Turbopack. pointout is not in it until
+  `withPointout()` lands (Next.js Connector ticket 04). Its App Router route `/` and its
+  Pages Router route `/pages-router` both render the shared test bed. `/` adds two
+  fixtures only Next has, in `examples/next-app/fixtures/`: a Server Component that owns
+  a client component (`server-owner`, `client-leaf`), and a same-origin frame that loads
+  the route `/framed` (`framed-route`).
+
+The shared fixtures live one per file under `examples/shared/fixtures/`, each carrying
+`data-fixture` attributes that tests select on, so an Owner chain names the same file
+on either Host. `examples/shared/App.tsx` composes them, and lists the ones still to
+come and which ticket owns each. It is a client component (`'use client'`), so on Next
+every shared fixture is a client component, as on Vite. A fixture must render on a
+server too: nothing touches `window`, `document` or `HTMLElement` at module scope or
+during render, and a value read from the url goes through `useSyncExternalStore`
+with a server snapshot (`FullViewportDecoy.tsx`), so hydration never warns.
+
+The shared folder is outside both apps, so each lets it in: Vite's
+`server.fs.allow` names it (Vite then serves its files under `/@fs/<absolute path>`,
+which is the URL a seam-1 test fetches), and Next's `turbopack.root` is the repository
+root.
+
+### Choosing a Host
+
+A test names the Host it wants; one that names none gets Vite, which is how every test
+written before the Next.js Connector still runs.
+
+- **Seam 1:** `startExampleServer({ on: 'next' })` from `test/harness/dev-server.ts`.
+  It takes `env`, `claudePid`, `gitShim` and `host`, but no `root`, `configFile` or
+  `port`.
+- **Seam 2:** `globalSetup` starts both apps. Vite is Playwright's `baseURL`; a spec
+  reaches Next with `page.goto(hostURL('next', '/pages-router'))` from
+  `test/harness/hosts.ts`.
+
+### What starting Next costs, and how it is started
+
+`test/harness/next-server.ts` runs `next dev` as a **subprocess**, never in the test's
+own process: Next runs the app in a worker child it forks, and only that child carries
+`NEXT_PRIVATE_WORKER`, so an in-process server is the one shape `withPointout()` will
+not act in. So:
+
+- the fixture environment goes in through the child's environment;
+- the port comes from `<distDir>/dev/lock`;
+- `log()` and `logEntries()` are its stdout (`info`) and stderr (`warn`; Next's
+  streams do not tell a warning from an error), colour codes removed;
+- `close()` sends SIGTERM to its process group, SIGKILL after 10 s, and returns only
+  once nothing is left in the group. `NEXT_TELEMETRY_DISABLED=1` means no detached
+  telemetry flush is spawned, and anything still naming the server's output folder is
+  killed as a backstop. `next-harness.test.ts` reads the process table to hold it.
+
+Next allows one `next dev` per output folder, so every server gets its own:
+`.next/harness-<pid>-<n>`, through `POINTOUT_EXAMPLE_DIST_DIR` in
+`examples/next-app/next.config.ts`. Next also rewrites the tsconfig it is given to
+include that folder's types, so each server is handed its own,
+`.harness/<name>/tsconfig.json`, extending the app's (`POINTOUT_EXAMPLE_TSCONFIG`). It
+sits outside `.next/` because Turbopack does not find it there, and it is written
+before Next starts because Turbopack reads it first. Both are deleted on close. The
+pattern is **one Next server per test file**, in `beforeAll`; two in one file also
+work. `next-env.d.ts` names whichever folder the last server used, so it is ignored by
+git and left out of `npm run typecheck`.
+
+Measured (October 2026, 8-core laptop, load average 4 to 14): a `next dev` is ready in
+about 0.3 s and closes in well under a second; the first request for `/` compiles in
+about 1.2 s and `/pages-router` in about 0.6 s. Seam 1 went from about 25.3 s to
+27.7 s with the two Next files (`next-app.test.ts`, `next-harness.test.ts`, four
+servers between them). Seam 2's globalSetup boots Next beside Vite, at the same time;
+the Chromium-only run went from about 1.0 to 1.1 minutes with `next-app.spec.ts`'s six
+journeys.
+
+### Captured frames
+
+`test/fixtures/next-frames/<engine>.json` holds real owner stacks from the Next test
+bed, in all three engines: the Owner chain React keeps for an element on each router,
+each link with the raw stack React captured where it was created. They hold Turbopack
+client-chunk frames on both routers and the `about://React/Server/file://…` frames of
+a server chunk, with the run's origin written `{origin}` and its output folder
+`{distDir}`. Resolvers are tested against them through seam 1, without a browser, by
+putting a fresh server's origin and folder back. `npm run capture:next-frames`
+(`playwright.capture.config.ts`, `test/capture/`) writes them; it is not in `npm test`.
+Two captures a few minutes apart were identical apart from WebKit's stack depth.
+`next-app.test.ts` fails if a captured chunk is no longer served or written, and then
+the fix is to capture again.
 
 Nothing in the example app animates. The spec's default is no motion (§9); the Overlay
 opts in under `prefers-reduced-motion: no-preference` and nowhere else (`docs/motion.md`),
 and a test bed that shimmers on its own would make that assertion meaningless.
 
 One fixture is written to by a test:
-`examples/react-app/src/fixtures/hot-update.css` holds a single
+`examples/shared/fixtures/hot-update.css` holds a single
 declaration that `test/seam2/highlight.spec.ts` rewrites to make a real hot update
 happen, and writes back exactly as it found it. It runs in one engine, because a hot
 update is the dev server moving the page rather than anything an engine does, and three

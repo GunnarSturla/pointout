@@ -75,8 +75,9 @@ import { readCandidates } from './registry.js' // resolves registry.ts, emits re
 
 Module resolution is `nodenext`, because the emit has to satisfy Node. The tests follow
 the same rule; Vite maps a `.js` specifier onto the `.ts` file beside it, so the harness
-works unchanged. The example app is the exception, and deliberately: Vite bundles it and
-`tsc` never emits it, so it imports the real filename (`./App.tsx`).
+works unchanged. The example apps are the exception, and deliberately: Vite and Next
+bundle them and `tsc` never emits them, so they import the real filename
+(`../../shared/App.tsx`).
 
 **A type-only import says so.** `verbatimModuleSyntax` is on, so an `import` that survives
 into the emit is one the runtime actually needs:

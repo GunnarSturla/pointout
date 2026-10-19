@@ -384,6 +384,8 @@ npm run lint && npm run format:check && npm run typecheck
 `examples/react-app/` is the React 19 test bed. Its full-viewport decoy, the fixture that
 covers the page the way a real app's scrim does, is off when the page loads; add
 `?decoy` to the URL to load with it on, or press **Show decoy**, bottom left.
+`examples/next-app/` is the Next.js 16 test bed, built from the same fixtures in
+`examples/shared/`; pointout is not in it yet.
 
 The conventions every change follows start at [`CLAUDE.md`](CLAUDE.md), and the domain
 language is in [`GLOSSARY.md`](GLOSSARY.md).
