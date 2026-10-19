@@ -118,6 +118,7 @@ export function pointout(options: PointoutOptions = {}): Plugin {
         announcePosture(
           {
             logger,
+            hostName: 'Vite',
             host: address && typeof address === 'object' ? address.address : null,
           },
           resolved,

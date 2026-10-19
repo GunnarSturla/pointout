@@ -1,19 +1,20 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { startExampleServer } from '../harness/dev-server.js'
+import { startNextServer } from '../harness/next-server.js'
 import type { NextHarnessServer } from '../harness/next-server.js'
 import { nextAppRoot, repoRoot } from '../harness/paths.js'
 
 // Ticket 03 of the Next.js Connector. `examples/next-app` is the second test
 // bed, built from the fixtures `examples/react-app` renders, and the harness
-// starts it as a `next dev` of its own. pointout is not in it yet (ticket 04),
-// so everything here is Next's own behaviour, read over HTTP and off its log.
+// starts it as a `next dev` of its own. Here it runs with its config exported
+// bare, without `withPointout()`, so everything here is Next's own behaviour,
+// read over HTTP and off its log. next-connector.test.ts has it with pointout.
 
 let server!: NextHarnessServer
 
 beforeAll(async () => {
-  server = await startExampleServer({ on: 'next' })
+  server = await startNextServer({ pointout: false })
 }, 120_000)
 
 afterAll(async () => {
@@ -50,7 +51,7 @@ describe('the Next.js test bed, with no pointout', () => {
     expect(await response.text()).toContain('data-fixture="framed-page"')
   }, 60_000)
 
-  it('answers nothing under /__agent, since pointout is not in it', async () => {
+  it('answers nothing under /__agent, since pointout is not in this one', async () => {
     expect((await fetch(server.url + '/__agent/status')).status).toBe(404)
   }, 60_000)
 })

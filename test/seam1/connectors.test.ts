@@ -9,6 +9,8 @@ import { repoRoot } from '../harness/paths.js'
 
 /** The directory the Vite Connector is emitted into, repo-relative. */
 const VITE_CONNECTOR = 'dist/vite/'
+/** The directory the Next.js Connector is emitted into, repo-relative. */
+const NEXT_CONNECTOR = 'dist/next/'
 
 describe('the core belongs to no Host', () => {
   const emitted = modulesUnder('dist').filter((path) => path.endsWith('.js'))
@@ -27,11 +29,25 @@ describe('the core belongs to no Host', () => {
     expect(offenders).toEqual([])
   })
 
-  it('imports next from nowhere yet', () => {
-    const offenders = emitted.filter((path) =>
-      specifiers(path).some((specifier) => isPackage(specifier, 'next')),
+  it('imports next only from inside the Next.js Connector', () => {
+    const offenders = emitted.filter(
+      (path) =>
+        !path.startsWith(NEXT_CONNECTOR) &&
+        specifiers(path).some((specifier) => isPackage(specifier, 'next')),
     )
     expect(offenders).toEqual([])
+  })
+
+  it('keeps each Connector out of the other’s Host', () => {
+    const crossed = emitted.filter(
+      (path) =>
+        (path.startsWith(NEXT_CONNECTOR) &&
+          specifiers(path).some((specifier) => isPackage(specifier, 'vite'))) ||
+        (path.startsWith(VITE_CONNECTOR) &&
+          specifiers(path).some((specifier) => isPackage(specifier, 'next'))),
+    )
+    expect(emitted).toContain('dist/next/index.js')
+    expect(crossed).toEqual([])
   })
 
   it('reads its imports the way the check above needs', () => {
@@ -66,6 +82,36 @@ describe('the entry points', () => {
     const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'))
     expect(pkg.peerDependencies.vite).toBeDefined()
     expect(pkg.peerDependenciesMeta?.vite).toEqual({ optional: true })
+  })
+
+  it('gives withPointout at pointout/next, to an ESM config', () => {
+    const answer = importFromRepo(
+      "const m = await import('pointout/next');" +
+        'const config = { reactStrictMode: true };' +
+        'console.log(JSON.stringify({ named: typeof m.withPointout, same: m.default === m.withPointout, untouched: m.withPointout(config) === config }))',
+    )
+    // Outside Next's dev worker, the config comes back as it went in.
+    expect(JSON.parse(answer)).toEqual({ named: 'function', same: true, untouched: true })
+  })
+
+  it('gives withPointout to a CommonJS next.config.js too', () => {
+    const answer = execFileSync(
+      process.execPath,
+      [
+        '-e',
+        "const { withPointout } = require('pointout/next');" +
+          'const config = { reactStrictMode: true };' +
+          'console.log(JSON.stringify({ named: typeof withPointout, untouched: withPointout(config) === config }))',
+      ],
+      { cwd: repoRoot, encoding: 'utf8' },
+    ).trim()
+    expect(JSON.parse(answer)).toEqual({ named: 'function', untouched: true })
+  })
+
+  it('lists next as an optional peer, 16.3 and later in 16', () => {
+    const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'))
+    expect(pkg.peerDependencies.next).toBe('>=16.3 <17')
+    expect(pkg.peerDependenciesMeta?.next).toEqual({ optional: true })
   })
 })
 

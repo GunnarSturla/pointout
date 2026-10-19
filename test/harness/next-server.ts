@@ -1,6 +1,13 @@
 import { spawn, execFileSync } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -42,6 +49,18 @@ export interface StartNextOptions {
   claudePid?: number
   /** Record the subprocesses the server spawns. */
   gitShim?: boolean
+  /**
+   * Whether the app's config is wrapped in `withPointout()`, which it is by
+   * default. False exports the bare config, to compare a page with and without.
+   */
+  pointout?: boolean
+  /** Run `next dev --webpack` instead of Turbopack. */
+  webpack?: boolean
+  /**
+   * Serve a copy of the app, beside it in `examples/`, so a test can edit the
+   * copy's `next.config.ts` without restarting every other file's server.
+   */
+  copy?: boolean
 }
 
 /** A running `next dev`, read the way a test reads a Vite one. */
@@ -60,6 +79,8 @@ export interface NextHarnessServer {
   pid: number
   /** Its output folder, relative to the app. */
   distDir: string
+  /** The app it serves: `examples/next-app`, or the copy `copy` asked for. */
+  appRoot: string
   close(): Promise<void>
 }
 
@@ -81,23 +102,37 @@ export async function startNextServer({
   env = {},
   claudePid,
   gitShim = false,
+  pointout = true,
+  webpack = false,
+  copy = false,
 }: StartNextOptions = {}): Promise<NextHarnessServer> {
   const fixture = createFixtureEnv({ claudePid, gitShim })
   const name = `harness-${process.pid}-${++started}`
+
+  // A copy sits beside the app, at the same depth, so its imports of
+  // `../shared` and the repository's `node_modules` resolve as the app's do.
+  const appRoot = copy ? join(nextAppRoot, '..', `.harness-next-${name}`) : nextAppRoot
+  if (copy) {
+    cpSync(nextAppRoot, appRoot, {
+      recursive: true,
+      filter: (source) => !/[/\\](\.next|\.harness|next-env\.d\.ts)$/.test(source),
+    })
+  }
+
   const distDir = `.next/${name}`
-  const distPath = join(nextAppRoot, distDir)
+  const distPath = join(appRoot, distDir)
   const lockFile = join(distPath, 'dev', 'lock')
 
   // Next rewrites the tsconfig it is handed to include this folder's types, so
   // each server gets one of its own (see next.config.ts). It must exist before
   // Next starts, because Turbopack reads it before Next would write it, and it
   // must sit outside `.next/`, where Turbopack does not find it.
-  const tsconfigDir = join(nextAppRoot, '.harness', name)
+  const tsconfigDir = join(appRoot, '.harness', name)
   const tsconfig = `.harness/${name}/tsconfig.json`
   rmSync(distPath, { recursive: true, force: true })
   mkdirSync(tsconfigDir, { recursive: true })
   writeFileSync(
-    join(nextAppRoot, tsconfig),
+    join(appRoot, tsconfig),
     JSON.stringify({ extends: '../../tsconfig.json' }, null, 2) + '\n',
   )
 
@@ -114,12 +149,14 @@ export async function startNextServer({
     // No detached telemetry flush outlives the server, and no test run reports
     // to Vercel.
     NEXT_TELEMETRY_DISABLED: '1',
+    ...(pointout ? {} : { POINTOUT_EXAMPLE_WITHOUT_POINTOUT: '1' }),
   }
   // Vitest sets `test`; `next dev` warns about any value but its own.
   delete childEnv.NODE_ENV
 
-  const child = spawn(process.execPath, [NEXT_BIN, 'dev', '-H', host, '-p', '0'], {
-    cwd: nextAppRoot,
+  const args = [NEXT_BIN, 'dev', '-H', host, '-p', '0', ...(webpack ? ['--webpack'] : [])]
+  const child = spawn(process.execPath, args, {
+    cwd: appRoot,
     env: childEnv,
     // Its own process group, so `close()` reaches Next's worker and
     // Turbopack's pool along with it.
@@ -146,28 +183,62 @@ export async function startNextServer({
     killStragglers(distPath)
     rmSync(distPath, { recursive: true, force: true })
     rmSync(tsconfigDir, { recursive: true, force: true })
+    if (copy) rmSync(appRoot, { recursive: true, force: true })
     fixture.cleanup()
   }
 
   let port: number
   try {
     port = await portFromLock(lockFile, () => hasExited, log)
+    // Next writes its lock before it reads the config, and pointout starts
+    // serving only once the config is read. Its posture block is the sign it
+    // has, as `listen()` resolving is on Vite.
+    if (pointout && !webpack) await untilLogged(POSTURE_HEADING, () => hasExited, log)
   } catch (error) {
     await cleanup()
     throw error
   }
 
   return {
-    // The address it was told to bind, spelled for a URL.
-    url: `http://${host.includes(':') ? `[${host}]` : host}:${port}`,
+    // The address it was told to bind, spelled for a URL; every interface is
+    // dialled on loopback, in the family it was bound in.
+    url: `http://${dialled(host)}:${port}`,
     port,
     fixture,
     log,
     logEntries: () => [...lines],
     pid,
     distDir,
+    appRoot,
     close: cleanup,
   }
+}
+
+/** The line pointout's startup posture block opens with. */
+const POSTURE_HEADING = 'pointout — startup posture'
+
+/** Wait until the server has printed `text`, or fail with what it did print. */
+async function untilLogged(
+  text: string,
+  hasExited: () => boolean,
+  log: () => string,
+): Promise<void> {
+  const deadline = Date.now() + BOOT_DEADLINE_MS
+  while (!log().includes(text)) {
+    if (hasExited()) throw new Error(`next dev exited before printing ${text}:\n${log()}`)
+    if (Date.now() > deadline) {
+      throw new Error(
+        `next dev printed no ${text} within ${BOOT_DEADLINE_MS / 1000} s:\n${log()}`,
+      )
+    }
+    await sleep(50)
+  }
+}
+
+function dialled(host: string): string {
+  if (host === '0.0.0.0') return '127.0.0.1'
+  if (host === '::') return '[::1]'
+  return host.includes(':') ? `[${host}]` : host
 }
 
 /** Read the port out of Next's lock file, once Next has written it. */

@@ -52,10 +52,11 @@ export function createPosture(): Posture {
   return posture
 }
 
-export function rootLine(root: string, method: RootMethod): PostureLine {
+/** `host` is how the block names the Host: `Vite`, `Next.js`. */
+export function rootLine(root: string, method: RootMethod, host: string): PostureLine {
   const how: Record<RootMethod, string> = {
     git: 'git rev-parse --show-toplevel',
-    'vite-root': 'the Vite root; not inside a git repository',
+    'host-root': `the ${host} root; not inside a git repository`,
     option: 'the root option',
   }
   return says(`${root} (${how[method]})`)
@@ -88,9 +89,9 @@ function count(n: number, singular: string, plural = singular + 's'): string {
   return `${n} ${n === 1 ? singular : plural}`
 }
 
-export function lanLine(address: string): PostureLine {
+export function lanLine(host: string, address: string): PostureLine {
   return warns(
-    `Vite is bound to ${address} — Picks arriving from the LAN will be refused`,
+    `${host} is bound to ${address} — Picks arriving from the LAN will be refused`,
   )
 }
 

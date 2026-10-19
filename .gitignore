@@ -28,3 +28,5 @@ coverage/
 .next/
 next-env.d.ts
 .harness/
+# a copy of examples/next-app a seam-1 test edits the config of
+examples/.harness-next-*/

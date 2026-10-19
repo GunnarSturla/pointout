@@ -1,6 +1,6 @@
 import { request as httpRequest } from 'node:http'
 import { networkInterfaces } from 'node:os'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { startExampleServer } from '../harness/dev-server.js'
 import type { HarnessServer } from '../harness/dev-server.js'
 import { tempApps } from '../harness/temp-app.js'
@@ -18,12 +18,15 @@ function lanAddress(): string | null {
   return null
 }
 
-describe('the Guard', () => {
+/** Every Host the Guard is the same on (Next.js Connector ticket 04). */
+const HOSTS = ['vite', 'next'] as const
+
+describe.each(HOSTS)('the Guard, on %s', (on) => {
   let server!: HarnessServer
 
   beforeAll(async () => {
-    server = await startExampleServer({ host: '0.0.0.0' })
-  })
+    server = await startExampleServer({ on, host: '0.0.0.0' })
+  }, 120_000)
 
   afterAll(async () => {
     await server?.close()
@@ -111,7 +114,8 @@ describe('the Guard', () => {
     // "Origin" on every start, so matching the word alone proved nothing
     // (ticket 19's audit).
     expect(reason).toContain('evil.example')
-    expect(server.log()).toContain(reason)
+    // Next's log is a child's stdout, which may arrive after the answer.
+    await vi.waitFor(() => expect(server.log()).toContain(reason))
   })
 })
 
@@ -178,13 +182,13 @@ describe('the Guard against a hostname that merely resolves to loopback', () => 
   })
 })
 
-describe('the Guard on a non-loopback interface', () => {
+describe.each(HOSTS)('the Guard on a non-loopback interface, on %s', (on) => {
   const address = lanAddress()
   let server: HarnessServer | undefined
 
   beforeAll(async () => {
-    if (address) server = await startExampleServer({ host: '0.0.0.0' })
-  })
+    if (address) server = await startExampleServer({ on, host: '0.0.0.0' })
+  }, 120_000)
 
   afterAll(async () => {
     await server?.close()

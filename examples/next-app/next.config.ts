@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url'
 import type { NextConfig } from 'next'
+import { withPointout } from 'pointout/next'
 
-// The Next.js test bed. pointout is not in it yet: `withPointout()` is ticket 04.
+// The Next.js test bed, with pointout in it the way a consumer adds it.
 //
 // Its pages render the fixtures it shares with `examples/react-app`, which sit
 // outside this app in `examples/shared/`, so an Owner chain names the same file
@@ -20,6 +21,10 @@ const repoRoot = fileURLToPath(new URL('../..', import.meta.url))
 const harnessDistDir = process.env.POINTOUT_EXAMPLE_DIST_DIR
 const harnessTsconfig = process.env.POINTOUT_EXAMPLE_TSCONFIG
 
+// The harness's way to compare a page with and without pointout: set, the
+// config is exported unwrapped. Nothing but the harness sets it.
+const withoutPointout = process.env.POINTOUT_EXAMPLE_WITHOUT_POINTOUT === '1'
+
 const config: NextConfig = {
   turbopack: { root: repoRoot },
   ...(harnessDistDir && { distDir: harnessDistDir }),
@@ -28,4 +33,4 @@ const config: NextConfig = {
   agentRules: false,
 }
 
-export default config
+export default withoutPointout ? config : withPointout(config)

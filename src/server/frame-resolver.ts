@@ -42,7 +42,11 @@ export type FrameAnswer =
     }
   | {
       kind: 'absent'
-      mode: 'unreadable-frame' | 'module-not-in-graph'
+      /**
+       * `no-resolver-for-host`: the Connector cannot read any frame its Host
+       * serves yet, whatever the frame says.
+       */
+      mode: 'unreadable-frame' | 'module-not-in-graph' | 'no-resolver-for-host'
       reason: string
       dependency: boolean
     }

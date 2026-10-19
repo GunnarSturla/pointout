@@ -345,13 +345,17 @@ changes every time the canaries pass. So seam 1 states the version it wants,
 record does. Like the others, a consumer never sets it. `docs/posture.md` lists every
 posture line.
 
+`POINTOUT_NEXT_NO_INTERCEPT=1` is the eighth (Next.js Connector ticket 04): pointout
+starts in `next dev` but leaves Next's server alone, so the posture block's
+`self-check` finds Next answering instead and says so. Test-only, the same way.
+
 ## The example apps
 
 There are two test beds, one per Host, built from the same fixtures:
 
 - `examples/react-app/` is Vite's, and the development target.
-- `examples/next-app/` is Next.js 16.4's, under Turbopack. pointout is not in it until
-  `withPointout()` lands (Next.js Connector ticket 04). Its App Router route `/` and its
+- `examples/next-app/` is Next.js 16.4's, under Turbopack, with its config wrapped in
+  `withPointout()` the way a consumer's is. Its App Router route `/` and its
   Pages Router route `/pages-router` both render the shared test bed. `/` adds two
   fixtures only Next has, in `examples/next-app/fixtures/`: a Server Component that owns
   a client component (`server-owner`, `client-leaf`), and a same-origin frame that loads
@@ -378,7 +382,12 @@ written before the Next.js Connector still runs.
 
 - **Seam 1:** `startExampleServer({ on: 'next' })` from `test/harness/dev-server.ts`.
   It takes `env`, `claudePid`, `gitShim` and `host`, but no `root`, `configFile` or
-  `port`.
+  `port`. A suite that is the same on both Hosts runs `describe.each(['vite', 'next'])`
+  over it, as `guard.test.ts` does. `startNextServer` in `test/harness/next-server.ts`
+  takes three more: `pointout: false` exports the config bare
+  (`POINTOUT_EXAMPLE_WITHOUT_POINTOUT`), `webpack: true` runs `next dev --webpack`,
+  and `copy: true` serves a copy of the app at `examples/.harness-next-<name>/`, so a
+  test can edit its `next.config.ts` without restarting every other file's server.
 - **Seam 2:** `globalSetup` starts both apps. Vite is Playwright's `baseURL`; a spec
   reaches Next with `page.goto(hostURL('next', '/pages-router'))` from
   `test/harness/hosts.ts`.
@@ -391,7 +400,9 @@ own process: Next runs the app in a worker child it forks, and only that child c
 not act in. So:
 
 - the fixture environment goes in through the child's environment;
-- the port comes from `<distDir>/dev/lock`;
+- the port comes from `<distDir>/dev/lock`, and a server with pointout is returned
+  only once its posture block is printed: Next writes the lock before it reads the
+  config, and pointout serves nothing until then;
 - `log()` and `logEntries()` are its stdout (`info`) and stderr (`warn`; Next's
   streams do not tell a warning from an error), colour codes removed;
 - `close()` sends SIGTERM to its process group, SIGKILL after 10 s, and returns only

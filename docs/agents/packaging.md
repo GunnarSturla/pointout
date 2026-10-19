@@ -34,7 +34,7 @@ bare `pointout` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`, so no Host is the de
 | --- | --- | --- |
 | `pointout/vite` | the Vite plugin, `pointout()`, also the default export | `src/vite/index.ts` |
 | `pointout/vite`, `require` | throws, naming `await import("pointout/vite")` | `src/vite/cjs-entry.cts` |
-| `pointout/next` | `withPointout()`, from ticket 04 | `src/next/` |
+| `pointout/next` | `withPointout()`, also the default export; ESM, and `require()`able on Node ≥ 22.12, so a CommonJS `next.config.js` works | `src/next/index.ts` |
 
 The bin, `pointout`, is the CLI and belongs to no Host. `vite` is an **optional** peer
 (`peerDependenciesMeta`); `next` joins it the same way. Each is needed only by its own
@@ -42,8 +42,11 @@ Connector.
 
 **A Connector lives in its own directory**, `src/<host>/`, and is the only code that
 imports its Host, even a type. `test/seam1/connectors.test.ts` reads the emitted `dist/`
-and fails any module outside `dist/vite/` that imports `vite`; ticket 04 extends it to
-`next` and `dist/next/`. A Connector does four things (`GLOSSARY.md` › Connector):
+and fails any module outside `dist/vite/` that imports `vite`, any outside `dist/next/`
+that imports `next`, and either Connector importing the other's Host. The Next.js
+Connector imports nothing from `next` at all, not even a type: Next's declarations make
+`process.env.NODE_ENV` required wherever they are loaded, which breaks the harness's
+`spawn` calls. A Connector does four things (`GLOSSARY.md` › Connector):
 
 - puts the Overlay in the page,
 - serves the Guard's endpoints, by mounting the handler `createAgentEndpoints` in

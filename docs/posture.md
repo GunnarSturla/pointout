@@ -2,7 +2,7 @@
 
 Every time the dev server starts, the plugin prints one block that says where it
 is, what it will refuse, and which of its parts are working. It is printed once,
-as one list, when Vite is listening, and no line in it is logged a second time
+as one list, when the Host (Vite or Next.js) is listening, and no line in it is logged a second time
 anywhere else. A system that is quietly doing nothing is the failure this block is
 there to rule out (spec §2, §21).
 
@@ -20,10 +20,11 @@ pointout — startup posture
 
 **Info or warning.** A block where everything works is logged as information. If
 any line reports something degraded, the whole block is logged as a warning, so it
-still shows at `logLevel: 'warn'`. The lines that make it a warning are marked
+still shows at Vite's `logLevel: 'warn'`; on Next.js it goes to stderr. The lines that make it a warning are marked
 *warns* below.
 
-The lines always come in this order. `host` is the only one that can be absent.
+The lines always come in this order. `self-check` is printed on Next.js only, and
+`host` is the only line that can be absent on either Host.
 
 ## `root`
 
@@ -33,9 +34,9 @@ directory is in this same checkout.
 
 | text | meaning |
 | --- | --- |
-| `<path> (git rev-parse --show-toplevel)` | the usual case: the git toplevel above the Vite root |
-| `<path> (the Vite root; not inside a git repository)` | no git, so the Vite root is used |
-| `<path> (the root option)` | you passed `pointout({ root })` |
+| `<path> (git rev-parse --show-toplevel)` | the usual case: the git toplevel above the Vite root, or above the directory `next dev` runs in |
+| `<path> (the Vite root; not inside a git repository)` | no git, so the Vite root is used. On Next.js it reads `the Next.js root`: the directory `next dev` runs in |
+| `<path> (the root option)` | you passed `pointout({ root })`, or `withPointout(config, { root })` |
 
 ## `guard`
 
@@ -119,10 +120,27 @@ server and drain the Picks waiting for your next prompt.
 | `not written — this dev server is not listening on a TCP port …` *warns* | Vite is in middleware mode, so no hook can reach it. Picks left for the next prompt will expire |
 | `not written — <error>. …` *warns* | the file could not be written. Same consequence |
 
+## `self-check`
+
+Next.js only. pointout answers `/__agent` on Next's own server by reaching into it
+from `next.config` (ADR-0006), which depends on Next reading its config after it
+starts listening. So at startup it asks its own `GET /__agent/status`, over loopback.
+
+| text | meaning |
+| --- | --- |
+| `pointout answered GET <url>` | the Overlay can reach this server |
+| `pointout did not answer GET <url> (<what happened>) — the Overlay cannot reach this server, and no Pick will` *warns* | something else answered, or nothing did. A Next.js release has probably changed when it reads its config |
+
+If pointout cannot find Next's listening server at all, the block is this one line:
+`found no listening server in Next's dev worker to serve /__agent on …` *warns*.
+
 ## `host`
 
-Printed only when Vite is bound to an address other than loopback (`vite --host`):
-`Vite is bound to <address> — Picks arriving from the LAN will be refused` *warns*.
+Printed only when the Host is bound to an address other than loopback (`vite --host`,
+or Next.js's own default, every interface):
+`<Host> is bound to <address> — Picks arriving from the LAN will be refused` *warns*,
+where `<Host>` is `Vite` or `Next.js`. `next dev -H localhost` keeps Next.js on
+loopback.
 The app still loads from other machines, but the plugin works only from this one.
 A phone on the same network can load the page and cannot make a Pick.
 
@@ -139,4 +157,7 @@ None of these repeat a posture line.
 `POINTOUT_VERIFIED_HARNESS` stands in for the recorded version, as
 `<version>@<YYYY-MM-DD>` or `never`. It is **test-only**, like the other overrides
 in `docs/agents/testing.md`, and a consumer never sets it. The seam-1 posture test
-(`test/seam1/posture.test.ts`) holds the exact wording of every line on this page.
+(`test/seam1/posture.test.ts`) holds the exact wording of every line on this page,
+and `test/seam1/next-connector.test.ts` the Next.js block, `self-check` included.
+`POINTOUT_NEXT_NO_INTERCEPT=1`, test-only too, starts pointout on Next.js without
+reaching into its server, so the self-check has nothing to find.

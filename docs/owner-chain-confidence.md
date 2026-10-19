@@ -32,6 +32,7 @@ A link reads as one line:
 | `absent: unreadable-frame` | the frame above React's own carries no location this server can read |
 | `absent: module-not-in-graph` | nothing in this dev server's module graph answers to the path the frame names |
 | `absent: unmapped-position` | the module's sourcemap has nothing at that position |
+| `absent: no-resolver-for-host` | the Host's Connector cannot read its frames at all yet. Every link on Next.js says this until Next.js Connector tickets 07 and 08 land |
 
 A link is additionally flagged **`dependency`** when its frame is inside a package —
 `node_modules`, or one of Vite's pre-bundled `.vite/deps` modules. The flag leads the

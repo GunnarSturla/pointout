@@ -25,7 +25,8 @@ import { readAppFrame } from './stack.js'
  * The three that §12 does not name — an unreadable frame, a module the graph
  * does not hold, a position the map has nothing at — are its *module not in
  * graph / parse failure* row, split into the three reasons this server can
- * actually tell apart.
+ * actually tell apart. A fourth, a Host whose Connector cannot read its frames
+ * at all, belongs to the same row.
  */
 export type DegradedMode =
   | 'stale-transform'
@@ -37,6 +38,7 @@ export type DegradedMode =
   | 'unreadable-frame'
   | 'module-not-in-graph'
   | 'unmapped-position'
+  | 'no-resolver-for-host'
 
 /**
  * What one frame of an Owner chain says about itself (`GLOSSARY.md`): exact,

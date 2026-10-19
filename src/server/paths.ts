@@ -12,7 +12,7 @@ import { resolve } from 'node:path'
 // at all while cheerfully reporting a readable registry.
 
 /** How the repo root was arrived at. The posture block says which (spec §2). */
-export type RootMethod = 'option' | 'git' | 'vite-root'
+export type RootMethod = 'option' | 'git' | 'host-root'
 
 export interface RepoRoot {
   root: string
@@ -38,17 +38,17 @@ export function normalizeToWorktreeRoot(path: string): string {
 }
 
 /**
- * The repo root, computed once at `configResolved` and used for rendering paths
+ * The repo root, computed once, when the Connector learns the Host's root, and used for rendering paths
  * and for cwd routing alike. `override` is the `root` option a normal consumer
  * never sets.
  */
-export function discoverRepoRoot(viteRoot: string, override?: string): RepoRoot {
+export function discoverRepoRoot(hostRoot: string, override?: string): RepoRoot {
   // The override says which root, not which spelling of it: it still has to
   // come out in the same normal form every cwd is compared in.
   if (override) return { root: realPath(resolve(override)), method: 'option' }
 
-  const { root, fromGit } = lookUp(viteRoot)
-  return { root, method: fromGit ? 'git' : 'vite-root' }
+  const { root, fromGit } = lookUp(hostRoot)
+  return { root, method: fromGit ? 'git' : 'host-root' }
 }
 
 function lookUp(path: string): WorktreeLookup {

@@ -14,6 +14,7 @@ import {
   registryLine,
   rootLine,
 } from './posture.js'
+import type { PostureLine } from './posture.js'
 import { readCandidates, registryDirectory } from './registry.js'
 
 /** The plugin's own options. A normal consumer sets none of them. */
@@ -79,11 +80,20 @@ export function createServerFacts({
 export function announcePosture(
   {
     logger,
+    hostName,
     host,
+    connectorLines = [],
   }: {
     logger: Logger
+    /** How the block names the Host: `Vite`, `Next.js`. */
+    hostName: string
     /** The address the Host is listening on, as its server answered it; null without one. */
     host: string | null
+    /**
+     * Lines only this Connector has, labelled, after the core's and before the
+     * `host` line: the Next.js Connector's self-check.
+     */
+    connectorLines?: Array<[string, PostureLine]>
   },
   facts: ServerFacts,
   { route, captures, discovery }: Services,
@@ -91,7 +101,7 @@ export function announcePosture(
   const { registry, candidates } = readCandidates(facts)
 
   const posture = createPosture()
-    .add('root', rootLine(facts.root, facts.rootMethod))
+    .add('root', rootLine(facts.root, facts.rootMethod, hostName))
     .add('guard', GUARD_LINE)
     .add('registry', registryLine(registry, candidates.length))
     .add('harness version', harnessVersionLine(registry.entries))
@@ -100,7 +110,8 @@ export function announcePosture(
     .add('temp directory', captures.directoryLine)
     .add('discovery entry', discovery.postureLine)
 
-  if (host && !isLoopbackHost(host)) posture.add('host', lanLine(host))
+  for (const [label, line] of connectorLines) posture.add(label, line)
+  if (host && !isLoopbackHost(host)) posture.add('host', lanLine(hostName, host))
 
   const block = '\n' + posture.render() + '\n'
   if (posture.warns()) logger.warn(block)

@@ -11,6 +11,10 @@
       "import": "./dist/vite/index.js",
       "require": "./dist/vite/cjs-entry.cjs"
     },
+    "./next": {
+      "types": "./dist/next/index.d.ts",
+      "default": "./dist/next/index.js"
+    },
     "./package.json": "./package.json"
   },
   "bin": {
@@ -51,10 +55,14 @@
   "peerDependencies": {
     "react": ">=19.0.0",
     "react-dom": ">=19.0.0",
-    "vite": "^8.0.0"
+    "vite": "^8.0.0",
+    "next": ">=16.3 <17"
   },
   "peerDependenciesMeta": {
     "vite": {
+      "optional": true
+    },
+    "next": {
       "optional": true
     }
   },

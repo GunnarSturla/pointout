@@ -19,10 +19,11 @@
     // name is the contract a seam-2 test reads, not a style choice. `_debugOwner`
     // and `_debugStack` are React's own fiber field names, which this repo reads
     // and does not get to choose; reading them is the whole owner-chain mechanism
-    // (spec §4, §6).
+    // (spec §4, §6). `_getActiveHandles` is Node's own, and the only way the
+    // Next.js Connector reaches a server it did not create (ADR-0006).
     "no-underscore-dangle": [
       "error",
-      { "allow": ["__pointout", "_debugOwner", "_debugStack"] }
+      { "allow": ["__pointout", "_debugOwner", "_debugStack", "_getActiveHandles"] }
     ],
 
     // A side-effect import is how Vite loads CSS, and `packaging.test` requires
@@ -44,7 +45,9 @@
     // What `next dev` writes into examples/next-app, and the harness's
     // per-server tsconfigs beside it.
     "**/.next/**",
-    "**/.harness/**"
+    "**/.harness/**",
+    // A copy of examples/next-app that one seam-1 test edits while it runs.
+    "examples/.harness-next-*/**"
   ],
 
   "overrides": [
