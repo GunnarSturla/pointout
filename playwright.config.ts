@@ -19,11 +19,13 @@ const ENGINES = [
 
 /**
  * What a whole run may take once it holds the machine's seam-2 lock. A healthy
- * all-engine run takes a few minutes; this bounds a stall, such as one the
- * machine's sleep caused. Playwright counts `globalSetup` in `globalTimeout`,
- * so the wait for the lock is added on top.
+ * all-engine run took 12.4 minutes at a load of 10 to 20 once ten suites ran on
+ * Next's two test beds as well (Next.js Connector ticket 06), and overran 15 at a
+ * load of 36; this bounds a stall, such as one the machine's sleep caused.
+ * Playwright counts `globalSetup` in `globalTimeout`, so the wait for the lock is
+ * added on top.
  */
-const RUN_BUDGET_MS = 15 * 60 * 1000
+const RUN_BUDGET_MS = 40 * 60 * 1000
 
 export default defineConfig({
   testDir: 'test/seam2',
