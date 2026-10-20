@@ -49,7 +49,9 @@ Connector imports nothing from `next` at all, not even a type: Next's declaratio
 `process.env.NODE_ENV` required wherever they are loaded, which breaks the harness's
 `spawn` calls. A Connector does four things (`GLOSSARY.md` › Connector):
 
-- puts the Overlay in the page,
+- puts the Overlay in the page, telling it which of the page's elements are the Host's
+  own dev tools (`hostTools` to `mountOverlay`; Next's are `nextjs-portal`), since the
+  Overlay knows no Host,
 - serves the Guard's endpoints, by mounting the handler `createAgentEndpoints` in
   `src/server/http.ts` returns. It hands that a `Connector`: the Host's logger, the
   origins the page is served on, the loopback origin, and a frame resolver;
@@ -64,9 +66,16 @@ Connector imports nothing from `next` at all, not even a type: Next's declaratio
   reads the chunk's map on disk, and a `/_next/static/chunks/` frame to
   `client-chunks.ts`, which fetches the served `.js.map`. Each answers `kind: 'chunk'`,
   a map of many sources whose files, drift and vendor-ness it gives per source; neither
-  imports the other;
+  imports the other, and what both need is beside them (`chunk-source.ts` reads one
+  source as a file, `loopback.ts` asks Next's own server over loopback). A client frame's
+  drift is judged against the Pick's `pageLoadedAt`;
 - says where the Host is listening: `boundAddress` in `src/server/bound-host.ts` takes
-  whatever the listening server's `address()` answered.
+  whatever the listening server's `address()` answered, and `loopbackOrigins` beside it
+  spells every loopback origin of its port.
+
+Both bring up and close the core's services with one `createServices(facts, logger)`
+(`src/server/index.ts`), which answers `{ services, close }`, and name their Host to the
+posture block with a `HostName` (`src/server/host-name.ts`).
 
 Everything else is the core, under `src/server/`, `src/cli/`, `src/overlay/`, `src/api.ts`
 and `src/wire.ts`. The core logs through its own `Logger` (`src/server/logger.ts`), which
