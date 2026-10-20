@@ -63,6 +63,9 @@ export const PARAMETERIZED_SUITES = [
   'report-back',
   'capture',
   'panel-motion',
+  'owner-chain',
+  'confidence',
+  'excerpts',
 ].map((name) => `**/${name}.spec.ts`)
 
 /** `path` on the seam-2 server of Host `on`. */

@@ -40,7 +40,7 @@ function probe(name: string): string {
 }
 
 async function open(page: Page, token: string): Promise<void> {
-  await page.goto(`/?probe=${token}`)
+  await page.goto(`?probe=${token}`)
   await expect(page.locator(PICKER)).toBeVisible()
 }
 
@@ -132,15 +132,24 @@ test('a component that returns its JSX directly keeps its name in WebKit, Safari
   )
 })
 
-test('an element owned by a package is flagged dependency rather than pointed at', async ({
+test('an element owned by a package is flagged dependency, wherever it is pointed at', async ({
   page,
-}) => {
+}, info) => {
   const token = probe('dependency')
   await open(page, token)
   await pickAndSend(page, SKELETON)
 
   const content = await delivered(token)
 
+  if (info.project.name.includes('-next-')) {
+    // Turbopack bundles the package into a chunk whose map names its file, and
+    // lists it in `ignoreList`: the link has a location, and the flag ahead of
+    // it is what tells the agent not to edit there.
+    expect(content).toMatch(
+      /owner chain\s+Skeleton — node_modules\/react-loading-skeleton\/\S+ \(dependency, exact\)/,
+    )
+    return
+  }
   // Vite keys a pre-bundled dependency by the `?v=` hash it serves it under, so
   // the bare path the frame remaps through is in no module graph. The link
   // still travels, flagged, which is what tells the agent not to edit there.

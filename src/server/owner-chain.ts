@@ -169,7 +169,9 @@ async function resolveLink(
       return absent(
         'call-site-frame-elided-by-engine',
         "this engine's proper tail calls deleted the frame of the call site, which " +
-          'happens to a component whose body is a bare `return <tag>`; the component ' +
+          // No `<tag>` here: spec §13 keeps every markup character out of the
+          // body, and this sentence is in it.
+          'happens to a component whose body does nothing but return one element; the component ' +
           'is named and its line is not knowable from here',
       )
     case 'no-boundary':

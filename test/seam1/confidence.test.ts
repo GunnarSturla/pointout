@@ -209,6 +209,25 @@ describe.each(HOSTS)('Confidence read off the frame alone, on %s', (on) => {
       expect(content).toMatch(/owner chain\s+CardHeading — /)
     })
 
+    // Spec §13: no character markup would need is anywhere in the body, and a
+    // reason is the server's own sentence, so it is held to that too. WebKit
+    // on Next's Pages Router elides two links on every Pick (`PagesApp`,
+    // `PagesRouterPage`), which is where a `<` in this one was found.
+    it('states every structural mode in a sentence with no markup character in it', async () => {
+      const content = await host.pick({
+        ownerChain: [
+          { name: 'Elided', stack: elidedStack() },
+          { name: 'Unbounded', stack: noBoundaryStack() },
+          { name: 'Placeholder', stack: placeholderStack() },
+        ],
+      })
+
+      expect(content).toContain('Elided — no location (absent: ')
+      for (const forbidden of ['<', '>', '&']) {
+        expect(`${forbidden}: ${content.includes(forbidden)}`).toBe(`${forbidden}: false`)
+      }
+    })
+
     it('leaves the rest of the chain exact', async () => {
       const content = await host.pick({
         ownerChain: [

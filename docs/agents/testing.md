@@ -434,6 +434,9 @@ not act in. So:
   once nothing is left in the group. `NEXT_TELEMETRY_DISABLED=1` means no detached
   telemetry flush is spawned, and anything still naming the server's output folder is
   killed as a backstop. `next-harness.test.ts` reads the process table to hold it.
+  A server the test process never closed, such as one whose `beforeAll` timed out
+  before its start resolved, has its group SIGKILLed when that process exits
+  (Next.js Connector ticket 08; before that, such servers outlived the run).
   `telemetry: true` leaves telemetry on, for `next-lifecycle.test.ts`, which stops a
   server with SIGINT and watches the flush exit; it sets `CI=1`, which keeps Next's
   telemetry settings in the output folder, and preloads a module through
@@ -459,7 +462,9 @@ servers between them). Seam 2's globalSetup boots Next beside Vite, at the same 
 the Chromium-only run went from about 1.0 to 1.1 minutes with `next-app.spec.ts`'s six
 journeys. With the ten suites parameterized (ticket 06), Next's two beds add 255
 Chromium journeys, about 2.2 minutes on their own, and 496 Firefox and WebKit journeys,
-about 4.3 minutes, at a load average around 10 to 20.
+about 4.3 minutes, at a load average around 10 to 20. Ticket 08 added `owner-chain`,
+`confidence` and `excerpts` to them: 17 journeys per bed, 102 more across Next's beds in
+three engines.
 
 ### Captured frames
 
