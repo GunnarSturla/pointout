@@ -61,6 +61,19 @@ describe('the captured frames in test/fixtures/next-frames/', () => {
   // putting this server's origin and output folder back into the placeholders.
   // That works only while Turbopack still names and fills its chunks as it did
   // when they were captured; if this fails, run `npm run capture:next-frames`.
+  //
+  // They were captured with pointout in the app, and the Overlay it injects is
+  // in the client chunks, which changes their names (ticket 06). So they are
+  // checked against a server with pointout, as the resolvers' tests use them.
+  let server!: NextHarnessServer
+
+  beforeAll(async () => {
+    server = await startNextServer()
+  }, 120_000)
+
+  afterAll(async () => {
+    await server?.close()
+  })
   const folder = join(repoRoot, 'test', 'fixtures', 'next-frames')
   const text = readdirSync(folder)
     .map((file) => readFileSync(join(folder, file), 'utf8'))
