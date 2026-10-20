@@ -1,4 +1,5 @@
 import type { ViteDevServer } from 'vite'
+import { parseFrameUrl } from '../server/frame-resolver.js'
 import type { Drift, FrameAnswer, FrameResolver } from '../server/frame-resolver.js'
 
 // The Vite Connector's frame resolver (ADR-0005): a served frame's URL looked up
@@ -9,7 +10,7 @@ export function viteFrameResolver(server: ViteDevServer): FrameResolver {
   return async (frame): Promise<FrameAnswer> => {
     // The query string belongs to the request and not to the module: Vite's own
     // `?v=` and `?t=` are how a transform is addressed, not what it is.
-    const url = frameUrl(frame.url)
+    const url = parseFrameUrl(frame.url)
     if (!url) {
       return {
         kind: 'absent',
@@ -72,19 +73,6 @@ function transformDrift(url: URL, lastHMRTimestamp: number): Drift | null {
     }
   }
   return null
-}
-
-/**
- * A frame's url, parsed. Null for a frame that names no url at all, and the
- * frame's own text never travels with the refusal: the raw stacks are Excerpts
- * and nothing lifted from one is ever interpolated into the body (spec §13).
- */
-function frameUrl(url: string): URL | null {
-  try {
-    return new URL(url)
-  } catch {
-    return null
-  }
 }
 
 /**

@@ -28,6 +28,14 @@ export function boundAddress(
   return { host: urlHost(address.address, address.family), port: address.port }
 }
 
+/**
+ * Every loopback spelling of a port, as an origin: a page loaded through any
+ * of them is this server's own. The Connector says which scheme it serves.
+ */
+export function loopbackOrigins(scheme: string, port: number): string[] {
+  return ['localhost', '127.0.0.1', '[::1]'].map((host) => `${scheme}://${host}:${port}`)
+}
+
 function urlHost(address: string, family: string): string {
   // Every interface: loopback answers in the family the wildcard was bound in.
   if (address === '0.0.0.0') return '127.0.0.1'

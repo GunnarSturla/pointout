@@ -1,3 +1,4 @@
+import { parseFrameUrl } from '../server/frame-resolver.js'
 import type { FrameAnswer, FrameResolver } from '../server/frame-resolver.js'
 import { clientChunks } from './client-chunks.js'
 import { serverChunks } from './server-chunks.js'
@@ -29,7 +30,7 @@ export function nextFrameResolver({
   return async (frame): Promise<FrameAnswer> => {
     if (onServer.claims(frame.url)) return onServer.resolve(frame.url)
 
-    const url = frameUrl(frame.url)
+    const url = parseFrameUrl(frame.url)
     if (!url) {
       return {
         kind: 'absent',
@@ -46,18 +47,5 @@ export function nextFrameResolver({
       reason: `${url.pathname} is no chunk this dev server serves`,
       dependency: false,
     }
-  }
-}
-
-/**
- * A frame's url, parsed. Null for a frame that names no url at all, and the
- * frame's own text never travels with the refusal: the raw stacks are Excerpts
- * and nothing lifted from one is ever interpolated into the body (spec §13).
- */
-function frameUrl(url: string): URL | null {
-  try {
-    return new URL(url)
-  } catch {
-    return null
   }
 }

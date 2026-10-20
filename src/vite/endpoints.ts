@@ -1,6 +1,6 @@
 import type { ViteDevServer } from 'vite'
 import { API_BASE } from '../api.js'
-import { boundAddress } from '../server/bound-host.js'
+import { boundAddress, loopbackOrigins } from '../server/bound-host.js'
 import { createAgentEndpoints } from '../server/http.js'
 import type { ServerFacts, Services } from '../server/index.js'
 import { viteFrameResolver } from './frame-resolver.js'
@@ -57,9 +57,7 @@ function onceOwnOrigins(server: ViteDevServer): () => Set<string> {
     const address = server.httpServer?.address()
     if (address && typeof address === 'object') {
       const scheme = server.config.server.https ? 'https' : 'http'
-      for (const host of ['localhost', '127.0.0.1', '[::1]']) {
-        origins.add(`${scheme}://${host}:${address.port}`)
-      }
+      for (const origin of loopbackOrigins(scheme, address.port)) origins.add(origin)
     }
     return origins
   }

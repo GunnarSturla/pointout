@@ -1,9 +1,10 @@
 import { readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { ChunkSource, FrameAnswer } from '../server/frame-resolver.js'
+import type { FrameAnswer } from '../server/frame-resolver.js'
 import { isSourceMap } from '../server/sourcemap.js'
 import type { SourceMapLike } from '../server/sourcemap.js'
+import { chunkSource } from './chunk-source.js'
 
 // The Next.js Connector's server-chunk resolver (ADR-0005): a Server
 // Component's frame, decoded against the map Turbopack wrote beside the
@@ -95,7 +96,7 @@ export function serverChunks(projectDir: string): ServerChunks {
         kind: 'chunk',
         map,
         served,
-        source: (name) => sourceOf(name, written),
+        source: (name) => chunkSource(name, written, SINCE_WRITTEN),
       }
     },
   }
@@ -135,35 +136,7 @@ function readMap(file: string): SourceMapLike | null {
   }
 }
 
-/**
- * A `file:///` source as a file, and whether it changed after the chunk was
- * written. A source that is no file, such as Turbopack's own runtime, is null.
- */
-function sourceOf(name: string, written: number): ChunkSource | null {
-  let file: string
-  try {
-    file = fileURLToPath(name)
-  } catch {
-    return null
-  }
-  let modified: number
-  try {
-    modified = statSync(file).mtimeMs
-  } catch {
-    return null
-  }
-  return {
-    file,
-    dependency: file.includes('/node_modules/'),
-    drift:
-      modified > written
-        ? {
-            mode: 'no-transform-timestamp',
-            reason:
-              'this file has changed since Turbopack last wrote the server chunk it ran in, ' +
-              "and a Server Component's frame carries no version of its chunk to compare, so " +
-              'which version of the file the line belongs to is not knowable here',
-          }
-        : null,
-  }
-}
+const SINCE_WRITTEN =
+  'this file has changed since Turbopack last wrote the server chunk it ran in, ' +
+  "and a Server Component's frame carries no version of its chunk to compare, so " +
+  'which version of the file the line belongs to is not knowable here'

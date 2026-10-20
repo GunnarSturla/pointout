@@ -1,9 +1,7 @@
-import { request as httpRequest } from 'node:http'
-import { request as httpsRequest } from 'node:https'
 import type { AddressInfo } from 'node:net'
 import { Server as TlsServer } from 'node:tls'
 import { API_BASE, STATUS_PATH } from '../api.js'
-import { boundAddress } from '../server/bound-host.js'
+import { boundAddress, loopbackOrigins } from '../server/bound-host.js'
 import { createCaptureService } from '../server/capture/index.js'
 import { createClaudeRoute } from '../server/claude/route.js'
 import { createDiscovery } from '../server/discovery.js'
@@ -15,6 +13,7 @@ import { createPosture, says, warns } from '../server/posture.js'
 import type { PostureLine } from '../server/posture.js'
 import { nextFrameResolver } from './frame-resolver.js'
 import { findListeningServer, interceptAgentRequests } from './intercept.js'
+import { askLoopback } from './loopback.js'
 
 // pointout's life inside Next's dev worker: started once, the first time the
 // config is read in the development phase, and closed with the process.
@@ -143,9 +142,7 @@ async function start(options: PointoutOptions): Promise<void> {
  * the LAN is refused at the loopback check whatever its origin says.
  */
 function ownOrigins(scheme: string, port: number): Set<string> {
-  return new Set(
-    ['localhost', '127.0.0.1', '[::1]'].map((host) => `${scheme}://${host}:${port}`),
-  )
+  return new Set(loopbackOrigins(scheme, port))
 }
 
 /**
@@ -160,7 +157,7 @@ async function checkSelf(url: string): Promise<PostureLine> {
         'server, and no Pick will',
     )
   try {
-    const { status, body } = await get(url)
+    const { status, body } = await askLoopback(url, { timeoutMs: SELF_CHECK_TIMEOUT_MS })
     if (status !== 200) return failed(`Next answered ${status}`)
     const parsed = JSON.parse(body) as { picks?: unknown }
     if (!Array.isArray(parsed.picks)) return failed('the answer was not a status')
@@ -168,26 +165,4 @@ async function checkSelf(url: string): Promise<PostureLine> {
   } catch (error) {
     return failed(error instanceof Error ? error.message : String(error))
   }
-}
-
-function get(url: string): Promise<{ status: number; body: string }> {
-  return new Promise((resolve, reject) => {
-    const send = url.startsWith('https:') ? httpsRequest : httpRequest
-    // A dev server's certificate is its own; loopback is what is being checked.
-    const outgoing = send(
-      url,
-      { method: 'GET', rejectUnauthorized: false },
-      (response) => {
-        let body = ''
-        response.setEncoding('utf8')
-        response.on('data', (chunk: string) => (body += chunk))
-        response.on('end', () => resolve({ status: response.statusCode ?? 0, body }))
-      },
-    )
-    outgoing.setTimeout(SELF_CHECK_TIMEOUT_MS, () =>
-      outgoing.destroy(new Error(`no answer within ${SELF_CHECK_TIMEOUT_MS / 1000} s`)),
-    )
-    outgoing.on('error', reject)
-    outgoing.end()
-  })
 }

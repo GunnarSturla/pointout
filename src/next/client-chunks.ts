@@ -1,10 +1,9 @@
-import { statSync } from 'node:fs'
-import { request as httpRequest } from 'node:http'
-import { request as httpsRequest } from 'node:https'
-import { fileURLToPath } from 'node:url'
-import type { ChunkSource, FrameAnswer, ServedFrame } from '../server/frame-resolver.js'
+import type { FrameAnswer, ServedFrame } from '../server/frame-resolver.js'
 import { isSourceMap } from '../server/sourcemap.js'
 import type { SourceMapLike } from '../server/sourcemap.js'
+import { chunkSource } from './chunk-source.js'
+import { askLoopback } from './loopback.js'
+import type { LoopbackAnswer } from './loopback.js'
 
 // The Next.js Connector's client-chunk resolver (ADR-0005): a frame in a
 // Turbopack client chunk, `/_next/static/chunks/<name>.js`, decoded against the
@@ -86,7 +85,7 @@ export function clientChunks(origin: string): ClientChunks {
         map: map.map,
         served: path,
         source: (name) =>
-          sourceOf(
+          chunkSource(
             name,
             since ?? startedAt,
             since === null ? SINCE_STARTED : SINCE_LOADED,
@@ -112,31 +111,6 @@ function isChunk(path: string): boolean {
   return path.includes(CLIENT_CHUNKS) && path.endsWith('.js')
 }
 
-/**
- * A `file:///` source as a file, and whether it changed after `baseline`.
- * Turbopack names its own runtime `turbopack:///[turbopack]/…`, which is no
- * file: null.
- */
-function sourceOf(name: string, baseline: number, reason: string): ChunkSource | null {
-  let file: string
-  try {
-    file = fileURLToPath(name)
-  } catch {
-    return null
-  }
-  let modified: number
-  try {
-    modified = statSync(file).mtimeMs
-  } catch {
-    return null
-  }
-  return {
-    file,
-    dependency: file.includes('/node_modules/'),
-    drift: modified > baseline ? { mode: 'no-transform-timestamp', reason } : null,
-  }
-}
-
 type MapAnswer =
   | { kind: 'map'; map: SourceMapLike }
   | { kind: 'missing' }
@@ -157,22 +131,10 @@ async function status(url: string): Promise<number> {
   return (await get(url, 'HEAD')).status
 }
 
-function get(
-  url: string,
-  method: 'GET' | 'HEAD' = 'GET',
-): Promise<{ status: number; body: string }> {
-  return new Promise((resolve) => {
-    const send = url.startsWith('https:') ? httpsRequest : httpRequest
-    // A dev server's certificate is its own; this is loopback to itself.
-    const outgoing = send(url, { method, rejectUnauthorized: false }, (response) => {
-      let body = ''
-      response.setEncoding('utf8')
-      response.on('data', (chunk: string) => (body += chunk))
-      response.on('end', () => resolve({ status: response.statusCode ?? 0, body }))
-    })
-    outgoing.setTimeout(MAP_TIMEOUT_MS, () => outgoing.destroy(new Error('timed out')))
-    // A map that cannot be fetched is a map that is not there; the link says so.
-    outgoing.on('error', () => resolve({ status: 0, body: '' }))
-    outgoing.end()
-  })
+/** A map that cannot be fetched is a map that is not there; the link says so. */
+function get(url: string, method: 'GET' | 'HEAD' = 'GET'): Promise<LoopbackAnswer> {
+  return askLoopback(url, { method, timeoutMs: MAP_TIMEOUT_MS }).catch(() => ({
+    status: 0,
+    body: '',
+  }))
 }

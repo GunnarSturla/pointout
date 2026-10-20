@@ -84,3 +84,16 @@ export interface ChunkSource {
 }
 
 export type FrameResolver = (frame: ServedFrame) => Promise<FrameAnswer>
+
+/**
+ * A frame's url, parsed, for a Connector to read. Null for a frame that names no url at all, and the
+ * frame's own text never travels with the refusal: the raw stacks are Excerpts
+ * and nothing lifted from one is ever interpolated into the body (spec §13).
+ */
+export function parseFrameUrl(url: string): URL | null {
+  try {
+    return new URL(url)
+  } catch {
+    return null
+  }
+}
