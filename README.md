@@ -219,10 +219,13 @@ npx pointout init
 
 It works out the Host from your app's `package.json`: `next` there means Next.js, and
 `vite` means Vite. If it names both, `init` asks which to set up; with no terminal to
-ask, it refuses and writes nothing. Name the Host yourself with
-`--connector next|vite`, for example `npx pointout init --connector next`. On Next.js,
-after its report, it prints the two changes above, the `withPointout()` wrap naming your
-`next.config` file and `next dev -H localhost`, and makes neither.
+ask, it refuses and writes nothing. If it names neither, or there is no `package.json`
+there, it refuses too, and writes nothing. That includes a Vite app run from a directory
+whose `package.json` does not list `vite`, such as a monorepo root whose app lives in a
+workspace. Name the Host yourself with `--connector next|vite`: run
+`npx pointout init --connector vite` at that root, or `--connector next` for Next.js.
+On Next.js, after its report, it prints the two changes above, the `withPointout()`
+wrap naming your `next.config` file and `next dev -H localhost`, and makes neither.
 
 It writes to the repository root and prints exactly what it wrote. It is idempotent:
 
