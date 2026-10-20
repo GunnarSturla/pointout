@@ -118,6 +118,18 @@ export default async function serveForSeam2(): Promise<() => Promise<void>> {
     )
   }
   process.env[NEXT_URL_ENV] = next.url
+  // A run Playwright ends at its `globalTimeout` runs no teardown, and Next is
+  // a detached process group of its own, so it would outlive the run and hold
+  // `SEAM2_NEXT_PORT` against the next one (measured, ticket 06). The runner's
+  // own exit ends the group; after a teardown that closed it, this finds nothing.
+  const nextGroup = next.pid
+  process.once('exit', () => {
+    try {
+      process.kill(-nextGroup, 'SIGKILL')
+    } catch {
+      // Already gone.
+    }
+  })
 
   const framesLog = join(server.fixture.dir, 'frames.ndjson')
   const secondFramesLog = join(server.fixture.dir, 'frames-second.ndjson')
