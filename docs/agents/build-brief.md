@@ -7,6 +7,21 @@ is stale — say so.
 
 ## What exists
 
+Two Hosts, Vite and Next.js 16 (`>=16.3 <17`, Turbopack only), each with a Connector
+over a core that belongs to no Host (ADR-0005; the Next.js effort's tickets are in
+`.scratch/nextjs-connector/`). `pointout/vite` is `src/vite/`; `pointout/next` is
+`src/next/`: `withPointout()` acts only in Next's dev worker, intercepts `/__agent` on
+Next's own listening server (ADR-0006), checks itself with a `self-check` posture line,
+and injects the Overlay through `instrumentationClientInject`, which waits for the page's
+React root to hydrate before drawing. The core reaches a Connector only through
+`Connector` in `src/server/http.ts` and the **frame resolver** seam,
+`src/server/frame-resolver.ts`: a resolver answers `found` (one module), `chunk` (a
+bundle, with per-source file, drift and vendor-ness) or `absent`, and the core decodes
+(`sourcemap.ts`, flat and index maps) and judges Confidence. Vite's resolver reads the
+module graph; Next's dispatches to `client-chunks.ts` (the served `.js.map`) and
+`server-chunks.ts` (a Server Component's chunk map on disk). Neither imports the other.
+`docs/agents/packaging.md` › *The entry points* has the layout.
+
 The server side: root discovery and cwd normalization, the Guard (loopback always,
 Origin on ingress), the session registry read and Candidate filter, the startup posture
 block, Pick ingest, the claim-once queue and its ledger, `GET /__agent/status`, the
@@ -32,7 +47,11 @@ only after `fitPayload` accepts. The §21 audit table, one test per item, is in 
 19.
 
 The CLI: `drain`, and `init` (ticket 16), which writes the two hook entries into the
-project's `.claude/settings.json` and the setup skill into `.claude/skills/`. The
+project's `.claude/settings.json` and the setup skill into `.claude/skills/`. It first
+chooses the Host (`src/cli/hosts.ts`, Next.js Connector 09) from the `package.json` it
+runs beside, or `--connector next|vite`; both named asks on a TTY and refuses without
+one. On Next.js it prints the `withPointout()` wrap and `next dev -H localhost` and edits
+neither file. The
 harness-neutral half is `src/cli/setup.ts` (`HarnessSetup`); the Claude half, and the
 skill text, live in `src/cli/claude/`. It mirrors `DeliveryRoute` in
 `src/server/delivery.ts` rather than sharing one interface with it.
@@ -105,8 +124,8 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 ## Rules that are not negotiable
 
 - **No test imports a server module — and in TypeScript, not its types either.** Tests
-  observe NDJSON frames at a fake session's socket, HTTP responses, the recorded Vite
-  logger, what a real browser shows, the text a CLI prints, and files on disk. A string
+  observe NDJSON frames at a fake session's socket, HTTP responses, the Host's recorded
+  log, what a real browser shows, the text a CLI prints, and files on disk. A string
   a test needs is written out, not imported. The duplication is the contract.
 - **Fail closed, say so out loud** (spec §21). No silent drop, retarget, truncation,
   walk-up, empty capture or *delivered*.
@@ -224,20 +243,54 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
   that worker, which never runs; Playwright exits 1 with *1 error was not a part of any
   test*. Read Playwright's own exit code, not a pipe's.
 
+### Next.js (October 2026, next 16.4.2)
+
+- **`next dev` never reads the config itself.** It forks a worker child with
+  `NEXT_PRIVATE_WORKER=1`, which owns the socket and evaluates the config, a function
+  config twice. A config edit restarts the worker (exit 77, new pid). Anything started
+  from the config checks `NEXT_PRIVATE_WORKER === '1'`.
+- **The config loads after `listen`**, in the `'listening'` callback, so patching
+  `createServer` or `listen` is too late. pointout finds the server through
+  `process._getActiveHandles()` and wraps that instance's `emit`.
+- **On shutdown Next re-evaluates the config** in a detached telemetry flush (ppid 1),
+  in `phase-development-server` and without `NEXT_PRIVATE_WORKER`, even with telemetry
+  disabled.
+- **On SIGINT the parent SIGKILLs the worker 100 ms after it exits**, so only
+  synchronous `exit` cleanup runs. A `process.on('SIGTERM')` registered from the config
+  cancels the default exit; pointout registers none.
+- **`next dev -H localhost` binds `[::1]` only**; with no `-H`, Next binds `::`. The
+  harness binds `127.0.0.1`.
+- **An Overlay root made before the App Router hydrates kills every page handler**
+  (ticket 06): React marks `document` as listened to. The entry polls for the hydrated
+  root on `document` or `#__next`.
+- **Turbopack rewrites a chunk in place under the same url**, and frames after a hot
+  update still name the old line. Client drift is judged against when a page first
+  loaded the chunk; server drift against the chunk file's mtime.
+- **WebKit replays a Server Component's stack with no location** and no
+  `react_stack_bottom_frame`, so those links are `absent: no-react-boundary` in WebKit
+  (issue 11). Chromium and Firefox resolve them exactly.
+- **A package link differs by Host**: `dependency, exact` on Next (Turbopack's map names
+  the file), `absent` on Vite. A test asserts each Host's answer.
+- **A detached `next dev` outlives a vitest worker ended by SIGTERM** unless the harness
+  kills its groups on SIGTERM too, which `test/harness/next-server.ts` does (ticket 08).
+  Signal only process groups you started; a broad `pkill` once killed a developer's
+  unrelated `next dev`.
+
 ## The gates, and how to run them fast
 
 | | |
 | --- | --- |
 | `npm run lint` / `format:check` / `typecheck` | **under 2s each** — run them constantly |
-| `npm run test:seam1` | ~30s, four files at a time |
-| `npm run test:seam2:fast` | ~40s, Chromium only |
-| `npm run test:seam2` | ~2m15s, all three engines — once, at the end |
+| `npm run test:seam1` | ~2 min, four files at a time; each Next test boots a `next dev`. About 900 tests |
+| `npm run test:seam2:fast` | ~1 min, Chromium, Vite's bed only |
+| `npm run test:seam2` | ~10 min, three engines × three beds (Vite, Next's App Router, Next's Pages Router) — once, at the end |
 
 **Iterate on single files; all three engines once at the end.** Run the file you are
 changing (`npx vitest run test/seam1/<file>` after `npm run build`, or
 `npx playwright test --project=chromium test/seam2/<file>`), and the full
 `caffeinate -i npm test` once, when you are done. Timings were measured on an 8-core
-laptop at a load average of 13 to 25, build included (September 2026).
+laptop at a load average of 10 to 25, build included (October 2026). Seam 2 can run one
+bed of one engine: `--project=chromium-next-app`.
 
 **Seam 2 binds a fixed port (5178).** Agents running in parallel worktrees must each
 set `SEAM2_PORT` to their own port, or a bind failure reads as a broken test.
@@ -270,6 +323,14 @@ orchestrator reruns the full suite on main only when the merged tree differs fro
 tree an agent reported green, and then once per batch of merges, not once per merge.
 
 ## Known open items
+
+- **WebKit's Server Component links are `absent`** (Next.js Connector issue 11,
+  needs-triage). The Server Component record's own `stack` is the likely route; it would
+  need a field on `OwnerChainLink`.
+- **A server chunk's staleness is judged against the chunk's mtime**, not when the page
+  rendered: an edit after Turbopack rewrote the chunk, with the page still showing the
+  old render, reads `exact`. A hot update refetches the RSC payload in practice, but
+  nothing proves it.
 
 - **The Overlay still names the harness in three places** (ticket 16): spec §17's
   sentences say "Claude", the wire carries `registry.hookFloor`, and `api.ts`, which
