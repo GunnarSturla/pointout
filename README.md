@@ -3,7 +3,7 @@
 > Point at something in your running app, type what's wrong, and have it land in the
 > Claude Code session you already have open for this repository.
 
-**Status:** v0, unpublished, dev server only. It is not on npm. v0 is not yet declared
+**Status:** v0, unpublished, dev server only, on Vite or Next.js. It is not on npm. v0 is not yet declared
 done: two human checks remain (see [Before v0 is called done](#before-v0-is-called-done)).
 
 ---
@@ -92,8 +92,10 @@ preselected: the one you last chose, or the one that started the dev server.
 | | |
 | --- | --- |
 | Node | 22.12 or later, for the dev server |
-| Vite | 8 (peer dependency) |
-| React | **19 or later**, with `react-dom` 19 (peer dependencies). React 18 is not supported: it has no owner stacks, which the Owner chain is read from. The example app uses `@vitejs/plugin-react` |
+| A Host | one of the two dev servers pointout runs in. Each is an optional peer dependency; you need only the one your app uses |
+| — Vite | 8. The example app uses `@vitejs/plugin-react` |
+| — Next.js | `>=16.3 <17`, under Turbopack, which is `next dev`'s default. Both the App Router and the Pages Router. Not webpack, and not Next 15 |
+| React | **19 or later**, with `react-dom` 19 (peer dependencies). React 18 is not supported: it has no owner stacks, which the Owner chain is read from |
 | Claude Code | the `claude` CLI, with sessions running on the same machine as the dev server. The harness surfaces v0 uses are undocumented. v0 pins on their shapes, not on a version (see [The startup posture block](#the-startup-posture-block)) |
 | Browsers | tested in Chromium, Firefox and WebKit through Playwright. WebKit stands in for Safari, and the test suite does not run Safari itself. See [the Safari limitation](#what-a-location-is-worth) |
 | Screen Capture | macOS only. On any other OS the camera toggle is shown disabled, with the reason |
@@ -111,23 +113,28 @@ cd pointout && npm install && npm run build
 cd /path/to/your/app && npm install --save-dev /path/to/pointout
 ```
 
+There is one entry point per Host, and none for the package as a whole: `pointout`
+alone cannot be imported. On either Host, pointout runs in the dev server only, and a
+production build contains no Overlay code. Each Connector takes one option, `root`,
+which overrides where it thinks the repository is. You should not need it.
+
+### On Vite
+
 Add the plugin to your Vite config:
 
 ```ts
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { pointout } from 'pointout'
+import { pointout } from 'pointout/vite'
 
 export default defineConfig({
   plugins: [react(), pointout()],
 })
 ```
 
-The plugin applies to `vite serve` only. A production build contains no Overlay code.
-It takes one option, `root`, which overrides where it thinks the repository is. You
-should not need it.
+The plugin applies to `vite serve` only.
 
-**ESM only.** The package cannot be `require()`d. If your Vite config loads as
+**ESM only.** `pointout/vite` cannot be `require()`d. If your Vite config loads as
 CommonJS, the package throws with this message:
 
 ```
@@ -141,7 +148,7 @@ from an async config factory:
     const { defineConfig } = require("vite")
 
     module.exports = defineConfig(async () => {
-      const { pointout } = await import("pointout")
+      const { pointout } = await import("pointout/vite")
       return { plugins: [pointout()] }
     })
 
@@ -149,11 +156,70 @@ defineConfig(async () => …) is what makes the dynamic import() possible:
 Vite awaits the returned config, so the plugin can be imported at runtime.
 ```
 
-**Run `init` once**, from anywhere in the repository:
+### On Next.js
+
+Wrap your Next config in `withPointout()`, whichever form it takes, an object or a
+function:
+
+```ts
+import type { NextConfig } from 'next'
+import { withPointout } from 'pointout/next'
+
+const nextConfig: NextConfig = {}
+
+export default withPointout(nextConfig)
+```
+
+Then run the dev server bound to this machine only:
+
+```sh
+next dev -H localhost
+```
+
+Next.js listens on every interface by default, and pointout cannot change that from the
+config. It still works there, but the startup block warns that Picks from the LAN will
+be refused (see [Loopback only](#loopback-only)). Put `-H localhost` in your `dev`
+script.
+
+`withPointout()` acts only in `next dev`, in the worker process that serves your pages,
+under Turbopack. Everywhere else, `next build`, `next start` or a script that imports
+the config, it hands the config back as it was given. It puts the Overlay into every
+page of both routers itself, and waits for React to hydrate the page before it draws,
+so it causes no hydration warning; there is nothing to add to a layout. `pointout/next`
+is ESM, and a CommonJS `next.config.js` can `require()` it on Node 22.12 or later.
+
+**Under `next dev --webpack`**, pointout serves nothing and puts no Overlay in the page,
+and warns that it supports only Turbopack.
+
+**What is different on Next.js.** The page shows the same Overlay as on Vite, with the
+same Targeting, Receipts, report-back, Withdraw and Screen Capture. What differs is
+underneath:
+
+- **A self-check.** pointout answers `/__agent` by reaching into Next's own server from
+  the config, which depends on when Next reads its config. At startup it requests its
+  own status, and the startup block ends in a `self-check` line that warns if anything
+  else answered (see [`docs/posture.md`](docs/posture.md)).
+- **Server Components are on the Owner chain**, each an ordinary link with its own
+  Confidence. In Chrome and Firefox they resolve exactly. In Safari they arrive
+  `absent: no-react-boundary`, with the component's name: WebKit replays a Server
+  Component's stack with no location in its frame.
+- **A location after an edit** reads `approximate: no-transform-timestamp` whenever the
+  file changed after the code the page is running was compiled. Turbopack rewrites a
+  chunk in place, and no frame says which version it came from, so pointout errs this
+  way rather than claiming `exact`.
+
+**Run `init` once**, from your app's directory:
 
 ```sh
 npx pointout init
 ```
+
+It works out the Host from your app's `package.json`: `next` there means Next.js, and
+`vite` means Vite. If it names both, `init` asks which to set up; with no terminal to
+ask, it refuses and writes nothing. Name the Host yourself with
+`--connector next|vite`, for example `npx pointout init --connector next`. On Next.js,
+after its report, it prints the two changes above, the `withPointout()` wrap naming your
+`next.config` file and `next dev -H localhost`, and makes neither.
 
 It writes to the repository root and prints exactly what it wrote. It is idempotent:
 
@@ -250,7 +316,7 @@ server running they print nothing.
 | | where | when |
 | --- | --- | --- |
 | reads | `~/.claude/sessions/*.json` and `*.key` | while a Panel is open or a Pick is outstanding, and at startup |
-| reads | `git rev-parse --show-toplevel`, run from the Vite root and from each session's working directory | once per path, cached |
+| reads | `git rev-parse --show-toplevel`, run from the Host's root (the Vite root, or the directory `next dev` runs in) and from each session's working directory | once per path, cached |
 | writes | the Target session's inbox socket | once per Pick sent |
 | binds | `/tmp/cc-socks/<pid>.sock` | from startup to shutdown |
 | writes | `$TMPDIR/pointout-captures/<pid>-<6 hex>/`, mode `0700`: Screen Captures | see [Screen Capture](#screen-capture) |
@@ -266,12 +332,13 @@ Every `/__agent` endpoint refuses a connection that does not come from `127.0.0.
 is serving on. An absent `Origin` is refused.
 
 The ack and done URLs a Pick carries, and the address the hooks dial, are the address
-Vite is actually bound to. Vite's default `localhost` is IPv6 `[::1]` alone on a
-machine whose resolver lists it first, as macOS does, and IPv4 `127.0.0.1` on many
-others; a server bound to every interface is dialled on loopback.
+the Host is actually bound to. Vite's default `localhost`, and `next dev -H localhost`,
+are IPv6 `[::1]` alone on a machine whose resolver lists it first, as macOS does, and
+IPv4 `127.0.0.1` on many others; a server bound to every interface is dialled on
+loopback.
 
-- Run with `vite --host` and the page still loads from other machines, but no Pick
-  can be made from them. The startup block says so.
+- Run with `vite --host`, or `next dev` with no `-H`, and the page still loads from
+  other machines, but no Pick can be made from them. The startup block says so.
 - **Over SSH**, forward the port to the **same port number** on your machine
   (`ssh -L 5173:localhost:5173`). The forwarded connection arrives on the remote's
   loopback, and the browser's `Origin` then names a port the dev server serves on.
@@ -321,6 +388,11 @@ Pick is never refused for a poor location. The table of every mode is in
   arrives `absent: call-site-frame-elided-by-engine`, with its component's name.
   Chrome and Firefox resolve both. Safari also strips the query from a stack URL, so
   after a hot update its locations read `approximate: no-transform-timestamp`.
+- **Server Components** (Next.js) resolve exactly in Chrome and Firefox, and arrive
+  `absent: no-react-boundary` in Safari, with their names.
+- **Code from a package** in `node_modules` is flagged `dependency`. Whether the link
+  also carries a location depends on what the Host serves for it, so do not count on
+  either.
 - **The ceiling: about 10,000 elements created per second.** Above that, React stops
   recording owner stacks and hands out one shared placeholder. The Pointer then names
   components without lines. Ticket 06 measured the placeholder against React 19.3 in
@@ -331,10 +403,10 @@ Pick is never refused for a poor location. The table of every mode is in
 
 ## The startup posture block
 
-Every dev-server start prints one block saying where the plugin is, what it will
+Every dev-server start prints one block saying where pointout is, what it will
 refuse, and which of its parts work: `root`, `guard`, `registry`, `harness version`,
-`reply socket`, `screen capture`, `temp directory`, `discovery entry`, and `host` when
-Vite is bound off loopback. If any line reports something degraded, the whole block
+`reply socket`, `screen capture`, `temp directory`, `discovery entry`, `self-check` on
+Next.js, and `host` when the Host is bound off loopback. If any line reports something degraded, the whole block
 is logged as a warning. The `harness version` line compares the Claude Code version
 your sessions report with the version the canaries last passed against, and warns,
 never refuses, when yours is newer. Every line and what it means is in
@@ -360,7 +432,9 @@ never refuses, when yours is newer. Every line and what it means is in
 
 - Other harnesses than Claude Code, and other frameworks than React.
 - React 18.
-- Staging or production. It is a dev-server plugin only.
+- Staging or production. It runs in the dev server only.
+- Hosts other than Vite and Next.js. On Next.js: webpack (`next dev --webpack`), and
+  Next 15 or earlier.
 - More than one element per Pick, stepping the selection to a parent, line numbers on
   hover, computed styles, a DOM ancestor chain, a source snippet or a selector path.
 - Screen Capture on Linux or Windows.
@@ -377,6 +451,7 @@ never refuses, when yours is newer. Every line and what it means is in
 ```sh
 npm install
 npm run dev            # builds dist/, then serves examples/react-app/ with the plugin
+npm run build && npm run dev --workspace pointout-example-next   # the Next.js test bed
 npm test               # seams 1 and 2: the dev server's HTTP surface, then three browsers
 npm run lint && npm run format:check && npm run typecheck
 ```
@@ -385,7 +460,8 @@ npm run lint && npm run format:check && npm run typecheck
 covers the page the way a real app's scrim does, is off when the page loads; add
 `?decoy` to the URL to load with it on, or press **Show decoy**, bottom left.
 `examples/next-app/` is the Next.js 16 test bed, built from the same fixtures in
-`examples/shared/`; pointout is not in it yet.
+`examples/shared/`, with an App Router route at `/`, a Pages Router route at
+`/pages-router`, and its config wrapped in `withPointout()`.
 
 The conventions every change follows start at [`CLAUDE.md`](CLAUDE.md), and the domain
 language is in [`GLOSSARY.md`](GLOSSARY.md).

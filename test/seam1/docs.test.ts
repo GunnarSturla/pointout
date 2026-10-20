@@ -358,6 +358,26 @@ describe('the packaging conventions', () => {
   })
 })
 
+describe('the README', () => {
+  const readme = read('README.md')
+
+  it('never imports the package by its bare name, which has no entry', () => {
+    // There is no root entry (ADR-0005): `pointout` alone fails with
+    // ERR_PACKAGE_PATH_NOT_EXPORTED, so an import a reader copies must name a
+    // Connector.
+    expect(readme).not.toMatch(/from ['"]pointout['"]/)
+    expect(readme).not.toMatch(/import\(['"]pointout['"]\)/)
+  })
+
+  it('installs each Connector the way its Host takes it', () => {
+    expect(readme).toContain("import { pointout } from 'pointout/vite'")
+    expect(readme).toContain('await import("pointout/vite")')
+    expect(readme).toContain("import { withPointout } from 'pointout/next'")
+    expect(readme).toContain('next dev -H localhost')
+    expect(readme).toContain('--connector next|vite')
+  })
+})
+
 describe('the packaging conventions cover the two gates', () => {
   const doc = read('docs/agents/packaging.md')
 
