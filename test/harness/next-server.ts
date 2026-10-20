@@ -121,10 +121,21 @@ let started = 0
  * all: its start resolves after the file has moved on. Ticket 06's orphaned
  * `next dev`s were that. So whatever is still here when this process exits is
  * killed, synchronously, on the way out.
+ *
+ * Vitest ends a fork worker with SIGTERM, which never reaches Node's `exit`
+ * (measured: a server whose `beforeAll` timed out outlived the run with only
+ * the `exit` hook). So SIGTERM is caught as well, kills the same groups, and
+ * then exits as SIGTERM's default would.
  */
 const live = new Set<number>()
-process.once('exit', () => {
+const killLive = () => {
   for (const pgid of live) signalGroup(pgid, 'SIGKILL')
+  live.clear()
+}
+process.once('exit', killLive)
+process.once('SIGTERM', () => {
+  killLive()
+  process.exit(128 + 15)
 })
 
 /** Start `examples/next-app` under `next dev`, with the harness faked. */
