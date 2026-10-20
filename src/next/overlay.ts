@@ -67,7 +67,9 @@ function rootOf(container: Node | null): RootFiberLike | null {
 /**
  * A page in a same-origin frame is the frame's page's to pick in: the Overlay
  * that page draws already reaches into it (`frames.ts`), and a second Overlay
- * inside the frame would arm on the same Alt and draw a second Picker.
+ * inside the frame would arm on the same Alt and draw a second Picker. Next
+ * injects this entry into every page it serves, a framed one included. Vite's
+ * entry has no such check yet; ticket 06's Comments say why.
  */
 function framedBySameOrigin(view: Window): boolean {
   if (view.parent === view) return false

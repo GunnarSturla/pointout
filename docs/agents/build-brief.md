@@ -382,6 +382,10 @@ tree an agent reported green, and then once per batch of merges, not once per me
   `topDocumentPoint`, like `viewportBox`, walks to the outermost same-origin window, so
   if the Overlay's own page were framed by a same-origin parent, a point from one of
   its child frames would come back in the parent's coordinates.
+- **A Vite page framing another page Vite serves would draw two Overlays.** Next's entry
+  draws nothing in a same-origin child frame (`src/next/overlay.ts`); Vite's has no such
+  check, and its only frame fixture is `about:blank`, so nothing holds it (Next.js
+  Connector ticket 06's Comments).
 - **"Back to your pick" has no guard against a narrow viewport's right edge.**
 - **react-dom under Trusted Types is unverified.** The Overlay's surfaces are built by
   react-dom now, and the guarantee that nothing builds DOM from a markup string rests on
