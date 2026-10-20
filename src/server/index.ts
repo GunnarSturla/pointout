@@ -1,6 +1,9 @@
+import { createCaptureService } from './capture/index.js'
 import type { CaptureService } from './capture/index.js'
 import { socketDirectory } from './claude/reply-socket.js'
+import { createClaudeRoute } from './claude/route.js'
 import type { DeliveryRoute } from './delivery.js'
+import { createDiscovery } from './discovery.js'
 import type { Discovery } from './discovery.js'
 import type { Logger } from './logger.js'
 import { discoverRepoRoot } from './paths.js'
@@ -51,6 +54,38 @@ export interface Services {
   route: DeliveryRoute
   captures: CaptureService
   discovery: Discovery
+}
+
+/**
+ * Bring up the three services, in the order every Connector needs: before
+ * anything is served, so the posture block can state what each of them is —
+ * where the reply socket bound or why it did not, whether this server can
+ * capture and what an earlier one left on disk, and that the dead dev
+ * servers' discovery entries are gone (spec §10, §16, §18, §21).
+ *
+ * `close` is synchronous, so a Connector can call it from `exit`, and closing
+ * twice is a no-op: it unlinks the socket, deletes the captures and removes
+ * the discovery entry.
+ */
+export async function createServices(
+  facts: ServerFacts,
+  logger: Logger,
+): Promise<{ services: Services; close: () => void }> {
+  const route = await createClaudeRoute({
+    registryDir: facts.registryDir,
+    socketDir: facts.socketDir,
+    logger,
+  })
+  const captures = await createCaptureService({ logger })
+  const discovery = createDiscovery({ root: facts.root })
+  return {
+    services: { route, captures, discovery },
+    close: () => {
+      route.close()
+      captures.close()
+      discovery.close()
+    },
+  }
 }
 
 export function createServerFacts({

@@ -2,12 +2,9 @@ import type { AddressInfo } from 'node:net'
 import { Server as TlsServer } from 'node:tls'
 import { API_BASE, STATUS_PATH } from '../api.js'
 import { boundAddress, loopbackOrigins } from '../server/bound-host.js'
-import { createCaptureService } from '../server/capture/index.js'
-import { createClaudeRoute } from '../server/claude/route.js'
-import { createDiscovery } from '../server/discovery.js'
 import { createAgentEndpoints } from '../server/http.js'
-import { announcePosture, createServerFacts } from '../server/index.js'
-import type { PointoutOptions, Services } from '../server/index.js'
+import { announcePosture, createServerFacts, createServices } from '../server/index.js'
+import type { PointoutOptions } from '../server/index.js'
 import type { Logger } from '../server/logger.js'
 import { createPosture, says, warns } from '../server/posture.js'
 import type { PostureLine } from '../server/posture.js'
@@ -81,26 +78,12 @@ async function start(options: PointoutOptions): Promise<void> {
   }
   const address = server.address() as AddressInfo
 
-  // All three are brought up before anything is served, as on Vite, so the
-  // posture block can state what each of them is.
-  const route = await createClaudeRoute({
-    registryDir: facts.registryDir,
-    socketDir: facts.socketDir,
-    logger,
-  })
-  const captures = await createCaptureService({ logger })
-  const discovery = createDiscovery({ root: facts.root })
-  const services: Services = { route, captures, discovery }
+  const { services, close } = await createServices(facts, logger)
 
   // Synchronous, and on `exit`: Next sends SIGKILL 100 ms after Ctrl-C, so
   // nothing asynchronous would finish, and a SIGTERM handler of ours would
   // cancel Next's own exit. A config edit restarts the worker through
   // `process.exit`, which runs this too. Closing twice is a no-op.
-  const close = () => {
-    route.close()
-    captures.close()
-    discovery.close()
-  }
   process.once('exit', close)
   server.once('close', close)
 
@@ -123,7 +106,7 @@ async function start(options: PointoutOptions): Promise<void> {
   )
   interceptAgentRequests(server, answer)
 
-  discovery.publish(bound)
+  services.discovery.publish(bound)
   const selfCheck = await checkSelf(loopbackOrigin + API_BASE + STATUS_PATH)
   announcePosture(
     {

@@ -3,11 +3,8 @@ import { fileURLToPath } from 'node:url'
 import { searchForWorkspaceRoot } from 'vite'
 import type { Plugin, UserConfig } from 'vite'
 import { boundAddress } from '../server/bound-host.js'
-import { createCaptureService } from '../server/capture/index.js'
-import { createClaudeRoute } from '../server/claude/route.js'
-import { createDiscovery } from '../server/discovery.js'
-import { announcePosture, createServerFacts } from '../server/index.js'
-import type { PointoutOptions, ServerFacts, Services } from '../server/index.js'
+import { announcePosture, createServerFacts, createServices } from '../server/index.js'
+import type { PointoutOptions, ServerFacts } from '../server/index.js'
 import { installAgentEndpoints } from './endpoints.js'
 
 export type { PointoutOptions, ServerFacts }
@@ -43,7 +40,7 @@ export function pointout(options: PointoutOptions = {}): Plugin {
   /** Worked out once at `configResolved`; every request reads it. */
   let facts: ServerFacts | null = null
   /** Brought up by `configureServer`, and closed with the server. */
-  let services: Services | null = null
+  let closeServices: (() => void) | null = null
 
   // Vite runs `configResolved` before `configureServer`, so this never fires.
   // It throws rather than shrugging: a plugin that quietly served no endpoints
@@ -91,19 +88,9 @@ export function pointout(options: PointoutOptions = {}): Plugin {
       const resolved = resolvedFacts()
       const { logger } = server.config
 
-      // All three are brought up before anything is served, so the posture
-      // block can state what each of them is — where the reply socket bound or
-      // why it did not, whether this server can capture and what an earlier one
-      // left on disk, and that the dead dev servers' discovery entries are gone
-      // (spec §10, §16, §18, §21).
-      const route = await createClaudeRoute({
-        registryDir: resolved.registryDir,
-        socketDir: resolved.socketDir,
-        logger,
-      })
-      const captures = await createCaptureService({ logger })
-      const discovery = createDiscovery({ root: resolved.root })
-      services = { route, captures, discovery }
+      const brought = await createServices(resolved, logger)
+      const { services } = brought
+      closeServices = brought.close
       server.httpServer?.once('close', close)
 
       installAgentEndpoints(server, resolved, services)
@@ -114,7 +101,7 @@ export function pointout(options: PointoutOptions = {}): Plugin {
       // (spec §18, §21).
       const listening = () => {
         const address = server.httpServer?.address()
-        discovery.publish(boundAddress(address))
+        services.discovery.publish(boundAddress(address))
         announcePosture(
           {
             logger,
@@ -122,7 +109,7 @@ export function pointout(options: PointoutOptions = {}): Plugin {
             host: address && typeof address === 'object' ? address.address : null,
           },
           resolved,
-          services!,
+          services,
         )
       }
       if (server.httpServer) server.httpServer.once('listening', listening)
@@ -159,9 +146,7 @@ export function pointout(options: PointoutOptions = {}): Plugin {
   }
 
   function close(): void {
-    services?.route.close()
-    services?.captures.close()
-    services?.discovery.close()
+    closeServices?.()
   }
 }
 
