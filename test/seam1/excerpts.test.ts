@@ -93,6 +93,7 @@ interface Body {
   redactions?: unknown
   note?: unknown
   target?: unknown
+  pageLoadedAt?: unknown
 }
 
 function pointerBody(overrides: Body = {}): Body {
@@ -277,6 +278,18 @@ describe.each(HOSTS)('what the agent reads about the element, on %s', (host) => 
       expect(status).toBe(400)
       expect(json.error).toBe('pointer-incomplete')
       expect(json.reason).toContain('two classes')
+    })
+
+    it('refuses a page load time that is no moment, naming the part', async () => {
+      const { server } = await startPickServer()
+      const { status, json } = await postPick(
+        server,
+        pointerBody({ pageLoadedAt: 'this morning' }),
+      )
+
+      expect(status).toBe(400)
+      expect(json.error).toBe('pointer-incomplete')
+      expect(json.reason).toContain('page load time')
     })
   })
 

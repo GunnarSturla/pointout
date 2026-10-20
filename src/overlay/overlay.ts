@@ -582,5 +582,9 @@ function pointerOf(
     },
     ownerChain: owners.links,
     walkUp: owners.walkUp,
+    // The top page's, even for an element in a frame: a frame begins to load
+    // after the page around it, so this is the earlier, and the safer, moment
+    // to judge a frame's file against. Rounded down for the same reason.
+    pageLoadedAt: Math.floor(view.performance.timeOrigin),
   }
 }

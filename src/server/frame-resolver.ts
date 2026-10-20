@@ -12,6 +12,12 @@ export interface ServedFrame {
   url: string
   line: number
   column: number
+  /**
+   * When the page that printed the frame began to load, in epoch milliseconds,
+   * or null when the Pick did not say. Every script the frame can name was
+   * loaded after it.
+   */
+  pageLoadedAt: number | null
 }
 
 /**

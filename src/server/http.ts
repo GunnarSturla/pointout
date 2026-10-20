@@ -683,6 +683,7 @@ async function ingestPick(
     context.resolveFrame,
     facts.root,
     input.ownerChain,
+    input.pageLoadedAt ?? null,
   )
 
   // The Pick carries the Target it was resolved to, not the one the body named:

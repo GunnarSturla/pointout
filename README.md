@@ -204,9 +204,12 @@ underneath:
   `absent: no-react-boundary`, with the component's name: WebKit replays a Server
   Component's stack with no location in its frame.
 - **A location after an edit** reads `approximate: no-transform-timestamp` whenever the
-  file changed after the code the page is running was compiled. Turbopack rewrites a
-  chunk in place, and no frame says which version it came from, so pointout errs this
-  way rather than claiming `exact`.
+  file changed after the page you picked in began to load, until you reload that page.
+  Turbopack rewrites a chunk in place, and no frame says which version it came from, so
+  pointout errs this way rather than claiming `exact`. Vite, in Chrome and Firefox, can
+  say more: there the same edit reads `approximate: stale-transform`, because a Vite
+  frame names the transform it ran. On Next.js no engine's frame does, so the mode is
+  the weaker one everywhere, as it is on Vite in Safari.
 
 **Run `init` once**, from your app's directory:
 

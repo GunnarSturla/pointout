@@ -482,9 +482,11 @@ the fix is to capture again.
 
 `test/harness/next-frames.ts` puts a capture back on a server (`capturedStack`) and
 loads what a page would have first (`loadCapturedChunks`: both routes, then every chunk
-the captures name). Load before you Pick: the Next.js Connector dates a chunk by when a
-page first loaded it, and calls a frame in a chunk no page loaded from this server, but
-whose file has changed since pointout started, approximate. `test/harness/call-sites.ts`
+the captures name). Load before you Pick: Turbopack writes a chunk only when a page asks
+for it. The Next.js Connector judges a client frame's file against the Pick's
+`pageLoadedAt`, when the page began to load; a body without one, as most seam-1 bodies
+are, is judged against when pointout started, so a file edited since then reads
+approximate. `test/harness/call-sites.ts`
 gives a suite the three call sites of `OwnerChainDepth.tsx` on either Host — the
 transform's position on Vite, the captured frame on Next — so the Owner chain and
 Confidence suites run as one `describe.each(['vite', 'next'])`. A test that edits a

@@ -46,6 +46,8 @@ interface PickBody {
   walkUp?: unknown
   note?: string | null
   target?: { sessionId: string; pid: number } | null
+  /** When the page began to load, epoch ms: `performance.timeOrigin`, rounded down. */
+  pageLoadedAt?: number
 }
 
 function bodyFor(
@@ -700,6 +702,51 @@ describe('Confidence on Next.js, from a Turbopack chunk and its map', () => {
       ),
     )
     expect(stale).not.toContain('(exact)')
+  })
+
+  it('reads a frame approximate while its page predates an edit, and exact from a page loaded after it', async () => {
+    const file = join(server.appRoot, CLIENT_LEAF)
+    const relative = file.slice(repoRoot.length).replace(/^\//, '')
+    const pickFrom = (name: string, frame: Frame, pageLoadedAt: number) =>
+      pick({
+        ownerChain: [{ name, stack: v8Stack(name, frame, runtime()) }],
+        pageLoadedAt,
+      })
+
+    // A page loaded now, before the edit, and the frame it holds.
+    await loadPage()
+    const loadedBefore = Date.now()
+    const before = frameOf('("button", {', '"client-leaf"')
+    const chunk = before.url.slice(server.url.length)
+
+    const source = readFileSync(file, 'utf8')
+    writeFileSync(
+      file,
+      source.replace('export function', '// four\n// five\nexport function'),
+    )
+    await waitFor(async () => {
+      await (await fetch(server.url + '/')).text()
+      return (await (await fetch(server.url + chunk)).text()) !== chunks.get(chunk)
+    })
+
+    // Not yet reloaded: the page still holds the frame it made before the
+    // edit, and says so, however many other pages have loaded the chunk since.
+    const stale = await pickFrom('NotReloaded', before, loadedBefore)
+    expect(stale).toMatch(
+      new RegExp(
+        `NotReloaded — ${escaped(relative)}:\\d+:\\d+ \\(approximate: no-transform-timestamp — `,
+      ),
+    )
+
+    // Reloaded: a page that began loading after the chunk was written again
+    // holds a frame into the chunk as it is now.
+    const loadedAfter = Date.now()
+    await loadPage()
+    const after = frameOf('("button", {', '"client-leaf"')
+    const fresh = await pickFrom('Reloaded', after, loadedAfter)
+    expect(fresh).toContain(
+      `Reloaded — ${relative}:${originalIn(file, '<button')} (exact)`,
+    )
   })
 
   it('states no-sourcemap, with no location, for a chunk Next serves without its map', async () => {

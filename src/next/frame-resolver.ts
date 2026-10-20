@@ -1,4 +1,3 @@
-import type { Server as NetServer } from 'node:net'
 import type { FrameAnswer, FrameResolver } from '../server/frame-resolver.js'
 import { clientChunks } from './client-chunks.js'
 import { serverChunks } from './server-chunks.js'
@@ -14,20 +13,17 @@ import { serverChunks } from './server-chunks.js'
 //   which asks Next for the map it serves.
 
 export interface NextFrameResolverOptions {
-  /** Next's listening server, which pages load client chunks from. */
-  server: NetServer
-  /** That server's loopback origin, which a client chunk's map is asked of. */
+  /** Next's loopback origin, which a client chunk's map is asked of. */
   origin: string
   /** The project Next serves, which every server chunk is below. */
   projectDir: string
 }
 
 export function nextFrameResolver({
-  server,
   origin,
   projectDir,
 }: NextFrameResolverOptions): FrameResolver {
-  const client = clientChunks(server, origin)
+  const client = clientChunks(origin)
   const onServer = serverChunks(projectDir)
 
   return async (frame): Promise<FrameAnswer> => {

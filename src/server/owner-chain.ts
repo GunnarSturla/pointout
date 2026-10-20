@@ -135,9 +135,12 @@ export async function resolveOwnerChain(
   resolveFrame: FrameResolver,
   root: string,
   links: readonly OwnerChainLink[],
+  pageLoadedAt: number | null,
 ): Promise<OwnerLink[]> {
   const resolved: OwnerLink[] = []
-  for (const link of links) resolved.push(await resolveLink(resolveFrame, root, link))
+  for (const link of links) {
+    resolved.push(await resolveLink(resolveFrame, root, link, pageLoadedAt))
+  }
   return resolved
 }
 
@@ -145,6 +148,7 @@ async function resolveLink(
   resolveFrame: FrameResolver,
   root: string,
   link: OwnerChainLink,
+  pageLoadedAt: number | null,
 ): Promise<OwnerLink> {
   const absent = (mode: DegradedMode, reason: string, dependency = false): OwnerLink => ({
     name: link.name,
@@ -192,6 +196,7 @@ async function resolveLink(
     url: frame.url,
     line: frame.line,
     column: frame.column,
+    pageLoadedAt,
   })
   if (answer.kind === 'absent')
     return absent(answer.mode, answer.reason, answer.dependency)

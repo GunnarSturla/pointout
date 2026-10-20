@@ -1,8 +1,6 @@
 import { statSync } from 'node:fs'
-import type { IncomingMessage, ServerResponse } from 'node:http'
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
-import type { Server as NetServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import type { ChunkSource, FrameAnswer, ServedFrame } from '../server/frame-resolver.js'
 import { isSourceMap } from '../server/sourcemap.js'
@@ -24,15 +22,16 @@ import type { SourceMapLike } from '../server/sourcemap.js'
 // reaches the page through the HMR socket, and the frames React prints after
 // one still name the chunk and the line the page first loaded (measured, all
 // three engines). So a frame cannot say which version of its chunk it is in,
-// and the map served now may have moved under it. What this can say is when a
-// page first loaded the chunk from this server, and whether the source file the
-// position maps into has changed since: if it has, the link is approximate.
+// and the map served now may have moved under it. What the Pick says is when
+// its page began to load, and every chunk that page holds was loaded after
+// that: a source file that has changed since then may be one the frame's
+// chunk predates, and the link is approximate. A page loaded after the edit
+// holds the chunk as it is now, so a reload clears it; another page loading
+// the chunk does not, since this page's frames are still its own. Without
+// that moment, the baseline is when pointout started.
 
 /** Where Turbopack's client chunks are served, below any `basePath`. */
 const CLIENT_CHUNKS = '/_next/static/chunks/'
-
-/** Marks the requests this resolver makes of its own server. */
-const OWN_REQUEST = 'x-pointout-resolver'
 
 /** How long a map request may take. Maps of React itself run to 2 MB. */
 const MAP_TIMEOUT_MS = 10_000
@@ -43,35 +42,15 @@ export interface ClientChunks {
   resolve(url: URL, frame: ServedFrame): Promise<FrameAnswer>
 }
 
-/**
- * A resolver for the client chunks `server` serves. It watches `server` for
- * the requests pages make for chunks, which is how it knows when a page first
- * loaded one, and asks `origin` (loopback) for their maps.
- */
-export function clientChunks(server: NetServer, origin: string): ClientChunks {
-  // Before any page loaded a chunk, the baseline is when pointout started:
-  // a frame in a chunk this server never served came from an earlier one.
+/** A resolver for the client chunks served at `origin` (loopback), whose maps it asks for. */
+export function clientChunks(origin: string): ClientChunks {
+  // A frame from a page that did not say when it loaded is judged against
+  // when pointout started: a chunk from an earlier server is older still.
   const startedAt = Date.now()
-  const firstServed = new Map<string, number>()
-
-  server.prependListener(
-    'request',
-    (request: IncomingMessage, response: ServerResponse) => {
-      const path = request.url?.split('?')[0]
-      if (!path || !isChunk(path) || firstServed.has(path)) return
-      // pointout's own question about a chunk is no page loading it.
-      if (request.headers[OWN_REQUEST] !== undefined) return
-      // When the response is written, not when it is asked for: Turbopack may
-      // still be writing the chunk as the request arrives.
-      response.once('finish', () => {
-        if (!firstServed.has(path)) firstServed.set(path, Date.now())
-      })
-    },
-  )
 
   return {
     claims: (url) => isChunk(url.pathname),
-    async resolve(url) {
+    async resolve(url, frame) {
       const path = url.pathname
       const map = await served(origin + path + '.map')
       if (map.kind === 'unreadable') {
@@ -101,16 +80,32 @@ export function clientChunks(server: NetServer, origin: string): ClientChunks {
             }
       }
 
-      const baseline = firstServed.get(path) ?? startedAt
+      const since = frame.pageLoadedAt
       return {
         kind: 'chunk',
         map: map.map,
         served: path,
-        source: (name) => sourceOf(name, baseline),
+        source: (name) =>
+          sourceOf(
+            name,
+            since ?? startedAt,
+            since === null ? SINCE_STARTED : SINCE_LOADED,
+          ),
       }
     },
   }
 }
+
+const SINCE_LOADED =
+  'this file has changed since the page this frame came from began to load, and a ' +
+  'Turbopack frame carries no version of its chunk to compare — the url stays the same ' +
+  'across hot updates — so which version of the file the line belongs to is not ' +
+  'knowable here'
+
+const SINCE_STARTED =
+  'this file has changed since this dev server started, the Pick did not say when its ' +
+  'page loaded, and a Turbopack frame carries no version of its chunk to compare, so ' +
+  'which version of the file the line belongs to is not knowable here'
 
 /** A chunk path, below any `basePath`: a script, not its map or a stylesheet. */
 function isChunk(path: string): boolean {
@@ -122,7 +117,7 @@ function isChunk(path: string): boolean {
  * Turbopack names its own runtime `turbopack:///[turbopack]/…`, which is no
  * file: null.
  */
-function sourceOf(name: string, baseline: number): ChunkSource | null {
+function sourceOf(name: string, baseline: number, reason: string): ChunkSource | null {
   let file: string
   try {
     file = fileURLToPath(name)
@@ -138,17 +133,7 @@ function sourceOf(name: string, baseline: number): ChunkSource | null {
   return {
     file,
     dependency: file.includes('/node_modules/'),
-    drift:
-      modified > baseline
-        ? {
-            mode: 'no-transform-timestamp',
-            reason:
-              'this file has changed since a page first loaded the chunk it is in, and a ' +
-              'Turbopack frame carries no version of its chunk to compare — the url stays the same ' +
-              'across hot updates — so which version of the file the line belongs to is not ' +
-              'knowable here',
-          }
-        : null,
+    drift: modified > baseline ? { mode: 'no-transform-timestamp', reason } : null,
   }
 }
 
@@ -179,17 +164,12 @@ function get(
   return new Promise((resolve) => {
     const send = url.startsWith('https:') ? httpsRequest : httpRequest
     // A dev server's certificate is its own; this is loopback to itself.
-    const headers = { [OWN_REQUEST]: '1' }
-    const outgoing = send(
-      url,
-      { method, headers, rejectUnauthorized: false },
-      (response) => {
-        let body = ''
-        response.setEncoding('utf8')
-        response.on('data', (chunk: string) => (body += chunk))
-        response.on('end', () => resolve({ status: response.statusCode ?? 0, body }))
-      },
-    )
+    const outgoing = send(url, { method, rejectUnauthorized: false }, (response) => {
+      let body = ''
+      response.setEncoding('utf8')
+      response.on('data', (chunk: string) => (body += chunk))
+      response.on('end', () => resolve({ status: response.statusCode ?? 0, body }))
+    })
     outgoing.setTimeout(MAP_TIMEOUT_MS, () => outgoing.destroy(new Error('timed out')))
     // A map that cannot be fetched is a map that is not there; the link says so.
     outgoing.on('error', () => resolve({ status: 0, body: '' }))

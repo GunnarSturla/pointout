@@ -155,3 +155,19 @@ test('an element owned by a package is flagged dependency, wherever it is pointe
   // still travels, flagged, which is what tells the agent not to edit there.
   expect(content).toMatch(/owner chain\s+Skeleton — no location \(dependency, absent:/)
 })
+
+test('a Pick says when its page began to load, which a Turbopack frame is judged against', async ({
+  page,
+}) => {
+  const token = probe('loaded-at')
+  await open(page, token)
+  const sent = page.waitForRequest(
+    (request) => request.method() === 'POST' && request.url().endsWith('/__agent/pick'),
+  )
+  await pickAndSend(page, CARD_HEADING)
+
+  const body = (await sent).postDataJSON() as { pageLoadedAt?: unknown }
+  const timeOrigin = await page.evaluate(() => performance.timeOrigin)
+  expect(body.pageLoadedAt).toBe(Math.floor(timeOrigin))
+  await delivered(token)
+})

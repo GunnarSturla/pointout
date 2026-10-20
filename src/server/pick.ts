@@ -209,6 +209,8 @@ export function parsePickBody(text: string): Parsed<PickBody> {
   if (!target.ok) return target
   const capture = parseCaptureRequest(parsed.capture)
   if (!capture.ok) return capture
+  const pageLoadedAt = parsePageLoadedAt(parsed.pageLoadedAt)
+  if (!pageLoadedAt.ok) return pageLoadedAt
 
   return {
     ok: true,
@@ -224,8 +226,22 @@ export function parsePickBody(text: string): Parsed<PickBody> {
       note: typeof note === 'string' ? note : null,
       target: target.value,
       capture: capture.value,
+      pageLoadedAt: pageLoadedAt.value,
     },
   }
+}
+
+/** A moment, in epoch milliseconds, or null for one the page did not say. */
+function parsePageLoadedAt(value: unknown): Parsed<number | null> {
+  if (value === undefined || value === null) return { ok: true, value: null }
+  if (!isFiniteNumber(value) || value < 0) {
+    return refuse(
+      400,
+      'pointer-incomplete',
+      'refused a Pick whose page load time is not a moment in epoch milliseconds.',
+    )
+  }
+  return { ok: true, value }
 }
 
 /**

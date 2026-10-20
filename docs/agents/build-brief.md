@@ -264,8 +264,12 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
   (ticket 06): React marks `document` as listened to. The entry polls for the hydrated
   root on `document` or `#__next`.
 - **Turbopack rewrites a chunk in place under the same url**, and frames after a hot
-  update still name the old line. Client drift is judged against when a page first
-  loaded the chunk; server drift against the chunk file's mtime.
+  update still name the old line. Client drift is judged against when the Pick's own
+  page began to load (`pageLoadedAt` on the body, the top document's
+  `performance.timeOrigin`; when absent, against when pointout started), so a reload
+  clears it and another tab's reload does not; server drift against the chunk file's
+  mtime. Either way the mode is `no-transform-timestamp`, where Vite in Chromium and
+  Firefox says `stale-transform`.
 - **WebKit replays a Server Component's stack with no location** and no
   `react_stack_bottom_frame`, so those links are `absent: no-react-boundary` in WebKit
   (issue 11). Chromium and Firefox resolve them exactly.

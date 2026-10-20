@@ -128,6 +128,14 @@ export interface PickBody {
   target: Target | null
   /** Absent is the ordinary case: most Picks carry no Screen Capture. */
   capture?: CaptureRequest | null
+  /**
+   * When the page the Pick was made in began to load, in epoch milliseconds:
+   * the top document's `performance.timeOrigin`, rounded down. A Connector
+   * whose frames carry no version of the code they ran in, as a Turbopack
+   * chunk's do not, judges a frame's file against it. Null or absent is not
+   * known, and such a frame is judged against when the server started.
+   */
+  pageLoadedAt?: number | null
 }
 
 /**
