@@ -25,6 +25,10 @@ export function now(): number {
   return Date.now() + (Number.isNaN(skew) ? 0 : skew)
 }
 
+// Unset, as it always is outside a test, this costs one environment lookup a
+// call and reads no file. Set, the file is read on every call on purpose: the
+// test moves the clock mid-request from another process, and a cached or
+// watched value could be read before the move reached it.
 function skewText(): string {
   const file = process.env[CLOCK_SKEW_FILE_ENV]
   if (!file) return process.env[CLOCK_SKEW_ENV] ?? ''

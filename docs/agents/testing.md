@@ -345,9 +345,10 @@ changes every time the canaries pass. So seam 1 states the version it wants,
 record does. Like the others, a consumer never sets it. `docs/posture.md` lists every
 posture line.
 
-`POINTOUT_NEXT_NO_INTERCEPT=1` is the eighth (Next.js Connector ticket 04): pointout
-starts in `next dev` but leaves Next's server alone, so the posture block's
-`self-check` finds Next answering instead and says so. Test-only, the same way.
+There is no override for the failing `self-check` on Next.js: a switch for it would ship
+in `dist/next`. `next-connector.test.ts` preloads a module into Next's worker through
+`NODE_OPTIONS` instead, which makes the listening server's `emit` unreplaceable, so
+pointout's reach into the server does not take and Next answers the self-check itself.
 
 ## The example apps
 

@@ -22,13 +22,6 @@ import { findListeningServer, interceptAgentRequests } from './intercept.js'
 /** How the posture block names this Host. */
 const HOST_NAME = 'Next.js'
 
-/**
- * Test-only: start everything but leave Next's server alone, so the
- * self-check has nothing of pointout's to find. Nothing a consumer runs sets
- * it, in the way `POINTOUT_VERIFIED_HARNESS` is test-only.
- */
-const NO_INTERCEPT_ENV = 'POINTOUT_NEXT_NO_INTERCEPT'
-
 /** How long the self-check waits for its own answer. */
 const SELF_CHECK_TIMEOUT_MS = 5_000
 
@@ -129,7 +122,7 @@ async function start(options: PointoutOptions): Promise<void> {
     facts,
     services,
   )
-  if (process.env[NO_INTERCEPT_ENV] !== '1') interceptAgentRequests(server, answer)
+  interceptAgentRequests(server, answer)
 
   discovery.publish(bound)
   const selfCheck = await checkSelf(loopbackOrigin + API_BASE + STATUS_PATH)

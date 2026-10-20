@@ -1,4 +1,11 @@
-import { appendFileSync, readdirSync, readFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -23,8 +30,23 @@ const NEXT_TIMEOUT = 120_000
 
 /** Test-only: the harness version the canaries last passed against. */
 const VERIFIED_HARNESS_ENV = 'POINTOUT_VERIFIED_HARNESS'
-/** Test-only: pointout starts but leaves Next's server alone. */
-const NO_INTERCEPT_ENV = 'POINTOUT_NEXT_NO_INTERCEPT'
+/**
+ * Loaded into Next's dev worker through `NODE_OPTIONS`, before the config is
+ * read: it makes the listening server's `emit` one that nobody can replace,
+ * so pointout's reach into Next's server (ADR-0006) does not take, as it would
+ * not on a Next that stopped reading its config after `listen`. Only the
+ * worker, which `NEXT_PRIVATE_WORKER` marks, and only an HTTP server.
+ */
+const UNREACHABLE_SERVER_PRELOAD = `import { Server } from 'node:http'
+const listen = Server.prototype.listen
+Server.prototype.listen = function (...args) {
+  if (process.env.NEXT_PRIVATE_WORKER === '1') {
+    const emit = this.emit
+    Object.defineProperty(this, 'emit', { configurable: true, get: () => emit, set: () => {} })
+  }
+  return listen.apply(this, args)
+}
+`
 
 /** Where every dev server on this machine publishes its discovery entry (spec §18). */
 const DISCOVERY_DIR = join(tmpdir(), `pointout-servers-${userInfo().uid}`)
@@ -177,16 +199,25 @@ describe('withPointout() under next dev, with Turbopack', () => {
 
 describe('the posture block on Next, degraded', () => {
   let server: NextHarnessServer | undefined
+  const cleanups: Array<() => void> = []
   afterEach(async () => {
     await server?.close()
     server = undefined
+    for (const cleanup of cleanups.splice(0)) cleanup()
   })
 
   it(
     'says loudly when pointout did not answer its own self-check',
     async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'pointout-unreachable-'))
+      cleanups.push(() => rmSync(dir, { recursive: true, force: true }))
+      const preload = join(dir, 'preload.mjs')
+      writeFileSync(preload, UNREACHABLE_SERVER_PRELOAD)
       server = await startNextServer({
-        env: { [VERIFIED_HARNESS_ENV]: '2.1.280@2026-09-01', [NO_INTERCEPT_ENV]: '1' },
+        env: {
+          [VERIFIED_HARNESS_ENV]: '2.1.280@2026-09-01',
+          NODE_OPTIONS: `--import ${preload}`,
+        },
       })
 
       expect(normalised(server)).toBe(

@@ -159,5 +159,5 @@ None of these repeat a posture line.
 in `docs/agents/testing.md`, and a consumer never sets it. The seam-1 posture test
 (`test/seam1/posture.test.ts`) holds the exact wording of every line on this page,
 and `test/seam1/next-connector.test.ts` the Next.js block, `self-check` included.
-`POINTOUT_NEXT_NO_INTERCEPT=1`, test-only too, starts pointout on Next.js without
-reaching into its server, so the self-check has nothing to find.
+Its failing `self-check` is reached with no override: the test preloads a module into
+Next's worker that keeps pointout from reaching into Next's server, so Next answers.
