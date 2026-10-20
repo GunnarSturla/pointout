@@ -114,6 +114,19 @@ const KILL_DEADLINE_MS = 5_000
 
 let started = 0
 
+/**
+ * The process groups this process started and has not yet ended. A server is
+ * detached, so nothing reaches it when the test process goes, and a server
+ * whose `beforeAll` timed out under load is never handed to an `afterAll` at
+ * all: its start resolves after the file has moved on. Ticket 06's orphaned
+ * `next dev`s were that. So whatever is still here when this process exits is
+ * killed, synchronously, on the way out.
+ */
+const live = new Set<number>()
+process.once('exit', () => {
+  for (const pgid of live) signalGroup(pgid, 'SIGKILL')
+})
+
 /** Start `examples/next-app` under `next dev`, with the harness faked. */
 export async function startNextServer({
   host = '127.0.0.1',
@@ -202,6 +215,7 @@ export async function startNextServer({
     fixture.cleanup()
     throw new Error('next dev did not start: spawn returned no pid')
   }
+  live.add(pid)
 
   const lines: LogEntry[] = []
   record(child, 'stdout', 'info', lines)
@@ -214,6 +228,7 @@ export async function startNextServer({
 
   const cleanup = async () => {
     await endGroup(pid, exited, () => hasExited)
+    live.delete(pid)
     killStragglers(distPath)
     rmSync(distPath, { recursive: true, force: true })
     rmSync(tsconfigDir, { recursive: true, force: true })
