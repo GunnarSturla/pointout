@@ -5,6 +5,7 @@ import { createClaudeRoute } from './claude/route.js'
 import type { DeliveryRoute } from './delivery.js'
 import { createDiscovery } from './discovery.js'
 import type { Discovery } from './discovery.js'
+import type { HostName } from './host-name.js'
 import type { Logger } from './logger.js'
 import { discoverRepoRoot } from './paths.js'
 import type { RootMethod } from './paths.js'
@@ -19,6 +20,9 @@ import {
 } from './posture.js'
 import type { PostureLine } from './posture.js'
 import { readCandidates, registryDirectory } from './registry.js'
+
+export type { HostName } from './host-name.js'
+export { hostName } from './host-name.js'
 
 /** The plugin's own options. A normal consumer sets none of them. */
 export interface PointoutOptions {
@@ -116,14 +120,14 @@ export function announcePosture(
   {
     logger,
     hostName,
-    host,
+    address,
     connectorLines = [],
   }: {
     logger: Logger
     /** How the block names the Host: `Vite`, `Next.js`. */
-    hostName: string
+    hostName: HostName
     /** The address the Host is listening on, as its server answered it; null without one. */
-    host: string | null
+    address: string | null
     /**
      * Lines only this Connector has, labelled, after the core's and before the
      * `host` line: the Next.js Connector's self-check.
@@ -146,7 +150,7 @@ export function announcePosture(
     .add('discovery entry', discovery.postureLine)
 
   for (const [label, line] of connectorLines) posture.add(label, line)
-  if (host && !isLoopbackHost(host)) posture.add('host', lanLine(hostName, host))
+  if (address && !isLoopbackHost(address)) posture.add('host', lanLine(hostName, address))
 
   const block = '\n' + posture.render() + '\n'
   if (posture.warns()) logger.warn(block)

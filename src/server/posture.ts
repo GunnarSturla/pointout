@@ -5,6 +5,7 @@
 // what it means for the developer; the seam-1 posture test holds the wording.
 
 import { DIRECTORY_MISSING, SHAPE_UNRECOGNISED } from '../wire.js'
+import type { HostName } from './host-name.js'
 import type { RootMethod } from './paths.js'
 import type { Registry } from './registry.js'
 
@@ -52,11 +53,14 @@ export function createPosture(): Posture {
   return posture
 }
 
-/** `host` is how the block names the Host: `Vite`, `Next.js`. */
-export function rootLine(root: string, method: RootMethod, host: string): PostureLine {
+export function rootLine(
+  root: string,
+  method: RootMethod,
+  hostName: HostName,
+): PostureLine {
   const how: Record<RootMethod, string> = {
     git: 'git rev-parse --show-toplevel',
-    'host-root': `the ${host} root; not inside a git repository`,
+    'host-root': `the ${hostName} root; not inside a git repository`,
     option: 'the root option',
   }
   return says(`${root} (${how[method]})`)
@@ -89,9 +93,9 @@ function count(n: number, singular: string, plural = singular + 's'): string {
   return `${n} ${n === 1 ? singular : plural}`
 }
 
-export function lanLine(host: string, address: string): PostureLine {
+export function lanLine(hostName: HostName, address: string): PostureLine {
   return warns(
-    `${host} is bound to ${address} — Picks arriving from the LAN will be refused`,
+    `${hostName} is bound to ${address} — Picks arriving from the LAN will be refused`,
   )
 }
 

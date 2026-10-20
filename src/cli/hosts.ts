@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
+import { hostName } from '../server/host-name.js'
+import type { HostName } from '../server/host-name.js'
 import { isRecord } from '../server/parse.js'
 
 // Which Host `init` is setting up for (Next.js Connector ticket 09). It is read
@@ -13,7 +15,10 @@ import { isRecord } from '../server/parse.js'
 // What `init` does about a Host is said, never done: it prints the changes a
 // Host's own files need and leaves those files exactly as they were.
 
-/** A Connector's name, as `--connector` spells it. */
+/**
+ * A Connector's name, as `--connector` spells it. Its Host's name, as a person
+ * calls it, is the `HostName` beside it in `HostSetup`.
+ */
 export type ConnectorName = 'next' | 'vite'
 
 const CONNECTORS: readonly ConnectorName[] = ['next', 'vite']
@@ -27,7 +32,7 @@ const NEXT_CONFIGS = ['next.config.ts', 'next.config.mjs', 'next.config.js']
 export interface HostSetup {
   connector: ConnectorName
   /** The Host's name, as a person calls it. */
-  name: string
+  name: HostName
   /**
    * What the dev server must have for Picks to come from it, as the setup
    * skill says it: a fact about how the floor fails, never an instruction.
@@ -39,7 +44,7 @@ export interface HostSetup {
 
 const VITE: HostSetup = {
   connector: 'vite',
-  name: 'Vite',
+  name: hostName('Vite'),
   skillSetup:
     'Picks come from a Vite dev server whose config has the `pointout()` plugin,\n' +
     'from `pointout/vite`, in its `plugins`.',
@@ -48,7 +53,7 @@ const VITE: HostSetup = {
 
 const NEXT: HostSetup = {
   connector: 'next',
-  name: 'Next.js',
+  name: hostName('Next.js'),
   skillSetup:
     'Picks come from a Next.js dev server whose `next.config` is wrapped in\n' +
     '`withPointout()` from `pointout/next`, started with `next dev -H localhost`.',

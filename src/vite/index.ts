@@ -3,11 +3,19 @@ import { fileURLToPath } from 'node:url'
 import { searchForWorkspaceRoot } from 'vite'
 import type { Plugin, UserConfig } from 'vite'
 import { boundAddress } from '../server/bound-host.js'
-import { announcePosture, createServerFacts, createServices } from '../server/index.js'
+import {
+  announcePosture,
+  createServerFacts,
+  createServices,
+  hostName,
+} from '../server/index.js'
 import type { PointoutOptions, ServerFacts } from '../server/index.js'
 import { installAgentEndpoints } from './endpoints.js'
 
 export type { PointoutOptions, ServerFacts }
+
+/** How the posture block names this Host. */
+const HOST_NAME = hostName('Vite')
 
 /** The id a consumer's page (and a test) refers to the Overlay by. */
 const OVERLAY_MODULE_ID = 'virtual:pointout/overlay'
@@ -105,8 +113,8 @@ export function pointout(options: PointoutOptions = {}): Plugin {
         announcePosture(
           {
             logger,
-            hostName: 'Vite',
-            host: address && typeof address === 'object' ? address.address : null,
+            hostName: HOST_NAME,
+            address: address && typeof address === 'object' ? address.address : null,
           },
           resolved,
           services,

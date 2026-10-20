@@ -3,7 +3,12 @@ import { Server as TlsServer } from 'node:tls'
 import { API_BASE, STATUS_PATH } from '../api.js'
 import { boundAddress, loopbackOrigins } from '../server/bound-host.js'
 import { createAgentEndpoints } from '../server/http.js'
-import { announcePosture, createServerFacts, createServices } from '../server/index.js'
+import {
+  announcePosture,
+  createServerFacts,
+  createServices,
+  hostName,
+} from '../server/index.js'
 import type { PointoutOptions } from '../server/index.js'
 import type { Logger } from '../server/logger.js'
 import { createPosture, says, warns } from '../server/posture.js'
@@ -16,7 +21,7 @@ import { askLoopback } from './loopback.js'
 // config is read in the development phase, and closed with the process.
 
 /** How the posture block names this Host. */
-const HOST_NAME = 'Next.js'
+const HOST_NAME = hostName('Next.js')
 
 /** How long the self-check waits for its own answer. */
 const SELF_CHECK_TIMEOUT_MS = 5_000
@@ -112,7 +117,7 @@ async function start(options: PointoutOptions): Promise<void> {
     {
       logger,
       hostName: HOST_NAME,
-      host: address.address,
+      address: address.address,
       connectorLines: [['self-check', selfCheck]],
     },
     facts,
