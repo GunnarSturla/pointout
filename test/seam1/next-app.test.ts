@@ -65,14 +65,14 @@ describe('the captured frames in test/fixtures/next-frames/', () => {
   // They were captured with pointout in the app, and the Overlay it injects is
   // in the client chunks, which changes their names (ticket 06). So they are
   // checked against a server with pointout, as the resolvers' tests use them.
-  let server!: NextHarnessServer
+  let withPointout!: NextHarnessServer
 
   beforeAll(async () => {
-    server = await startNextServer()
+    withPointout = await startNextServer()
   }, 120_000)
 
   afterAll(async () => {
-    await server?.close()
+    await withPointout?.close()
   })
   const folder = join(repoRoot, 'test', 'fixtures', 'next-frames')
   const text = readdirSync(folder)
@@ -97,11 +97,11 @@ describe('the captured frames in test/fixtures/next-frames/', () => {
   it('name client chunks this server serves, and the map each one names', async () => {
     // A page is what makes Turbopack build its chunks.
     for (const route of ['/', '/pages-router'])
-      await (await fetch(server.url + route)).text()
+      await (await fetch(withPointout.url + route)).text()
     const failed: string[] = []
     let mapped = 0
     for (const chunk of clientChunks) {
-      const url = chunk.replace('{origin}', server.url)
+      const url = chunk.replace('{origin}', withPointout.url)
       const response = await fetch(url)
       if (response.status !== 200) failed.push(`${response.status} ${url}`)
       // Measured: not every chunk names a map. Turbopack's own runtime chunk
@@ -123,7 +123,7 @@ describe('the captured frames in test/fixtures/next-frames/', () => {
       decodeURIComponent(
         chunk.replace(
           'about://React/Server/file://{distDir}',
-          join(nextAppRoot, server.distDir),
+          join(nextAppRoot, withPointout.distDir),
         ),
       ),
     )
