@@ -5,6 +5,7 @@ import { request as httpsRequest } from 'node:https'
 import type { Server as NetServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
 import type { ChunkSource, FrameAnswer, ServedFrame } from '../server/frame-resolver.js'
+import { isSourceMap } from '../server/sourcemap.js'
 import type { SourceMapLike } from '../server/sourcemap.js'
 
 // The Next.js Connector's client-chunk resolver (ADR-0005): a frame in a
@@ -169,23 +170,6 @@ async function served(url: string): Promise<MapAnswer> {
 
 async function status(url: string): Promise<number> {
   return (await get(url, 'HEAD')).status
-}
-
-/** Enough of a map's shape to decode against: a flat map, or sections of them. */
-function isSourceMap(value: unknown): value is SourceMapLike {
-  if (typeof value !== 'object' || value === null) return false
-  const map = value as { mappings?: unknown; sections?: unknown }
-  if (typeof map.mappings === 'string') return true
-  if (!Array.isArray(map.sections)) return false
-  return map.sections.every((section: unknown) => {
-    const { offset, map: inner } = (section ?? {}) as { offset?: unknown; map?: unknown }
-    const at = (offset ?? {}) as { line?: unknown; column?: unknown }
-    return (
-      typeof at.line === 'number' &&
-      typeof at.column === 'number' &&
-      typeof (inner as { mappings?: unknown } | null)?.mappings === 'string'
-    )
-  })
 }
 
 function get(

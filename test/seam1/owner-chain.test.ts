@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { CHAIN_FIXTURE, originalOf, startCallSiteBed } from '../harness/call-sites.js'
 import type { CallSiteBed, Frame } from '../harness/call-sites.js'
@@ -334,4 +336,48 @@ describe.each(HOSTS)('the Owner chain, exact path, on %s', (on) => {
       }
     },
   )
+
+  // A Server Component's frames, `about://React/Server/file:///…/ssr/<chunk>.js?<n>`,
+  // as Chromium and Firefox print them: each is the JSX call site the server
+  // ran, in a server chunk the page never loaded, read back to the line the
+  // developer wrote. WebKit prints no location for these (issue 11).
+  it.runIf(on === 'next')(
+    'resolves a Server Component frame to the JSX it wrote, exact, in Chromium and Firefox',
+    async () => {
+      const server = bed.server as NextHarnessServer
+      const element = '[data-fixture="server-owner"] [data-fixture="client-leaf"]'
+      const expected = [
+        ['ClientLeaf', 'ServerOwner', SERVER_OWNER, '<ClientLeaf label='],
+        ['ServerOwner', 'AppRouterPage', APP_PAGE, '<ServerOwner />'],
+      ] as const
+
+      for (const engine of ['chromium', 'firefox'] as const) {
+        const content = await send(
+          body({
+            ownerChain: expected.map(([link, owner]) => ({
+              name: owner,
+              stack: capturedStack(server, engine, { route: '/', element, link }),
+            })),
+          }),
+        )
+
+        for (const [, owner, file, marker] of expected) {
+          expect(content, `${engine} on /`).toContain(
+            `${owner} — ${file}:${sourceOf(file, marker)} (exact)`,
+          )
+        }
+      }
+    },
+  )
 })
+
+const SERVER_OWNER = 'examples/next-app/fixtures/ServerOwner.tsx'
+const APP_PAGE = 'examples/next-app/app/page.tsx'
+
+/** Where `marker` first sits in a repo file, as `line:col`. */
+function sourceOf(file: string, marker: string): string {
+  const lines = readFileSync(join(repoRoot, file), 'utf8').split('\n')
+  const index = lines.findIndex((line) => line.includes(marker))
+  if (index === -1) throw new Error(`${file} no longer contains ${marker}`)
+  return `${index + 1}:${(lines[index] ?? '').indexOf(marker) + 1}`
+}

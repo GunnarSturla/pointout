@@ -46,6 +46,27 @@ export interface OriginalPosition {
   ignored: boolean
 }
 
+/**
+ * Whether a parsed JSON value has enough of a map's shape to decode against: a
+ * flat map, or sections of them. A Connector reads a map off its Host and asks
+ * this before it hands the map to the core.
+ */
+export function isSourceMap(value: unknown): value is SourceMapLike {
+  if (typeof value !== 'object' || value === null) return false
+  const map = value as { mappings?: unknown; sections?: unknown }
+  if (typeof map.mappings === 'string') return true
+  if (!Array.isArray(map.sections)) return false
+  return map.sections.every((section: unknown) => {
+    const { offset, map: inner } = (section ?? {}) as { offset?: unknown; map?: unknown }
+    const at = (offset ?? {}) as { line?: unknown; column?: unknown }
+    return (
+      typeof at.line === 'number' &&
+      typeof at.column === 'number' &&
+      typeof (inner as { mappings?: unknown } | null)?.mappings === 'string'
+    )
+  })
+}
+
 /** A map with nothing in it to decode against. */
 export function isEmptyMap(map: SourceMapLike): boolean {
   return 'sections' in map ? map.sections.length === 0 : map.mappings === ''

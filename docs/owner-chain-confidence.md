@@ -24,17 +24,16 @@ A link reads as one line:
 | --- | --- |
 | `exact` | the frame remapped through the module's own sourcemap, and the transform it was made against is the one the server still holds |
 | `approximate: stale-transform` | the frame names a transform of the module that this dev server has since replaced. The line is remapped through a sourcemap that has moved under it |
-| `approximate: no-transform-timestamp` | the module has been re-transformed since the page loaded, and the frame carries no timestamp to compare — **Safari strips the query from a stack url**. On Next.js, the file has changed since a page first loaded its chunk: a Turbopack frame never carries a version, since the chunk's url and the line a frame names stay the same across hot updates |
+| `approximate: no-transform-timestamp` | the module has been re-transformed since the page loaded, and the frame carries no timestamp to compare — **Safari strips the query from a stack url**. On Next.js, the file has changed since a page first loaded its chunk: a Turbopack frame never carries a version, since the chunk's url and the line a frame names stay the same across hot updates. For a Server Component, the file has changed since Turbopack last wrote the server chunk it ran in |
 | `approximate: no-sourcemap` | the module was served without one. The line and column are kept, but they are the *served* module's, not the source file's |
-| `absent: no-sourcemap` | on Next.js, the chunk was served without a map. A chunk holds many files, so without one there is no file to name |
+| `absent: no-sourcemap` | on Next.js, the chunk was served without a map, or a server chunk has none beside it on disk. A chunk holds many files, so without one there is no file to name |
 | `absent: call-site-frame-elided-by-engine` | **Safari** deleted the frame. See below |
 | `absent: no-react-boundary` | the stack never came out to app code: React's ten-frame cap, or an element created outside render |
 | `absent: unknown-owner-placeholder` | React stopped recording owner stacks. See the ceiling, below |
 | `absent: unreadable-frame` | the frame above React's own carries no location this server can read |
-| `absent: module-not-in-graph` | nothing in this dev server's module graph answers to the path the frame names; on Next.js, no client chunk is served there |
+| `absent: module-not-in-graph` | nothing in this dev server's module graph answers to the path the frame names; on Next.js, no client chunk is served there, or the server chunk a Server Component's frame names is no longer on disk |
 | `absent: unmapped-position` | the module's sourcemap has nothing at that position |
 | `absent: source-not-on-disk` | the chunk's map names a source at that position that is no file on this machine, such as Turbopack's own runtime (`turbopack:///…`) |
-| `absent: no-resolver-for-host` | the Host's Connector cannot read this kind of frame yet. On Next.js, a Server Component's frame (`about://React/Server/…`) says this until Next.js Connector ticket 08 lands |
 
 A link is additionally flagged **`dependency`** when its frame is inside a package —
 `node_modules`, or one of Vite's pre-bundled `.vite/deps` modules — or, on Next.js,
@@ -51,6 +50,17 @@ loopback, the way the page got the chunk. The same files sit on disk below
 `<distDir>/dev/static/chunks/`, but the served path is what a frame names, and reading
 the disk would need the config's `distDir` and Next 16's own folder layout. pointout
 never calls Next's internal `__nextjs_*` endpoints.
+
+A Server Component runs on the server, so its link's frame names a *server* chunk,
+which no page loads: React replays it in the page as
+`about://React/Server/file:///…/<distDir>/dev/server/chunks/ssr/<name>.js?<n>`, where
+`?<n>` is the page's own counter and no version. The Connector reads that chunk off
+disk, follows its last-line `sourceMappingURL` to the map beside it (an index map,
+like the client's), and decodes against it. It reads only a `.js` file below the
+project and a map beside it. In Chromium and Firefox, a Server Component's links are
+then as exact as a client component's. **In Safari they are not**: WebKit replays a
+Server Component's frames with no location at all, so its links arrive
+`absent: no-react-boundary` (Next.js Connector issue 11).
 
 ## The Safari limitation
 

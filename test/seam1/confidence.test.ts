@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { CHAIN_FIXTURE, originalOf, startCallSiteBed } from '../harness/call-sites.js'
 import type { CallSiteBed, Frame } from '../harness/call-sites.js'
@@ -697,6 +698,85 @@ describe('Confidence on Next.js, from a Turbopack chunk and its map', () => {
     })
 
     expect(content).toContain('Unmapped — no location (absent: no-sourcemap — ')
+  })
+
+  // A Server Component's frame names a server chunk no page loads, by its path
+  // on disk: `about://React/Server/file:///…/dev/server/chunks/ssr/<chunk>.js?<n>`
+  // (measured, Chromium and Firefox; the `?<n>` is the page's own counter).
+  // Here the frame is built from the chunk the App Router page made Turbopack
+  // write, at the JSX call `<ClientLeaf>` in `ServerOwner`.
+  const SERVER_OWNER = 'fixtures/ServerOwner.tsx'
+
+  /** The server chunk holding `ServerOwner`, and its frame for `<ClientLeaf>`. */
+  function serverOwnerFrame(): { chunk: string; frame: Frame } {
+    const dir = join(server.appRoot, server.distDir, 'dev', 'server', 'chunks', 'ssr')
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.js')) continue
+      const text = readFileSync(join(dir, name), 'utf8')
+      if (!text.includes('"server-owner"')) continue
+      const lines = text.split('\n')
+      const index = lines.findIndex(
+        (line) => line.includes('jsxDEV') && line.includes('ClientLeaf'),
+      )
+      const line = lines[index] ?? ''
+      // Measured: the column of the call's own parenthesis, as on the client.
+      const call = line.lastIndexOf('])(', line.indexOf('ClientLeaf')) + 2
+      const chunk = join(dir, name)
+      return {
+        chunk,
+        frame: {
+          url: `about://React/Server/${pathToFileURL(chunk).href}?3`,
+          line: index + 1,
+          column: call + 1,
+        },
+      }
+    }
+    throw new Error('no server chunk holds ServerOwner; was / loaded?')
+  }
+
+  const serverPick = (name: string, frame: Frame) =>
+    pick({ ownerChain: [{ name, stack: v8Stack(name, frame, runtime()) }] })
+
+  it('reads a Server Component frame exact until its file changes under the server chunk, then approximate', async () => {
+    const file = join(server.appRoot, SERVER_OWNER)
+    const relative = file.slice(repoRoot.length).replace(/^\//, '')
+    const { frame } = serverOwnerFrame()
+
+    const fresh = await serverPick('Fresh', frame)
+    expect(fresh).toContain(
+      `Fresh — ${relative}:${originalIn(file, '<ClientLeaf label=')} (exact)`,
+    )
+
+    // An edit no page has asked for since: Turbopack has not written the
+    // server chunk again, so its map describes the file as it was.
+    const source = readFileSync(file, 'utf8')
+    writeFileSync(file, source.replace('export function', '// one\nexport function'))
+
+    const stale = await serverPick('Stale', frame)
+    expect(stale).toMatch(
+      new RegExp(
+        `Stale — ${escaped(relative)}:\\d+:\\d+ \\(approximate: no-transform-timestamp — `,
+      ),
+    )
+  })
+
+  it('states no-sourcemap, with no location, for a Server Component frame whose map is gone', async () => {
+    const { chunk, frame } = serverOwnerFrame()
+    rmSync(chunk + '.map')
+
+    const content = await serverPick('Unmapped', frame)
+
+    expect(content).toContain('Unmapped — no location (absent: no-sourcemap — ')
+  })
+
+  it('states the server chunk is gone, with no location, for a Server Component frame into a deleted chunk', async () => {
+    const { chunk, frame } = serverOwnerFrame()
+    rmSync(chunk)
+
+    const content = await serverPick('Gone', frame)
+
+    expect(content).toContain('Gone — no location (absent: module-not-in-graph — ')
+    expect(content).toContain('is no longer on disk')
   })
 })
 

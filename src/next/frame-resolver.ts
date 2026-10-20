@@ -1,31 +1,37 @@
 import type { Server as NetServer } from 'node:net'
 import type { FrameAnswer, FrameResolver } from '../server/frame-resolver.js'
 import { clientChunks } from './client-chunks.js'
+import { serverChunks } from './server-chunks.js'
 
 // The Next.js Connector's frame resolver (ADR-0005): which of its resolvers a
 // frame belongs to, read off its url, and nothing else. Each resolver lives in
 // a module of its own and none imports another: the maintainer asked for the
 // source-map resolvers to be cleanly apart.
 //
-// - A Turbopack client chunk, `/_next/static/chunks/…`: `client-chunks.ts`.
-// - A Server Component's frame, `about://React/Server/…`, is not read yet
-//   (ticket 08), and is answered `absent` with that reason rather than guessed.
+// - A Server Component's frame, `about://React/Server/…`: `server-chunks.ts`,
+//   which reads the server chunk and its map off disk.
+// - A Turbopack client chunk, `/_next/static/chunks/…`: `client-chunks.ts`,
+//   which asks Next for the map it serves.
 
-/** How React prints a frame it replayed from the server. */
-const SERVER_FRAME = 'about://React/Server/'
+export interface NextFrameResolverOptions {
+  /** Next's listening server, which pages load client chunks from. */
+  server: NetServer
+  /** That server's loopback origin, which a client chunk's map is asked of. */
+  origin: string
+  /** The project Next serves, which every server chunk is below. */
+  projectDir: string
+}
 
-export function nextFrameResolver(server: NetServer, origin: string): FrameResolver {
+export function nextFrameResolver({
+  server,
+  origin,
+  projectDir,
+}: NextFrameResolverOptions): FrameResolver {
   const client = clientChunks(server, origin)
+  const onServer = serverChunks(projectDir)
 
   return async (frame): Promise<FrameAnswer> => {
-    if (frame.url.startsWith(SERVER_FRAME)) {
-      return {
-        kind: 'absent',
-        mode: 'no-resolver-for-host',
-        reason: "the Next.js Connector does not read a Server Component's frames yet",
-        dependency: false,
-      }
-    }
+    if (onServer.claims(frame.url)) return onServer.resolve(frame.url)
 
     const url = frameUrl(frame.url)
     if (!url) {

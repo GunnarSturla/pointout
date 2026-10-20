@@ -62,15 +62,10 @@ export type FrameAnswer =
   | {
       kind: 'absent'
       /**
-       * `no-resolver-for-host`: the Connector cannot read this kind of frame
-       * its Host serves yet, whatever the frame says. `no-sourcemap`: the
-       * frame is in a bundle of many files with no map to say which.
+       * `no-sourcemap`: the frame is in a bundle of many files with no map to
+       * say which.
        */
-      mode:
-        | 'unreadable-frame'
-        | 'module-not-in-graph'
-        | 'no-sourcemap'
-        | 'no-resolver-for-host'
+      mode: 'unreadable-frame' | 'module-not-in-graph' | 'no-sourcemap'
       reason: string
       dependency: boolean
     }

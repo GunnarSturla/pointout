@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import { hostURL } from '../harness/hosts.js'
+import { repoRoot } from '../harness/paths.js'
 
 // Tickets 03 and 06 of the Next.js Connector: the Next.js test bed in a browser,
 // with pointout in it. Both routers render the shared fixtures and hydrate, the
@@ -125,11 +127,19 @@ async function delivered(token: string): Promise<string> {
   return found ?? ''
 }
 
-/** Until ticket 08, a Server Component's link, as the Pointer says it. */
-const serverLink = (name: string, mode = 'no-resolver-for-host') =>
-  `${name} — no location (absent: ${mode} — `
+/**
+ * A Server Component's link as the Pointer says it: the JSX it wrote, read
+ * back out of the server chunk's map, exact.
+ */
+function exactLink(name: string, file: string, marker: string): string {
+  const lines = readFileSync(join(repoRoot, file), 'utf8').split('\n')
+  const index = lines.findIndex((line) => line.includes(marker))
+  if (index === -1) throw new Error(`${file} no longer contains ${marker}`)
+  const column = (lines[index] ?? '').indexOf(marker) + 1
+  return `${name} — ${file}:${index + 1}:${column} (exact)`
+}
 
-test("picking the Server Component's client child carries the Server Component links, each absent", async ({
+test("picking the Server Component's client child gives a chain through the Server Component's own call site", async ({
   page,
 }, info) => {
   const token = `server-owner-${Math.random().toString(16).slice(2)}`
@@ -154,13 +164,27 @@ test("picking the Server Component's client child carries the Server Component l
   // page that rendered that: the chain runs through the server's records and
   // does not stop at the first of them.
   expect(content).toMatch(/ClientLeaf — /)
-  // Measured, and filed as issue 11: WebKit replays the server's stacks with
-  // neither a location in the Server Component's frame nor React's bottom
-  // frame, so the server finds no app frame in them at all. The links are
-  // still there, named and annotated; what they say differs.
-  const mode = info.project.name === 'webkit' ? 'no-react-boundary' : undefined
-  expect(content).toContain(serverLink('ServerOwner', mode))
-  expect(content).toContain(serverLink('AppRouterPage', mode))
+  if (info.project.name === 'webkit') {
+    // Measured, and filed as issue 11: WebKit replays the server's stacks with
+    // neither a location in the Server Component's frame nor React's bottom
+    // frame, so the server finds no app frame in them at all. The links are
+    // still there, named and annotated; what they say differs.
+    for (const name of ['ServerOwner', 'AppRouterPage']) {
+      expect(content).toContain(`${name} — no location (absent: no-react-boundary — `)
+    }
+    return
+  }
+  // `ServerOwner` wrote `<ClientLeaf>`, and `AppRouterPage` wrote `<ServerOwner />`.
+  expect(content).toContain(
+    exactLink(
+      'ServerOwner',
+      'examples/next-app/fixtures/ServerOwner.tsx',
+      '<ClientLeaf label=',
+    ),
+  )
+  expect(content).toContain(
+    exactLink('AppRouterPage', 'examples/next-app/app/page.tsx', '<ServerOwner />'),
+  )
 })
 /** Next's dev indicator, inside the `nextjs-portal` Next draws its tools in. */
 const NEXT_INDICATOR = 'nextjs-portal #next-logo'
