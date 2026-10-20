@@ -396,10 +396,11 @@ written before the Next.js Connector still runs.
   Turbopack refuses packages linked from outside its root; the suites on temp apps
   talk only to `/__agent`. Every Host-independent suite on temp apps runs
   `describe.each(HOSTS)` with `tempApps(on)` inside. A test that cannot run on Next
-  says why beside an `it.runIf(on === 'vite')`: so far, only the ones that need the
-  serving pid before the server starts (a squatter on the reply socket's path), since
-  on Next it is the worker's. The serving pid, once started, is in the capture
-  directory's name. Mid-test, the fake `screencapture` is switched with
+  says why beside an `it.runIf(on === 'vite')`. A test that needs the serving pid before
+  the server starts, such as a squatter on the reply socket's path, is not one of them:
+  on Next the pid is the worker's, and `test/harness/squatter.ts` writes the squatter's
+  entry from inside the worker, through a module preloaded with `NODE_OPTIONS`. The
+  serving pid, once started, is in the capture directory's name. Mid-test, the fake `screencapture` is switched with
   `fixture.captureBecomes(mode)`, a file the fake reads, since a change to this
   process's environment never reaches `next dev`.
 - **Seam 2:** `globalSetup` starts both apps: Vite on `SEAM2_PORT`, Next on

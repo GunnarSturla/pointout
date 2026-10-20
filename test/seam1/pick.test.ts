@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createFixtureEnv } from '../harness/fixture-env.js'
 import type { FixtureEnv } from '../harness/fixture-env.js'
 import { fakeSessions } from '../harness/session-socket.js'
+import { squatInNextWorker } from '../harness/squatter.js'
 import type { FakeSession } from '../harness/session-socket.js'
 import { startTempApp, tempApps } from '../harness/temp-app.js'
 import type { TempApp } from '../harness/temp-app.js'
@@ -482,71 +483,78 @@ describe.each(HOSTS)('on %s', (on) => {
       expect(server.log()).toMatch(/reply socket/i)
     })
 
-    // The next three are Vite only: a squatter has to own the path before the
-    // server starts, and the path is named by the serving pid, which on Next is
-    // a worker's, unknown until it has started.
-    it.runIf(on === 'vite')(
-      'refuses to bind over a path a registry entry names, and says why',
-      async () => {
-        const env = createFixtureEnv({ claudePid: 0 })
-        fixture = env
-        const app = apps.create({ git: true })
+    // A squatter has to own the path before the server binds it, and the path
+    // is named by the serving pid. On Next that is the dev worker's, so the
+    // entry is written from inside the worker as it starts (`squatter.ts`).
+    it('refuses to bind over a path a registry entry names, and says why', async () => {
+      const env = createFixtureEnv({ claudePid: 0 })
+      fixture = env
+      const app = apps.create({ git: true })
 
-        // A session outside this checkout: not a Candidate, but it owns the path.
-        const squatter = await sessions.open(env, {
-          cwd: app.playground,
-          pid: process.pid,
-        })
-        expect(squatter.socketPath).toBe(replySocketPath(env.socketDir))
+      // A session outside this checkout: not a Candidate, but it owns the path.
+      let squat: Record<string, string> = {}
+      if (on === 'vite') {
+        await sessions.open(env, { cwd: app.playground, pid: process.pid })
+      } else {
+        squat = squatInNextWorker(env, { cwd: app.playground, shape: 'session' })
+      }
 
-        const server = await apps.serve(app, { env: env.env })
+      const server = await apps.serve(app, { env: { ...env.env, ...squat } })
 
-        expect(server.log()).toMatch(/reply socket/i)
-        expect(server.log()).toMatch(/a registered session/i)
-        expect(server.log()).toContain(replySocketPath(env.socketDir))
-      },
-    )
+      expect(server.log()).toMatch(/reply socket/i)
+      expect(server.log()).toMatch(/a registered session/i)
+      expect(server.log()).toContain(
+        replySocketPath(env.socketDir, servingPid(on, server)),
+      )
+    })
 
-    it.runIf(on === 'vite')(
-      'refuses over a path named by an entry it cannot otherwise read',
-      async () => {
-        const env = createFixtureEnv({ claudePid: 0 })
-        fixture = env
-        const app = apps.create({ git: true })
+    it('refuses over a path named by an entry it cannot otherwise read', async () => {
+      const env = createFixtureEnv({ claudePid: 0 })
+      fixture = env
+      const app = apps.create({ git: true })
 
-        // Shape-unrecognised: the plugin cannot use this entry, but the session it
-        // describes still owns the socket path it names.
+      // Shape-unrecognised: the plugin cannot use this entry, but the session it
+      // describes still owns the socket path it names.
+      let squat: Record<string, string> = {}
+      if (on === 'vite') {
         writeFileSync(
           join(env.registryDir, `${process.pid}.json`),
           JSON.stringify({ messagingSocketPath: replySocketPath(env.socketDir) }),
         )
+      } else {
+        squat = squatInNextWorker(env, { cwd: app.playground, shape: 'unrecognised' })
+      }
 
-        const server = await apps.serve(app, { env: env.env })
+      const server = await apps.serve(app, { env: { ...env.env, ...squat } })
 
-        expect(server.log()).toMatch(/a registered session/i)
-        expect(existsSync(replySocketPath(env.socketDir))).toBe(false)
-      },
-    )
+      expect(server.log()).toMatch(/a registered session/i)
+      expect(existsSync(replySocketPath(env.socketDir, servingPid(on, server)))).toBe(
+        false,
+      )
+    })
 
-    it.runIf(on === 'vite')(
-      'still delivers, with no reply address, when it could not bind',
-      async () => {
-        const env = createFixtureEnv({ claudePid: 0 })
-        fixture = env
-        const app = apps.create({ git: true })
+    it('still delivers, with no reply address, when it could not bind', async () => {
+      const env = createFixtureEnv({ claudePid: 0 })
+      fixture = env
+      const app = apps.create({ git: true })
+      let squat: Record<string, string> = {}
+      if (on === 'vite') {
         await sessions.open(env, { cwd: app.playground, pid: process.pid })
-        const server = await apps.serve(app, { env: env.env })
-        const target = await sessions.open(env, { cwd: app.checkout, pid: 500_050 })
+      } else {
+        squat = squatInNextWorker(env, { cwd: app.playground, shape: 'session' })
+      }
+      const server = await apps.serve(app, { env: { ...env.env, ...squat } })
+      expect(server.log()).toMatch(/a registered session/i)
+      const target = await sessions.open(env, { cwd: app.checkout, pid: 500_050 })
 
-        await postPick(
-          server,
-          pointerBody({ target: { sessionId: target.sessionId, pid: target.pid } }),
-        )
-        await target.awaitLines(3)
+      await postPick(
+        server,
+        pointerBody({ target: { sessionId: target.sessionId, pid: target.pid } }),
+      )
+      await target.awaitLines(3)
 
-        expect(Object.keys(target.frames()[1]!)).not.toContain('from')
-      },
-    )
+      expect(Object.keys(target.frames()[1]!)).not.toContain('from')
+    })
 
     it('unlinks its socket on shutdown', async () => {
       const { server, env } = await startPickServer({ own: true })

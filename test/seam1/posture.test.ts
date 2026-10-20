@@ -9,6 +9,7 @@ import type { TempApp } from '../harness/temp-app.js'
 import type { FixtureEnv } from '../harness/fixture-env.js'
 import type { HarnessServer } from '../harness/dev-server.js'
 import { writeSession } from '../harness/registry.js'
+import { squatInNextWorker } from '../harness/squatter.js'
 
 // The one line that opens the startup posture block. Counted, so that later
 // tickets appending to the block cannot turn it into two.
@@ -168,7 +169,8 @@ describe.each(HOSTS)('on %s', (on) => {
   }: {
     verified: string
     fill?: (fixture: FixtureEnv, app: TempApp) => void
-    env?: Record<string, string>
+    /** Read after `fill`, so it can carry what `fill` worked out. */
+    env?: Record<string, string> | (() => Record<string, string>)
     host?: string
   }): Promise<Booted> {
     const fixture = createFixtureEnv({ claudePid: 0 })
@@ -176,7 +178,11 @@ describe.each(HOSTS)('on %s', (on) => {
     const app = apps.create({ git: true })
     fill?.(fixture, app)
     const server = await apps.serve(app, {
-      env: { ...fixture.env, [VERIFIED_HARNESS_ENV]: verified, ...env },
+      env: {
+        ...fixture.env,
+        [VERIFIED_HARNESS_ENV]: verified,
+        ...(typeof env === 'function' ? env() : env),
+      },
       ...(host ? { host } : {}),
     })
     return { app, server, fixture }
@@ -379,41 +385,49 @@ describe.each(HOSTS)('on %s', (on) => {
       expectSaidOnlyInTheBlock(booted.server)
     })
 
-    // Vite only: the path is named by the serving pid, which on Next is a
-    // worker's, unknown until it has started, so no session can own it first.
-    it.runIf(on === 'vite')(
-      'says why the reply socket is not bound when a session already owns its path',
-      async () => {
-        const booted = await boot({
-          verified: '2.1.280@2026-09-01',
-          // Outside this checkout, so not a Candidate — but it owns the path.
-          fill: (fixture, app) => {
-            writeSession(fixture, {
+    // The path is named by the serving pid. On Next that is the dev worker's,
+    // so the entry is written from inside the worker as it starts
+    // (`squatter.ts`); on Vite, before the server does.
+    it('says why the reply socket is not bound when a session already owns its path', async () => {
+      let squat: Record<string, string> = {}
+      const booted = await boot({
+        verified: '2.1.280@2026-09-01',
+        // Outside this checkout, so not a Candidate — but it owns the path.
+        fill: (fixture, app) => {
+          if (on === 'next') {
+            squat = squatInNextWorker(fixture, {
               cwd: app.playground,
-              pid: process.pid,
+              shape: 'session',
               version: '2.1.280',
             })
-          },
-        })
+            return
+          }
+          writeSession(fixture, {
+            cwd: app.playground,
+            pid: process.pid,
+            version: '2.1.280',
+          })
+        },
+        env: () => squat,
+      })
 
-        expect(normalised(booted)).toBe(
-          block(
-            ROOT,
-            GUARD,
-            '  registry         readable — 0 sessions in this checkout',
-            VERIFIED_EQUAL,
-            '  reply socket     not bound — a registered session already owns ' +
-              '<fixture>/sockets/<pid>.sock, and this plugin never binds over a path the ' +
-              'session registry names. Receipts will not arrive; delivery is unaffected.',
-            CAPTURE,
-            TEMP,
-            DISCOVERY,
-          ),
-        )
-        expect(levelOf(booted.server)).toBe('warn')
-        expectSaidOnlyInTheBlock(booted.server)
-      },
-    )
+      expect(normalised(booted)).toBe(
+        block(
+          ROOT,
+          GUARD,
+          '  registry         readable — 0 sessions in this checkout',
+          VERIFIED_EQUAL,
+          '  reply socket     not bound — a registered session already owns ' +
+            '<fixture>/sockets/<pid>.sock, and this plugin never binds over a path the ' +
+            'session registry names. Receipts will not arrive; delivery is unaffected.',
+          CAPTURE,
+          TEMP,
+          DISCOVERY,
+        ),
+      )
+      expect(levelOf(booted.server)).toBe('warn')
+      expectSaidOnlyInTheBlock(booted.server)
+    })
 
     it('says why Screen Capture is disabled when the startup probe finds no image', async () => {
       const booted = await boot({
