@@ -500,6 +500,25 @@ describe('next dev --webpack', () => {
   }, 60_000)
 })
 
+/** What Next's worker prints when its config watcher sees the edit. */
+const RESTART_NOTICE = 'Found a change in next.config.ts'
+/** How many times the edit is made before the test gives up on the watcher. */
+const EDITS = 5
+/** How long one edit is given to be noticed before it is made again. */
+const EDIT_NOTICED_MS = 10_000
+/** How long the new worker is given to print its block once the edit is seen. */
+const RESTART_MS = 60_000
+
+/** True once `done` is, false once `ms` have gone by without it. */
+async function until(done: () => boolean, ms: number): Promise<boolean> {
+  const deadline = Date.now() + ms
+  while (!done()) {
+    if (Date.now() > deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  return true
+}
+
 describe('editing next.config while next dev runs', () => {
   let server!: NextHarnessServer
 
@@ -517,11 +536,31 @@ describe('editing next.config while next dev runs', () => {
       const before = workerPid(server)
       expect(discoveryEntriesOf([before])).toHaveLength(1)
 
-      appendFileSync(join(server.appRoot, 'next.config.ts'), '\n// edited by a test\n')
+      // Next's config watcher (Watchpack, in the worker) takes the file's first
+      // mtime as its baseline once its initial scan is done, so an edit made
+      // before then is never reported; under load that scan can still be
+      // running when the posture block is out. So the edit is repeated until
+      // the worker says it saw one, which is the event the restart follows.
+      // An edit the new worker meets is its baseline, not a change, so a
+      // repeat never restarts it twice.
+      const config = join(server.appRoot, 'next.config.ts')
+      const sawChange = () => occurrences(server.log(), RESTART_NOTICE)
+      for (let edit = 1; sawChange() === 0; edit++) {
+        if (edit > EDITS) {
+          throw new Error(`next dev reported none of ${EDITS} edits:\n${server.log()}`)
+        }
+        appendFileSync(config, `\n// edited by a test, ${edit}\n`)
+        await until(() => sawChange() > 0, EDIT_NOTICED_MS)
+      }
+
+      // The restart itself: the old worker exits, `next dev` forks a new one,
+      // and that one reads the config and prints its block. Booting a worker is
+      // the slow half of any `next dev`, so it gets the budget a boot does.
       await vi.waitFor(() => expect(occurrences(server.log(), BLOCK_HEADING)).toBe(2), {
-        timeout: 60_000,
+        timeout: RESTART_MS,
         interval: 100,
       })
+      expect(sawChange()).toBe(1)
       const after = workerPid(server)
 
       expect(after).not.toBe(before)
@@ -535,6 +574,7 @@ describe('editing next.config while next dev runs', () => {
       ).toEqual([`${after}.sock`])
       expect((await fetch(server.url + STATUS)).status).toBe(200)
     },
-    NEXT_TIMEOUT,
+    // Every edit's wait and the restart's, with room for the asserts.
+    EDITS * EDIT_NOTICED_MS + RESTART_MS + 30_000,
   )
 })
