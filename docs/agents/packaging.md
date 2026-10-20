@@ -8,7 +8,7 @@ Read this before writing a source file. The decision itself, with its alternativ
 
 Everything in this repository is TypeScript. `src/` is `.ts`, with the Overlay's
 three React surfaces in `.tsx` (ADR-0004); the CommonJS stub is `.cts`, the tests and
-the harness are `.ts`, the three runner configs are `.ts`, and the example app is
+the harness are `.ts`, the runner configs are `.ts`, and the example apps are
 `.tsx`.
 
 The package a consumer installs is **`dist/`, not `src/`**. `tsc` emits it one file in,
@@ -38,7 +38,7 @@ bare `pointout` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`, so no Host is the de
 | `pointout/next/overlay` | the Overlay's entry on a Next page: `withPointout()` adds it to `instrumentationClientInject`, and it draws the Overlay once React has hydrated; a consumer never imports it | `src/next/overlay.ts` |
 
 The bin, `pointout`, is the CLI and belongs to no Host. `vite` is an **optional** peer
-(`peerDependenciesMeta`); `next` joins it the same way. Each is needed only by its own
+(`peerDependenciesMeta`), and so is `next`. Each is needed only by its own
 Connector.
 
 **A Connector lives in its own directory**, `src/<host>/`, and is the only code that
@@ -59,7 +59,12 @@ Connector imports nothing from `next` at all, not even a type: Next's declaratio
   whether the module drifted since the page read the frame, and whether it is vendor
   code, or `absent` with a mode and a reason. The Vite one is
   `src/vite/frame-resolver.ts`: the module graph, plus the `.vite/deps` and
-  `node_modules` vendor test;
+  `node_modules` vendor test. The Next one is `src/next/frame-resolver.ts`, a dispatcher:
+  a Server Component frame (`about://React/Server/…`) goes to `server-chunks.ts`, which
+  reads the chunk's map on disk, and a `/_next/static/chunks/` frame to
+  `client-chunks.ts`, which fetches the served `.js.map`. Each answers `kind: 'chunk'`,
+  a map of many sources whose files, drift and vendor-ness it gives per source; neither
+  imports the other;
 - says where the Host is listening: `boundAddress` in `src/server/bound-host.ts` takes
   whatever the listening server's `address()` answered.
 

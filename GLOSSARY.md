@@ -1,8 +1,8 @@
 # Browser-to-agent element picking
 
-A Vite dev-server plugin that lets a developer select an element in the running app,
-type a request about it, and have that reach the Claude Code session they are already
-working in — with the element's source location attached.
+A dev-server package, for Vite and Next.js, that lets a developer select an element in the
+running app, type a request about it, and have that reach the Claude Code session they are
+already working in — with the element's source location attached.
 
 ## Language
 

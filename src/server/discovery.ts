@@ -25,7 +25,7 @@ import { alive, randomSuffix, sweepDead, sweptClause } from './temp-files.js'
 //      and the field is the truth.
 //   2. **One entry per dev server, not per root.** Several dev servers for one
 //      root each have their own (spec §18), so the name carries the pid and a
-//      random suffix: one process can be two Vite servers.
+//      random suffix: one process can be two dev servers.
 //   3. **The secret is the whole credential of `POST /__agent/drain`.** A remote
 //      page can POST to loopback without CORS but cannot read a file, which is
 //      why the mode is 0600 and the directory 0700 (spec §11).
@@ -84,7 +84,7 @@ export interface DiscoveryOptions {
 /**
  * Mint this dev server's secret and sweep what dead dev servers left behind.
  * Nothing is written until `publish`, because the entry's whole purpose is to
- * name a port and there is no port until Vite is listening.
+ * name a port and there is no port until the Host is listening.
  */
 export function createDiscovery({ root }: DiscoveryOptions): Discovery {
   const secret = randomBytes(24).toString('hex')

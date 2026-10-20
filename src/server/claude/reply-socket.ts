@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { says, warns } from '../posture.js'
 import type { PostureLine } from '../posture.js'
 
-// The reply address (spec §16). A Vite plugin listening in Claude Code's own
+// The reply address (spec §16). A dev server listening in Claude Code's own
 // socket namespace is a visible step, accepted knowingly, and it comes with two
 // safety properties that land with the first bind rather than with what is read
 // off it:

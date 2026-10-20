@@ -1,8 +1,8 @@
 # pointout
 
-A Vite dev-server plugin that lets a developer pick an element in the running app,
-type a request about it, and have it reach the Claude Code session they are already
-working in, with the element's source location attached.
+A dev-server package, for Vite and Next.js, that lets a developer pick an element in the
+running app, type a request about it, and have it reach the Claude Code session they are
+already working in, with the element's source location attached.
 
 See `README.md` for the idea and `GLOSSARY.md` for the domain language.
 
@@ -34,6 +34,14 @@ Everything is TypeScript; the package is `tsc`-emitted ESM in `dist/`, not `src/
 relative import inside `src/` writes `.js`. oxfmt formats on save and oxlint gates a
 finished task, both as hooks; the formatter never touches prose. See
 `docs/agents/packaging.md` — read it before writing a source file.
+
+### Hosts and Connectors
+
+One package over a core that belongs to no Host: `pointout/vite` (`src/vite/`) and
+`pointout/next` (`src/next/`), each the only code that imports its Host. A Connector
+serves the endpoints, injects the Overlay, and supplies the frame resolver the core's
+Owner chain decodes through. See ADR-0005 and ADR-0006 before touching either Connector,
+and `docs/agents/packaging.md` › *The entry points*.
 
 ### Overlay surfaces
 

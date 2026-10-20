@@ -7,9 +7,9 @@ import type { AddressInfo } from 'node:net'
 //
 // Not `localhost`: the Host resolved that name once to choose what to bind, and
 // a caller resolving it again gets both families and may reach a different
-// server on the other one. And not a fixed 127.0.0.1: Vite's default host is
-// `localhost`, which on a machine whose resolver lists `::1` first is bound
-// there and nowhere else.
+// server on the other one. And not a fixed 127.0.0.1: Vite's default host, like
+// `next dev -H localhost`, is `localhost`, which on a machine whose resolver
+// lists `::1` first is bound there and nowhere else.
 //
 // The Connector hands over what the Host's listening server's `address()`
 // answered; nothing here knows which Host that is.
