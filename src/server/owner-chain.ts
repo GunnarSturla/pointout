@@ -150,27 +150,22 @@ async function resolveLink(
   link: OwnerChainLink,
   pageLoadedAt: number | null,
 ): Promise<OwnerLink> {
-  const absent = (mode: DegradedMode, reason: string, dependency = false): OwnerLink => ({
-    name: link.name,
-    location: null,
-    confidence: { kind: 'absent', mode, reason },
-    dependency,
-  })
-
   const read = readAppFrame(link.stack)
   switch (read.kind) {
     case 'placeholder':
       // Spec §12's documented ceiling, and it is annotated rather than silent:
       // above roughly 10,000 elements a second React hands every element one
       // shared stack, which names React's own runtime and no call site at all.
-      return absent(
+      return absentLink(
+        link,
         'unknown-owner-placeholder',
         'React stopped recording owner stacks for this render — above roughly ' +
           '10,000 elements a second it hands out one shared placeholder — so this ' +
           "element's call site was never captured",
       )
     case 'elided':
-      return absent(
+      return absentLink(
+        link,
         'call-site-frame-elided-by-engine',
         "this engine's proper tail calls deleted the frame of the call site, which " +
           // No `<tag>` here: spec §13 keeps every markup character out of the
@@ -179,13 +174,15 @@ async function resolveLink(
           'is named and its line is not knowable from here',
       )
     case 'no-boundary':
-      return absent(
+      return absentLink(
+        link,
         'no-react-boundary',
         'this stack carries no frame React puts below every one, so it never came ' +
           "out to app code — React's ten-frame cap, or an element created outside render",
       )
     case 'unreadable':
-      return absent(
+      return absentLink(
+        link,
         'unreadable-frame',
         "the frame above React's own carries no location this server can read",
       )
@@ -198,34 +195,46 @@ async function resolveLink(
     column: frame.column,
     pageLoadedAt,
   })
-  if (answer.kind === 'absent')
-    return absent(answer.mode, answer.reason, answer.dependency)
-  if (answer.kind === 'chunk') return resolveInChunk(link, root, frame, answer, absent)
+  const context: LinkContext = { link, root, frame }
+  switch (answer.kind) {
+    case 'absent':
+      return absentLink(link, answer.mode, answer.reason, answer.dependency)
+    case 'chunk':
+      return resolveInChunk(context, answer)
+    case 'found':
+      return resolveInModule(context, answer)
+  }
+}
 
+/** What every step of resolving one link reads: the link, the root, its frame. */
+interface LinkContext {
+  link: OwnerChainLink
+  root: string
+  frame: { line: number; column: number }
+}
+
+/**
+ * A frame in one served module, decoded against that module's own map. A
+ * module served without one keeps its served position, and says so.
+ */
+function resolveInModule(
+  { link, root, frame }: LinkContext,
+  answer: Extract<FrameAnswer, { kind: 'found' }>,
+): OwnerLink {
   const { dependency, served } = answer
   const file = repoRelative(root, answer.file)
-  const approximate = (
-    mode: DegradedMode,
-    reason: string,
-    location: string,
-  ): OwnerLink => ({
-    name: link.name,
-    location,
-    confidence: { kind: 'approximate', mode, reason },
-    dependency,
-  })
 
   const map = answer.map
   if (!map || isEmptyMap(map)) {
     // §12 keeps the transformed position rather than dropping the link. It is a
     // real position in a real file, and the reason says which coordinates it is
     // in, so nobody edits line 4,431 of a file that has 60 lines.
-    return approximate(
-      'no-sourcemap',
-      `the module at ${served} was served without a sourcemap, so the line and ` +
+    return approximateLink(link, `${file}:${frame.line}:${frame.column}`, dependency, {
+      mode: 'no-sourcemap',
+      reason:
+        `the module at ${served} was served without a sourcemap, so the line and ` +
         "column are the served module's own rather than the source file's",
-      `${file}:${frame.line}:${frame.column}`,
-    )
+    })
   }
 
   // Engines print a 1-based column and a sourcemap stores a 0-based one. The
@@ -233,7 +242,8 @@ async function resolveLink(
   // erases it, and normalising it here would be guessing at what it erased.
   const original = originalPositionFor(map, frame.line, frame.column - 1)
   if (!original) {
-    return absent(
+    return absentLink(
+      link,
       'unmapped-position',
       `the sourcemap of ${served} maps nothing at ${frame.line}:${frame.column}`,
       dependency,
@@ -241,9 +251,8 @@ async function resolveLink(
   }
   const location = `${file}:${original.line}:${original.column + 1}`
 
-  if (answer.drift) return approximate(answer.drift.mode, answer.drift.reason, location)
-
-  return { name: link.name, location, confidence: { kind: 'exact' }, dependency }
+  if (answer.drift) return approximateLink(link, location, dependency, answer.drift)
+  return exactLink(link, location, dependency)
 }
 
 /**
@@ -253,17 +262,15 @@ async function resolveLink(
  * bundle's path said.
  */
 function resolveInChunk(
-  link: OwnerChainLink,
-  root: string,
-  frame: { line: number; column: number },
+  { link, root, frame }: LinkContext,
   answer: Extract<FrameAnswer, { kind: 'chunk' }>,
-  absent: (mode: DegradedMode, reason: string, dependency?: boolean) => OwnerLink,
 ): OwnerLink {
   const { served } = answer
   // One column off for the same reason as a module's: engines print 1-based.
   const original = originalPositionFor(answer.map, frame.line, frame.column - 1)
   if (!original?.source) {
-    return absent(
+    return absentLink(
+      link,
       'unmapped-position',
       `the sourcemap of ${served} maps nothing at ${frame.line}:${frame.column}`,
     )
@@ -271,7 +278,8 @@ function resolveInChunk(
 
   const source = answer.source(original.source)
   if (!source) {
-    return absent(
+    return absentLink(
+      link,
       'source-not-on-disk',
       `the sourcemap of ${served} maps ${frame.line}:${frame.column} into a source ` +
         "that is no file on this machine, such as the bundler's own runtime",
@@ -281,18 +289,45 @@ function resolveInChunk(
   const dependency = source.dependency || original.ignored
   const location = `${repoRelative(root, source.file)}:${original.line}:${original.column + 1}`
 
-  if (source.drift) {
-    return {
-      name: link.name,
-      location,
-      confidence: {
-        kind: 'approximate',
-        mode: source.drift.mode,
-        reason: source.drift.reason,
-      },
-      dependency,
-    }
+  if (source.drift) return approximateLink(link, location, dependency, source.drift)
+  return exactLink(link, location, dependency)
+}
+
+/** A link with no location, and why. */
+function absentLink(
+  link: OwnerChainLink,
+  mode: DegradedMode,
+  reason: string,
+  dependency = false,
+): OwnerLink {
+  return {
+    name: link.name,
+    location: null,
+    confidence: { kind: 'absent', mode, reason },
+    dependency,
   }
+}
+
+/** A link with a location that is worth less than it looks, and why. */
+function approximateLink(
+  link: OwnerChainLink,
+  location: string,
+  dependency: boolean,
+  { mode, reason }: { mode: DegradedMode; reason: string },
+): OwnerLink {
+  return {
+    name: link.name,
+    location,
+    confidence: { kind: 'approximate', mode, reason },
+    dependency,
+  }
+}
+
+function exactLink(
+  link: OwnerChainLink,
+  location: string,
+  dependency: boolean,
+): OwnerLink {
   return { name: link.name, location, confidence: { kind: 'exact' }, dependency }
 }
 

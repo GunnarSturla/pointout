@@ -1,3 +1,4 @@
+import type { DegradedMode } from './owner-chain.js'
 import type { SourceMapLike } from './sourcemap.js'
 
 // The seam between the Owner chain and a Host (ADR-0005). The core owns the
@@ -26,7 +27,7 @@ export interface ServedFrame {
  * how its Host marks a transform.
  */
 export interface Drift {
-  mode: 'stale-transform' | 'no-transform-timestamp'
+  mode: Extract<DegradedMode, 'stale-transform' | 'no-transform-timestamp'>
   reason: string
 }
 
@@ -71,7 +72,10 @@ export type FrameAnswer =
        * `no-sourcemap`: the frame is in a bundle of many files with no map to
        * say which.
        */
-      mode: 'unreadable-frame' | 'module-not-in-graph' | 'no-sourcemap'
+      mode: Extract<
+        DegradedMode,
+        'unreadable-frame' | 'module-not-in-graph' | 'no-sourcemap'
+      >
       reason: string
       dependency: boolean
     }
