@@ -334,7 +334,8 @@ tree an agent reported green, and then once per batch of merges, not once per me
 - **A server chunk's staleness is judged against the chunk's mtime**, not when the page
   rendered: an edit after Turbopack rewrote the chunk, with the page still showing the
   old render, reads `exact`. A hot update refetches the RSC payload in practice, but
-  nothing proves it.
+  nothing proves it. Pinned by a seam-1 test and filed as Next.js Connector issue 12
+  (needs-triage), with why the Pick's `pageLoadedAt` does not settle it.
 
 - **The Overlay still names the harness in three places** (ticket 16): spec §17's
   sentences say "Claude", the wire carries `registry.hookFloor`, and `api.ts`, which

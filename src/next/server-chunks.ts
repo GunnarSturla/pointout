@@ -24,7 +24,10 @@ import type { SourceMapLike } from '../server/sourcemap.js'
 // before then holds frames into the chunk as it was. What is knowable here is
 // whether the file the position maps into changed after the chunk on disk was
 // written: if it did, the map no longer describes the file, and the link is
-// approximate.
+// approximate. What it cannot see is a render older than the chunk: once a
+// request has made Turbopack write the chunk again, a frame from before the
+// edit reads exact. Nothing on the server dates the render; Next.js Connector
+// issue 12 holds what was measured and the routes worth trying.
 
 /** How React names a frame it replayed from the server. */
 const SERVER_FRAME = 'about://React/Server/'

@@ -826,6 +826,27 @@ describe('Confidence on Next.js, from a Turbopack chunk and its map', () => {
     )
   })
 
+  // Pinned, and wrong (Next.js Connector issue 12): a server chunk's staleness
+  // is judged against the chunk file's mtime, so once Turbopack has written
+  // the chunk again, a frame from a render before the edit reads exact. A page
+  // still showing that render is not told. When 12 is resolved, this flips.
+  it('reads a frame from a render before the edit exact once Turbopack has written the server chunk again', async () => {
+    const file = join(server.appRoot, SERVER_OWNER)
+    await (await fetch(server.url + '/')).text()
+    const { chunk, frame } = serverOwnerFrame()
+    const written = readFileSync(chunk, 'utf8')
+
+    const source = readFileSync(file, 'utf8')
+    writeFileSync(file, source.replace('export function', '// two\nexport function'))
+    await waitFor(async () => {
+      await (await fetch(server.url + '/')).text()
+      return serverOwnerFrame().chunk !== chunk || readFileSync(chunk, 'utf8') !== written
+    })
+
+    const old = await serverPick('OldRender', frame)
+    expect(old).toMatch(/OldRender — \S+ \(exact\)/)
+  })
+
   it('states no-sourcemap, with no location, for a Server Component frame whose map is gone', async () => {
     const { chunk, frame } = serverOwnerFrame()
     rmSync(chunk + '.map')
