@@ -20,7 +20,8 @@ import type { Point, ViewportBox } from './deep-element.js'
 import { describeElement } from './describe.js'
 import { readOwner, readOwnerChain } from './fiber.js'
 import { createFrames } from './frames.js'
-import { elementAtPoint, isHostTool } from './hit-test.js'
+import { NO_HOST_TOOLS, elementAtPoint } from './hit-test.js'
+import type { HostTools } from './hit-test.js'
 import { createMarks } from './marks.js'
 import type { Accepted, PanelCamera, PointerInputs } from './panel.js'
 import { inViewport } from './placement.js'
@@ -49,7 +50,16 @@ export interface OverlayHandle {
   shadow: ShadowRoot
 }
 
-export function startOverlay(document: Document): OverlayHandle {
+/** What a Connector's entry tells the Overlay about its Host. */
+export interface OverlayOptions {
+  /** The Host's own dev tools, which the Overlay leaves alone. */
+  hostTools?: HostTools
+}
+
+export function startOverlay(
+  document: Document,
+  { hostTools = NO_HOST_TOOLS }: OverlayOptions = {},
+): OverlayHandle {
   const view = document.defaultView
   if (!view) throw new Error('pointout: the Overlay needs a window')
 
@@ -327,10 +337,10 @@ export function startOverlay(document: Document): OverlayHandle {
   }
 
   /**
-   * On a Host's own dev tools, such as Next's indicator: theirs, as the
+   * On a Host's own dev tools, such as Next's indicator: the Host's, as the
    * Overlay's chrome is its own, so a press or click there is left to them.
    */
-  const theirs = (event: Event): boolean => event.composedPath().some(isHostTool)
+  const onHostTools = (event: Event): boolean => event.composedPath().some(hostTools)
 
   /**
    * The event is about the submitted Panel open above the Stack: in it, or on
@@ -359,7 +369,7 @@ export function startOverlay(document: Document): OverlayHandle {
       return
     }
     if (mode !== 'armed') return
-    const element = elementAtPoint(document, at.x, at.y)
+    const element = elementAtPoint(document, at.x, at.y, hostTools)
     if (!element) {
       hovered = null
       marks.hide()
@@ -383,7 +393,7 @@ export function startOverlay(document: Document): OverlayHandle {
    * would pick, and the Pick's own mark rests under it (spec §5, §7).
    */
   const previewAt = (at: Point) => {
-    const element = elementAtPoint(document, at.x, at.y)
+    const element = elementAtPoint(document, at.x, at.y, hostTools)
     if (!element) {
       marks.release()
       return
@@ -393,7 +403,7 @@ export function startOverlay(document: Document): OverlayHandle {
   }
 
   const onClick = (event: MouseEvent) => {
-    if (mode === 'off' || ours(event) || theirs(event)) return
+    if (mode === 'off' || ours(event) || onHostTools(event)) return
     // With a Panel already open, only Alt-click means anything: a plain click is
     // the developer using their app, and the Panel is not modal (`GLOSSARY.md`).
     if (mode === 'picked' && !event.altKey) return
@@ -402,7 +412,7 @@ export function startOverlay(document: Document): OverlayHandle {
     event.stopPropagation()
 
     const at = pointOf(view, event)
-    const element = elementAtPoint(document, at.x, at.y) ?? hovered
+    const element = elementAtPoint(document, at.x, at.y, hostTools) ?? hovered
     if (!element) return
 
     // Spec §7: an open Panel is an unsubmitted one, and it *moves* — the Note
@@ -430,7 +440,7 @@ export function startOverlay(document: Document): OverlayHandle {
    * the Note is where the developer is still typing (spec §7, story 19).
    */
   const onPress = (event: MouseEvent) => {
-    if (mode === 'off' || ours(event) || theirs(event)) return
+    if (mode === 'off' || ours(event) || onHostTools(event)) return
     if (mode === 'picked' && !event.altKey) return
     event.preventDefault()
     event.stopPropagation()

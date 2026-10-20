@@ -4,7 +4,10 @@
 
 import { API_BASE } from '../api.js'
 import { startOverlay } from './overlay.js'
-import type { OverlayHandle } from './overlay.js'
+import type { OverlayHandle, OverlayOptions } from './overlay.js'
+
+export type { OverlayOptions } from './overlay.js'
+export { hostToolsTagged } from './hit-test.js'
 
 /** What the Overlay publishes to the page it is drawn into. */
 export interface OverlayMarker extends OverlayHandle {
@@ -15,8 +18,11 @@ declare global {
   var __pointout: OverlayMarker | undefined
 }
 
-export function mountOverlay(document: Document): OverlayMarker {
-  const marker = { apiBase: API_BASE, ...startOverlay(document) }
+export function mountOverlay(
+  document: Document,
+  options: OverlayOptions = {},
+): OverlayMarker {
+  const marker = { apiBase: API_BASE, ...startOverlay(document, options) }
   globalThis.__pointout = marker
   return marker
 }

@@ -1,11 +1,13 @@
 // The hit test (spec §4): four rules, applied in order, that turn a point into
 // the element the developer meant — and one refusal ahead of them all.
 //
-//   0. a point on a Host's own dev tools is no point on the page. Next.js draws
-//      its indicator and its error overlay in a `nextjs-portal`, and those are
-//      treated as the Overlay's own chrome is: nothing there is highlighted or
-//      picked, and nothing beneath it either (ticket 06 of the Next.js
-//      Connector). They are not full-viewport, so rule 1 does not reach them.
+//   0. a point on a Host's own dev tools is no point on the page. Which
+//      elements those are is the Connector's to say (`HostTools`, handed to
+//      the Overlay when it is mounted): Next.js draws its indicator and its
+//      error overlay in one. They are treated as the Overlay's own chrome is:
+//      nothing there is highlighted or picked, and nothing beneath it either
+//      (ticket 06 of the Next.js Connector). They are not full-viewport, so
+//      rule 1 does not reach them.
 //
 //   1. ignore any fixed, full-viewport element. Written as the general rule it
 //      is, so the Overlay's own host, the shield it lays over a dense page, a
@@ -27,11 +29,28 @@ const EDGE_TOLERANCE = 1
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 
-/** The tags a Host draws its own dev tools under, each in a shadow root. */
-const HOST_TOOL_TAGS = ['nextjs-portal']
+/**
+ * Whether a node is one of the Host's own dev tools, or inside one. The
+ * Overlay knows no Host: the Connector's entry supplies it, and a Host that
+ * draws none supplies nothing.
+ */
+export type HostTools = (node: EventTarget) => boolean
+
+/** A Host that draws no dev tools of its own into the page. */
+export const NO_HOST_TOOLS: HostTools = () => false
+
+/** Host tools by the tag each is drawn under, in a shadow root of its own. */
+export function hostToolsTagged(tags: readonly string[]): HostTools {
+  return (node) => node instanceof Element && tags.includes(node.localName)
+}
 
 /** The element under a point that a Pick may be made of, or null. */
-export function elementAtPoint(document: Document, x: number, y: number): Element | null {
+export function elementAtPoint(
+  document: Document,
+  x: number,
+  y: number,
+  isHostTool: HostTools = NO_HOST_TOOLS,
+): Element | null {
   for (const element of document.elementsFromPoint(x, y)) {
     if (isHostTool(element)) return null
     if (coversViewport(element)) continue
@@ -39,14 +58,6 @@ export function elementAtPoint(document: Document, x: number, y: number): Elemen
     if (deep) return nearestSvg(deep)
   }
   return null
-}
-
-/**
- * A Host's dev tools, or inside them. True of any event whose path runs
- * through one, too: the Overlay leaves a click there to the tool.
- */
-export function isHostTool(node: EventTarget): boolean {
-  return node instanceof Element && HOST_TOOL_TAGS.includes(node.localName)
 }
 
 /** Fixed, and reaching every edge of the viewport. */

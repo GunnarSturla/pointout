@@ -83,3 +83,21 @@ describe('the Overlay served to the browser', () => {
     expect(leaks).toEqual([])
   })
 })
+
+// The Host seam (ADR-0005), read the same way: the Overlay belongs to no Host.
+// What a Host needs of it, such as which of the page's elements are the Host's
+// own dev tools, its Connector's entry hands over when it mounts the Overlay.
+const HOST_MECHANISMS: Array<[string, string]> = [
+  ["Next.js's dev tools element", 'nextjs-portal'],
+  ["the Pages Router's container", '__next'],
+  ["Vite's client", '/@vite/'],
+]
+
+describe('the Overlay, as any Connector mounts it', () => {
+  it.each(HOST_MECHANISMS)('names nothing of %s', (_what, token) => {
+    const leaks = [...servedModules()]
+      .filter(([, source]) => withoutComments(source).includes(token))
+      .map(([file]) => relative(repoRoot, file))
+    expect(leaks).toEqual([])
+  })
+})

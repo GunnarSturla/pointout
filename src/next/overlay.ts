@@ -17,7 +17,14 @@
 // state says `isDehydrated` until the first commit. This reads React's
 // internals, as the Owner chain already does (`fiber.ts`).
 
-import { mountOverlay } from '../overlay/mount.js'
+import { hostToolsTagged, mountOverlay } from '../overlay/mount.js'
+
+/**
+ * Next draws its dev indicator and its error overlay in a `nextjs-portal`, in
+ * an open shadow root of its own. The Overlay leaves a point or a click there
+ * to Next (ticket 06).
+ */
+const NEXT_DEV_TOOLS = hostToolsTagged(['nextjs-portal'])
 
 /** How React hangs its root off a container it rendered into. */
 const CONTAINER_KEY_PREFIX = '__reactContainer$'
@@ -101,4 +108,6 @@ function whenHydrated(document: Document, then: () => void): void {
   look()
 }
 
-if (!framedBySameOrigin(window)) whenHydrated(document, () => mountOverlay(document))
+if (!framedBySameOrigin(window)) {
+  whenHydrated(document, () => mountOverlay(document, { hostTools: NEXT_DEV_TOOLS }))
+}
