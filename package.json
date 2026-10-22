@@ -1,9 +1,27 @@
 {
   "name": "pointout",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Pick an element in the running app, type a request about it, and have it reach the Claude Code session you are already working in.",
   "license": "MIT",
+  "author": "Gunnar Sturla Ágústuson",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GunnarSturla/pointout.git"
+  },
+  "homepage": "https://github.com/GunnarSturla/pointout#readme",
+  "bugs": {
+    "url": "https://github.com/GunnarSturla/pointout/issues"
+  },
+  "keywords": [
+    "vite",
+    "vite-plugin",
+    "nextjs",
+    "claude",
+    "claude-code",
+    "devtools",
+    "react",
+    "inspector"
+  ],
   "type": "module",
   "exports": {
     "./vite": {
@@ -51,7 +69,8 @@
     "test:seam3": "vitest run --config vitest.seam3.config.ts",
     "pretest:seam3:model": "npm run build",
     "test:seam3:model": "vitest run --config vitest.seam3.config.ts --mode model",
-    "capture:next-frames": "playwright test --config playwright.capture.config.ts"
+    "capture:next-frames": "playwright test --config playwright.capture.config.ts",
+    "prepublishOnly": "npm run clean && npm run build && npm test"
   },
   "peerDependencies": {
     "react": ">=19.0.0",
@@ -82,6 +101,8 @@
   },
   "files": [
     "dist",
-    "!dist/.tsbuildinfo"
+    "!dist/.tsbuildinfo",
+    "LICENSE",
+    "LICENSE-THIRDPARTY"
   ]
 }
