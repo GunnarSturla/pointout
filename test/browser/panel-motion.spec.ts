@@ -41,8 +41,12 @@ const EDGE_BOTTOM = '[data-fixture="edge-bottom"]'
 /** What a fade may ease: nothing of it travels or changes size. */
 const FADES = ['opacity', 'color', 'background-color', 'border-color', 'outline-color']
 
-/** How many frames each journey watches: well past the 200 ms the longest takes. */
-const FRAMES = 24
+/**
+ * How long each journey watches: well past the 240 ms the longest takes, and past
+ * the wait before it starts. In time rather than frames, since a frame's length
+ * is the display's: 24 of them are 400 ms at 60 Hz and 200 ms at 120 Hz.
+ */
+const WATCH_MS = 400
 
 interface Box {
   x: number
@@ -159,7 +163,7 @@ async function watchPanel(
 ): Promise<Watched> {
   return apartFromHotUpdates(async () => {
     await page.evaluate(
-      ({ tag, frames, part }) => {
+      ({ tag, watchMs, part }) => {
         const root = document.querySelector(tag)?.shadowRoot
         if (!root) throw new Error('the Overlay is not mounted')
         const watched = {
@@ -198,6 +202,7 @@ async function watchPanel(
             note: node.querySelector('textarea')?.value ?? null,
           }
         }
+        const started = performance.now()
         const frame = () => {
           watched.frames.push({
             panel: drawn(root.querySelector(`[data-part="${part}"]`)),
@@ -206,12 +211,12 @@ async function watchPanel(
               [...root.querySelectorAll('[data-part="minimized"]')].at(-1) ?? null,
             ),
           })
-          if (watched.frames.length < frames) requestAnimationFrame(frame)
+          if (performance.now() - started < watchMs) requestAnimationFrame(frame)
           else Object.assign(window, { watchedDone: true })
         }
         requestAnimationFrame(frame)
       },
-      { tag: HOST, frames: FRAMES, part: surface },
+      { tag: HOST, watchMs: WATCH_MS, part: surface },
     )
     await gesture()
     await page.waitForFunction(
