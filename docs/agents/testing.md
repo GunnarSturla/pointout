@@ -1,6 +1,6 @@
 # Testing conventions
 
-Source: `.scratch/vite-agent-inspect/spec.md` → *Testing Decisions*. This file is the
+Source: the spec's *Testing Decisions*, in the local tracker. This file is the
 working copy every build ticket reads before it writes a test.
 
 ## The rule
@@ -508,7 +508,7 @@ engines at once would be three writers of one file.
 
 ## Seam 1 also holds the repo-shape checks
 
-`test/seam1/repo-shape.test.ts` asserts on files rather than on HTTP: that the first
-commit carries the tracker and the five spikes, that each spike README opens by saying it
-is a dead end, and that no source file imports from a spike directory. They are still
+`test/seam1/repo-shape.test.ts` asserts on files rather than on HTTP: that the
+repository is TypeScript, and that the lint and format configuration and the two gates are
+what `packaging.md` says they are. They are still
 outside-in — they read what is on disk — and they have nowhere better to live.

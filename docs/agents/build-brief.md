@@ -9,7 +9,7 @@ is stale — say so.
 
 Two Hosts, Vite and Next.js 16 (`>=16.3 <17`, Turbopack only), each with a Connector
 over a core that belongs to no Host (ADR-0005; the Next.js effort's tickets are in
-`.scratch/nextjs-connector/`). `pointout/vite` is `src/vite/`; `pointout/next` is
+the local tracker). `pointout/vite` is `src/vite/`; `pointout/next` is
 `src/next/`: `withPointout()` acts only in Next's dev worker, intercepts `/__agent` on
 Next's own listening server (ADR-0006), checks itself with a `self-check` posture line,
 and injects the Overlay through `instrumentationClientInject`, which waits for the page's
@@ -131,8 +131,6 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
   walk-up, empty capture or *delivered*.
 - **Everything is TypeScript**; a relative import inside `src/` writes the `.js`
   extension the emit will have; type-only imports use `import type`.
-- **Nothing is imported from any `spike-*` directory** — a test enforces it. The spikes
-  are labelled dead ends, readable as evidence of what was measured.
 - **`GLOSSARY.md` is binding on identifiers as well as prose**, including its `_Avoid_`
   lists. Pick, Pointer, Note, Fence, Guard, Candidate, Target, Receipt, Ack, Overlay,
   Picker, Highlight, Panel, Stack, Confidence, Screen Capture.

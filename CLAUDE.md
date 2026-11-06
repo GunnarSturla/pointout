@@ -15,8 +15,8 @@ facts already measured, and how to run the gates fast. Read it before your ticke
 
 ### Issue tracker
 
-Issues are local markdown files under `.scratch/<effort>/issues/`; there is no remote
-and no hosted tracker. See `docs/agents/issue-tracker.md`.
+Issues are local markdown files under `.scratch/<effort>/issues/`, which is git-ignored;
+there is no hosted tracker. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

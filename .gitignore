@@ -16,6 +16,12 @@ coverage/
 # typescript build state
 *.tsbuildinfo
 
+# the tracker: specs, tickets and research stay on the maintainer's machine
+.scratch/
+
+# editor settings
+.vscode/
+
 # personal, machine-specific Claude Code settings
 .claude/settings.local.json
 

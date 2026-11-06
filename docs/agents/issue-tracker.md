@@ -1,6 +1,10 @@
 # Issue tracker: Local Markdown
 
-Issues and specs for this repo live as markdown files in `.scratch/`.
+Issues and specs for this repo live as markdown files in `.scratch/`, which is git-ignored:
+the tracker stays on the maintainer's machine and is not part of the published repository.
+A *spec §*, *ticket NN*, *map* or *spike NN* in a comment or a doc points there, or at a
+prototype that was thrown away. Treat one as a record of where a decision came from, not as
+something a reader can open.
 
 ## Conventions
 

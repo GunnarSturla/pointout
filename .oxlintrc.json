@@ -40,8 +40,6 @@
     "**/dist/**",
     "coverage/**",
     "test-results/**",
-    // Committed dead ends, never edited (spec §1).
-    "spike-*/**",
     // What `next dev` writes into examples/next-app, and the harness's
     // per-server tsconfigs beside it.
     "**/.next/**",

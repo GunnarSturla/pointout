@@ -22,10 +22,9 @@
     // default run reflows 56 of them. Prose stays hand-written.
     "**/*.md",
 
-    // The tracker and the five spikes, which are committed dead ends (spec §1),
-    // are excluded again by path: neither is code this repository edits.
+    // The local tracker, which is git-ignored, is excluded again by path: it is
+    // not code this repository edits.
     ".scratch/**",
-    "spike-*/**",
 
     "dist/**",
     "**/dist/**",

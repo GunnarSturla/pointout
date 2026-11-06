@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-09-22
-- **Ticket**: `.scratch/vite-agent-inspect-v0/issues/23-typescript-esm-build.md`
+- **Ticket**: 23 of the v0 build, in the local tracker
 - **Touches**: spec §1 (*Package, repo and packaging*)
 
 ## Context

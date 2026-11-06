@@ -1,6 +1,6 @@
 # Motion
 
-Source: spec §5 and §9, settled on the built prototype in `spike-17-overlay-shape/`.
+Source: spec §5 and §9, settled on a built prototype, spike 17, since thrown away.
 This is the working copy: read it before adding anything that moves, and before
 running the `review-animations` gate.
 
@@ -64,7 +64,7 @@ stylesheet says how each is drawn.
 | a Needs you session's dot, and a `held` Pick's traffic light: two rings, one second apart | a 2000 ms loop per ring, a 1.5 px `--needs` circle from `scale` 1 at 0.8 opacity to `scale` 2.25 at 0, `cubic-bezier(0.23, 1, 0.32, 1)` | no-preference only; under reduce there are no rings |
 
 The prototype's numbers were 170 ms on `cubic-bezier(0.77, 0, 0.175, 1)` for the morph
-and 220 ms for the reveal, built and reacted to in `spike-17-overlay-shape/`, where
+and 220 ms for the reveal, built and reacted to in that prototype, where
 Astro's 350 ms overshoot curve was built beside them and rejected. The
 `review-animations` gate retuned both (see *The outcome*): a box that follows the
 pointer has to start moving at once, and the reveal is seen tens of times a day. One

@@ -2,10 +2,9 @@
 
 - **Status**: accepted
 - **Date**: 2026-10-19
-- **Deviates from**: `.scratch/vite-agent-inspect/map.md` § Out of scope, "Framework
-  adapters / plugin-per-framework"
-- **Raised by**: `.scratch/nextjs-connector/issues/01-nextjs-connector.md`, decided by the
-  maintainer
+- **Deviates from**: the v0 map's Out of scope, "Framework adapters /
+  plugin-per-framework"
+- **Raised by**: ticket 01 of the Next.js Connector effort, decided by the maintainer
 
 ## Context
 

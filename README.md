@@ -495,13 +495,6 @@ connection rather than truncating; and the `held`, `denied`, `expired`, `refused
 covers what v0 does with each of them. A frame with a mismatched `session_id` is
 dropped with no Receipt at all (measured, Claude Code 2.1.280).
 
-### The spike directories
-
-`spike-06-delivery/`, `spike-07-envelopes/`, `spike-14-inbox-socket/`,
-`spike-16-receipts/` and `spike-17-overlay-shape/` are **dead ends**, kept as the record
-of what was measured before v0 was built. Each README opens by saying so. Nothing in
-v0 imports from them, and a test enforces it.
-
 ### Documentation
 
 | | |

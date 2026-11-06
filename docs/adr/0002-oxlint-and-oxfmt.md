@@ -2,7 +2,7 @@
 
 - **Status**: accepted
 - **Date**: 2026-09-22
-- **Ticket**: `.scratch/vite-agent-inspect-v0/issues/24-node-22-floor-oxlint-oxfmt.md`
+- **Ticket**: 24 of the v0 build, in the local tracker
 - **Follows**: ADR-0001 (TypeScript, `tsc` ESM emit, no bundler)
 
 ## Context
@@ -62,7 +62,7 @@ on the lines someone touched is not green.
 ## Consequences
 
 - **The formatter's scope is code, and prose is hand-written.** `.oxfmtrc.json` excludes
-  `**/*.md`, `.scratch/**` and `spike-*/**`; the `PostToolUse` hook filters by extension
+  `**/*.md` and `.scratch/**`; the `PostToolUse` hook filters by extension
   as well, rather than trusting the formatter's ignore list for a file named explicitly.
   Two tests hold both halves.
 - **`package.json` is excluded too.** npm rewrites it on every install, so a formatter

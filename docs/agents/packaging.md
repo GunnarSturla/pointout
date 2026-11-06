@@ -1,6 +1,6 @@
 # TypeScript and the built package
 
-Source: `.scratch/vite-agent-inspect/spec.md` §1, and ticket 23, which introduced both.
+Source: spec §1, in the local tracker, and ticket 23, which introduced both.
 Read this before writing a source file. The decision itself, with its alternatives, is
 `docs/adr/0001-typescript-and-tsc-esm-emit.md`.
 
@@ -164,8 +164,8 @@ single quotes, trailing commas, `printWidth` 90 — measured against the existin
 guessed. Import sorting is off, because the order here is meaningful: Node built-ins,
 then Vite, then local.
 
-**The formatter's scope is code.** Markdown is excluded, and so are `.scratch/` and the
-spikes. The prose in this repository is a record — the spec, the resolved research, every
+**The formatter's scope is code.** Markdown is excluded, and so is `.scratch/`.
+The prose in this repository is a record — the spec, the resolved research, every
 closed ticket — and a formatter run over a closed ticket does not tidy it, it falsifies
 it. `package.json` is excluded too: npm rewrites it on install, so the formatter and the
 package manager would take turns.
@@ -180,8 +180,7 @@ finding is fixed, or it is configured with a reason a reader can disagree with.
 Both automated, because a convention in a document is not a gate:
 
 - **On save** — a `PostToolUse` hook runs oxfmt on the file an agent just wrote
-  (`.claude/hooks/format-file.sh`), and `.vscode/settings.json` does the same for a
-  human. The hook filters by extension itself rather than trusting the formatter's
+  (`.claude/hooks/format-file.sh`). The hook filters by extension itself rather than trusting the formatter's
   ignore list, because oxfmt would otherwise reformat a Markdown file an agent wrote.
 - **Before done** — a `Stop` hook runs the lint gate (`.claude/hooks/lint-gate.sh`) and
   blocks with the findings named. It **blocks once, not forever**: the loop guard it

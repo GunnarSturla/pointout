@@ -2,9 +2,8 @@
 
 - **Status**: accepted
 - **Date**: 2026-10-19
-- **Raised by**: `.scratch/nextjs-connector/issues/01-nextjs-connector.md`, decided by the
-  maintainer. The measurements are in
-  `.scratch/nextjs-connector/research/02-serving-from-inside-next-dev.md`.
+- **Raised by**: ticket 01 of the Next.js Connector effort, decided by the maintainer. The
+  measurements are in that effort's research note 02, in the local tracker.
 
 ## Context
 

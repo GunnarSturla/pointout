@@ -1,102 +1,10 @@
-import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { repoRoot } from '../harness/paths.js'
 
-const SPIKES = [
-  'spike-06-delivery',
-  'spike-07-envelopes',
-  'spike-14-inbox-socket',
-  'spike-16-receipts',
-  'spike-17-overlay-shape',
-]
-
-function git(...args: string[]): string {
-  return execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8' }).trim()
-}
-
-describe('the first commit', () => {
-  const firstCommit = git('rev-list', '--max-parents=0', 'HEAD')
-  const tracked = git('ls-tree', '-r', '--name-only', firstCommit).split('\n')
-
-  it('carries the .scratch tracker', () => {
-    expect(tracked.some((path) => path.startsWith('.scratch/'))).toBe(true)
-  })
-
-  it.each(SPIKES)('carries %s', (spike) => {
-    expect(tracked.some((path) => path.startsWith(spike + '/'))).toBe(true)
-  })
-})
-
-describe('the spikes are labelled dead ends', () => {
-  it.each(SPIKES)('%s says so in the first lines of its README', (spike) => {
-    const readme = readFileSync(join(repoRoot, spike, 'README.md'), 'utf8')
-    const opening = readme.split('\n').slice(0, 6).join('\n')
-    expect(opening).toMatch(/dead end/i)
-    expect(opening).toMatch(/v0/)
-  })
-})
-
 /** Installed or generated, never written here: `.next` is Next's build output. */
 const SKIPPED = new Set(['node_modules', 'dist', '.next'])
-
-describe('nothing imports a spike', () => {
-  const selfPath = fileURLToPath(import.meta.url)
-  const roots = [
-    'src',
-    'examples/react-app/src',
-    'examples/shared',
-    'examples/next-app',
-    'test',
-  ]
-  // Named rather than globbed, and every one of them has to be there: a config
-  // that is silently skipped because it was renamed is a check that passes
-  // while checking nothing.
-  const configs = [
-    'vitest.config.ts',
-    'vitest.seam3.config.ts',
-    'playwright.config.ts',
-    'playwright.capture.config.ts',
-    'examples/react-app/vite.config.ts',
-    'examples/next-app/next.config.ts',
-  ]
-
-  function* sourceFiles(dir: string): Generator<string> {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (SKIPPED.has(entry.name)) continue
-      const full = join(dir, entry.name)
-      if (entry.isDirectory()) yield* sourceFiles(full)
-      else if (/\.(js|jsx|mjs|cjs|ts|tsx|cts|mts)$/.test(entry.name)) yield full
-    }
-  }
-
-  const files: string[] = []
-  for (const root of roots) files.push(...sourceFiles(join(repoRoot, root)))
-  for (const config of configs) files.push(join(repoRoot, config))
-
-  it.each(configs)('%s is a config this repo still has', (config) => {
-    expect(existsSync(join(repoRoot, config))).toBe(true)
-  })
-
-  // An import or require whose specifier points into one of the spike
-  // directories, at any depth and by any relative prefix.
-  const spikeSpecifier = /(?:from|import|require)\s*\(?\s*['"][^'"]*spike-\d\d[^'"]*['"]/
-
-  it('finds source files to check', () => {
-    expect(files.length).toBeGreaterThan(5)
-  })
-
-  it.each(
-    files
-      .filter((file) => file !== selfPath)
-      .map((file) => relative(repoRoot, file).split(sep).join('/')),
-  )('%s', (relativePath) => {
-    const source = readFileSync(join(repoRoot, relativePath), 'utf8')
-    expect(source).not.toMatch(spikeSpecifier)
-  })
-})
 
 describe('the repository is TypeScript', () => {
   // Ticket 23. Asserted rather than assumed, so a later ticket cannot quietly
@@ -164,7 +72,6 @@ describe('the lint and format configuration', () => {
 
     expect(parsed.ignorePatterns).toContain('**/*.md')
     expect(parsed.ignorePatterns).toContain('.scratch/**')
-    expect(parsed.ignorePatterns).toContain('spike-*/**')
   })
 
   it('says beside every silenced rule why it is silenced', () => {
