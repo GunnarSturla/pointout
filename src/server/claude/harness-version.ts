@@ -13,7 +13,7 @@ import type { VerifiedHarness } from './verified-harness.js'
 
 /**
  * Test-only, like the registry-directory override: stands in for the recorded
- * file, so seam 1 can boot none, older and equal. `<version>@<YYYY-MM-DD>`, or
+ * file, so the server suite can boot none, older and equal. `<version>@<YYYY-MM-DD>`, or
  * `never` for a harness no canary run has verified. A consumer never sets it.
  */
 const VERIFIED_HARNESS_ENV = 'POINTOUT_VERIFIED_HARNESS'

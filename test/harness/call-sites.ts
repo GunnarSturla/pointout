@@ -9,7 +9,7 @@ import { repoRoot } from './paths.js'
 
 // The three JSX call sites of `OwnerChainDepth.tsx`, as a frame an engine
 // would print against what a Host served, so one Owner chain suite can run on
-// either Host. Seam 1 has no browser:
+// either Host. The server suite has no browser:
 //
 // - on Vite the frame is read out of the served transform of the fixture,
 //   where the JSX runtime call for that tag starts;

@@ -1,7 +1,7 @@
 // Fixture: everything an Excerpt can be lifted from, and the two things that
 // must never be lifted at all (spec §13, ticket 07).
 //
-// Nothing here contains an angle bracket or an ampersand, on purpose: a seam-2
+// Nothing here contains an angle bracket or an ampersand, on purpose: a browser-suite
 // journey reads the whole delivered body and asserts that none appears in it,
 // which is how *no selector path and no source snippet* is observed.
 

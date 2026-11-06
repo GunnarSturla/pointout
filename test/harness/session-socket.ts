@@ -8,7 +8,7 @@ import type { FixtureEnv } from './fixture-env.js'
 
 // A fake Claude Code session that really listens. `registry.ts` writes the entry;
 // this binds a unix socket at the path that entry names and records every NDJSON
-// line written to it, which is how seam 1 observes a delivery without importing
+// line written to it, which is how the server suite observes a delivery without importing
 // anything the server knows.
 //
 // The key file is the harness's too: `<registryDir>/<pid>.<hash>.key`, holding the
@@ -28,7 +28,7 @@ export interface FakeSessionSpec extends Omit<SessionSpec, 'socket'> {
   /** The token the key file publishes. `null` writes no key file at all. */
   peerToken?: string | null
   /**
-   * Append every received line to this file as well as to memory. Seam 2 needs
+   * Append every received line to this file as well as to memory. The browser suite needs
    * it: the session is bound in Playwright's `globalSetup` process and the
    * specs run in worker processes, so a file is the only thing they share.
    */

@@ -19,7 +19,7 @@ export interface RecordingLogger {
 }
 
 /**
- * A Vite `Logger` that records every line instead of printing it. Seam 1 reads
+ * A Vite `Logger` that records every line instead of printing it. The server suite reads
  * the startup posture block through this: the block is the server's own
  * output, which is exactly the kind of outside-in observation the testing
  * conventions ask for.

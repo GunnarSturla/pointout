@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 // The server's own clock, in one place. Spec §15 gives every queue entry thirty
 // minutes and §17 makes the expiry a stated failure, so "thirty minutes have
-// passed" has to be something seam 1 can make true rather than wait for.
+// passed" has to be something the server suite can make true rather than wait for.
 
 /** Test-only, like the four harness overrides. A consumer never sets it. */
 const CLOCK_SKEW_ENV = 'POINTOUT_CLOCK_SKEW_MS'

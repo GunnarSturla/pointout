@@ -1,5 +1,5 @@
-// The Claude Code version the seam-3 model tier last passed against in full
-// (ticket 21). Written by `npm run test:seam3:model`, and only when every test in
+// The Claude Code version the Claude-suite model tier last passed against in full
+// (ticket 21). Written by `npm run test:claude:model`, and only when every test in
 // it passed; never edited by hand. `null` is *never verified*.
 //
 // It is a module rather than a data file because the package ships `dist/` and

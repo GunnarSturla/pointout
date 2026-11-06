@@ -1,5 +1,5 @@
-// Which Host a seam-2 spec is talking to. Seam 2's `globalSetup` starts both
-// example apps: Vite's on `SEAM2_PORT`, and Next's on `SEAM2_NEXT_PORT`, which
+// Which Host a browser-suite spec is talking to. The browser suite's `globalSetup` starts both
+// example apps: Vite's on `BROWSER_PORT`, and Next's on `BROWSER_NEXT_PORT`, which
 // is the next port up unless it is set.
 //
 // A spec reaches a Host one of two ways:
@@ -15,19 +15,19 @@
 // - **By name.** `hostURL('next', '/pages-router')` from a spec that runs on
 //   Vite's projects, as `next-app.spec.ts` does.
 //
-// Seam 1 names a Host with `startExampleServer({ on: 'next' })` (dev-server.ts).
+// The server suite names a Host with `startExampleServer({ on: 'next' })` (dev-server.ts).
 
 /** The Hosts a test can ask for. */
 export type HostName = 'vite' | 'next'
 
 /** Where `globalSetup` leaves the Next.js test bed's origin for the workers. */
-export const NEXT_URL_ENV = 'SEAM2_NEXT_URL'
+export const NEXT_URL_ENV = 'BROWSER_NEXT_URL'
 
-/** Vite's seam-2 port; agents in parallel worktrees each set their own. */
-export const SEAM2_PORT = Number(process.env.SEAM2_PORT ?? 5178)
+/** Vite's browser-suite port; agents in parallel worktrees each set their own. */
+export const BROWSER_PORT = Number(process.env.BROWSER_PORT ?? 5178)
 
-/** Next's seam-2 port, fixed so a project can carry it before Next is up. */
-export const SEAM2_NEXT_PORT = Number(process.env.SEAM2_NEXT_PORT ?? SEAM2_PORT + 1)
+/** Next's browser-suite port, fixed so a project can carry it before Next is up. */
+export const BROWSER_NEXT_PORT = Number(process.env.BROWSER_NEXT_PORT ?? BROWSER_PORT + 1)
 
 /** One page a parameterized suite runs on. */
 export interface TestBed {
@@ -39,12 +39,16 @@ export interface TestBed {
 }
 
 export const TEST_BEDS: readonly TestBed[] = [
-  { suffix: '', host: 'vite', baseURL: `http://127.0.0.1:${SEAM2_PORT}` },
-  { suffix: '-next-app', host: 'next', baseURL: `http://127.0.0.1:${SEAM2_NEXT_PORT}/` },
+  { suffix: '', host: 'vite', baseURL: `http://127.0.0.1:${BROWSER_PORT}` },
+  {
+    suffix: '-next-app',
+    host: 'next',
+    baseURL: `http://127.0.0.1:${BROWSER_NEXT_PORT}/`,
+  },
   {
     suffix: '-next-pages',
     host: 'next',
-    baseURL: `http://127.0.0.1:${SEAM2_NEXT_PORT}/pages-router`,
+    baseURL: `http://127.0.0.1:${BROWSER_NEXT_PORT}/pages-router`,
   },
 ]
 
@@ -68,11 +72,13 @@ export const PARAMETERIZED_SUITES = [
   'excerpts',
 ].map((name) => `**/${name}.spec.ts`)
 
-/** `path` on the seam-2 server of Host `on`. */
+/** `path` on the browser-suite server of Host `on`. */
 export function hostURL(on: HostName, path: string): string {
   if (on === 'vite') return path
   const origin = process.env[NEXT_URL_ENV]
   if (!origin)
-    throw new Error(`${NEXT_URL_ENV} is unset: seam 2's globalSetup did not run`)
+    throw new Error(
+      `${NEXT_URL_ENV} is unset: the browser suite's globalSetup did not run`,
+    )
   return origin + path
 }

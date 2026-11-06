@@ -60,7 +60,7 @@ how it finds the sessions a Pick can go to.
 ## `harness version`
 
 The Claude Code version the registry's sessions report, beside the last version the
-model-tier canaries passed against (`npm run test:seam3:model`, ticket 21). The canaries
+model-tier canaries passed against (`npm run test:claude:model`, ticket 21). The canaries
 record that version in `src/server/claude/verified-harness.ts`.
 
 | text | meaning |
@@ -156,8 +156,8 @@ None of these repeat a posture line.
 
 `POINTOUT_VERIFIED_HARNESS` stands in for the recorded version, as
 `<version>@<YYYY-MM-DD>` or `never`. It is **test-only**, like the other overrides
-in `docs/agents/testing.md`, and a consumer never sets it. The seam-1 posture test
-(`test/seam1/posture.test.ts`) holds the exact wording of every line on this page,
-and `test/seam1/next-connector.test.ts` the Next.js block, `self-check` included.
+in `docs/agents/testing.md`, and a consumer never sets it. The server-suite posture test
+(`test/server/posture.test.ts`) holds the exact wording of every line on this page,
+and `test/server/next-connector.test.ts` the Next.js block, `self-check` included.
 Its failing `self-check` is reached with no override: the test preloads a module into
 Next's worker that keeps pointout from reaching into Next's server, so Next answers.

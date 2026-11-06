@@ -5,7 +5,7 @@
 // that moves is declared in one place, the single opt-in block at the bottom,
 // which nothing outside `prefers-reduced-motion: no-preference` may leave; a
 // fade is not movement, and is declared just above that block for every
-// developer. A seam-1 test reads the built Overlay and holds the rule — see
+// developer. A server-suite test reads the built Overlay and holds the rule — see
 // `docs/motion.md` before adding any.
 
 /** The host itself, as an inline style: page CSS does not get a vote on it. */
@@ -1054,7 +1054,7 @@ ${each(':focus-visible')} {
    review-animations gate's reading of reduced motion as gentler, not zero.
    Only a fade may ease out here — \`opacity\`, \`color\`, \`background-color\`,
    \`border-color\` and \`outline-color\` — and \`transition: none\` may stop
-   one; a seam-1 test reads the built file to hold both.
+   one; a server-suite test reads the built file to hold both.
 
    The Highlight fades three ways: its opacity when it leaves (its element
    gone, or a live mark let go of), its fill when the shutter opens, and its
@@ -1189,7 +1189,7 @@ ${each('')} {
    Everything that moves lives inside this block, so a developer who has asked
    their system for less motion is not opted out of anything — they were never
    opted in. Nothing outside it may declare an animation, a set of keyframes,
-   or a transition of anything but a fade, and a seam-1 test reads the built
+   or a transition of anything but a fade, and a server-suite test reads the built
    file to say so. A rule here that lists a Highlight's transitions restates
    its fades too, because it replaces the whole list above.
 

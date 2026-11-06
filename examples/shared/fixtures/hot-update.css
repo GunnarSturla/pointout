@@ -1,5 +1,5 @@
 /* The hot-updatable half of `HotUpdatable.tsx`. One declaration, in a file of
-   its own, because a seam-2 test rewrites the height here to make a real hot
+   its own, because a browser-suite test rewrites the height here to make a real hot
    update happen and then writes this file back exactly as it found it.
 
    Nothing here animates: the spec's default is no motion (§9), and a test bed

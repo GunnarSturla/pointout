@@ -128,7 +128,7 @@ the element: it re-placed the box a frame or two into the morph and cancelled it
 Measured in Chromium, the three transitions started at about 621 ms and were cancelled
 at about 654 ms. Sampled once a frame in all three engines, the drawn width was at the
 destination by the third frame after the hover and stayed there. Each target's first
-report is skipped now, and `test/seam2/highlight.spec.ts` watches the drawn width frame
+report is skipped now, and `test/browser/highlight.spec.ts` watches the drawn width frame
 by frame to keep it so.
 
 ### Two marks
@@ -332,7 +332,7 @@ gate reviewed, at that build — the values it changed are the ones in *What mov
 
 These are all the declarations in the `prefers-reduced-motion: no-preference` block
 at the bottom of `src/overlay/styles.ts`. Nothing else in the Overlay moves, and
-`test/seam1/overlay-build.test.ts` holds that. Each row says whether the decision
+`test/server/overlay-build.test.ts` holds that. Each row says whether the decision
 behind it is pre-registered, which means the gate may not silently reverse it, or
 free, which means the gate may change it.
 
@@ -368,17 +368,17 @@ real dev server to the in-repo example app. It should not review `src/`.
 5. **Row 5**: pick an element, then Alt-click a second one to move the Pick. The
    shutter blinks each time, whether or not a Screen Capture is taken.
 6. **Row 6** needs a Pick that did not land. The deterministic way is to watch the
-   seam-2 journey headed, in Chromium:
+   browser-suite journey headed, in Chromium:
 
    ```sh
    npm run build
-   SEAM2_PORT=5199 npx playwright test test/seam2/report-back.spec.ts \
+   BROWSER_PORT=5199 npx playwright test test/browser/report-back.spec.ts \
      --project=chromium --headed --debug -g "with motion allowed"
    ```
 
    `--debug` opens the Playwright inspector. The journey ends a few seconds after the
    line starts to shorten, so step through it there to hold the page open.
-   `npx playwright` skips the `pretest:seam2` build, which is why `npm run build` comes
+   `npx playwright` skips the `pretest:browser` build, which is why `npm run build` comes
    first.
 
 Without a Claude Code session running in this checkout, the Panel shows its
@@ -462,7 +462,7 @@ beside the first, in the same shape.
 
 ## How the rule is held
 
-`test/seam1/overlay-build.test.ts` reads the **built** Overlay — what the consumer's
+`test/server/overlay-build.test.ts` reads the **built** Overlay — what the consumer's
 browser actually runs — and asserts four things: motion is declared in the stylesheet
 and in no other module; outside the one `prefers-reduced-motion: no-preference` block
 there is no animation, no keyframes, and no transition of anything but a fade —
@@ -477,15 +477,15 @@ Anything that animates through the Web Animations API instead has to name
 `prefers-reduced-motion` in its own file: a script call carries no media query of its
 own, so the file that makes one has to ask first.
 
-`test/seam2/highlight.spec.ts` is the other half, in a real browser: what runs on a
+`test/browser/highlight.spec.ts` is the other half, in a real browser: what runs on a
 first appearance (nothing), what runs on a hover move (`translate`, `width`, `height`,
 never `scale`), that the box's border and radius are unchanged in a mid-morph frame,
 that the morph is still under way frames after the hover that started it, the two
 marks' preview, release and Alt-click, and that under emulated reduced motion nothing
-but a fade runs while every position still updates. `test/seam2/panel-motion.spec.ts`
+but a fade runs while every position still updates. `test/browser/panel-motion.spec.ts`
 watches the Panel frame by frame as it arrives, leaves and travels, as it is sent into the
 Stack, and as a submitted one opens above the Stack and closes, in both modes.
-`test/seam2/capture.spec.ts` holds
+`test/browser/capture.spec.ts` holds
 the shutter: the outline on and the fill and chip off while it is closed, and the Stack
 and the Picker never hidden.
 

@@ -36,7 +36,7 @@
     "src",
     "test",
     "vitest.config.ts",
-    "vitest.seam3.config.ts",
+    "vitest.claude.config.ts",
     "playwright.config.ts",
     "playwright.capture.config.ts"
   ]

@@ -22,7 +22,7 @@ import type { ViteDevServer } from 'vite'
 import { createRecordingLogger } from './logger.js'
 import { exampleAppRoot, repoRoot } from './paths.js'
 
-// Seam 3's fixture code: a real, throwaway Claude Code session, and the real
+// The Claude suite's fixture code: a real, throwaway Claude Code session, and the real
 // dev server beside it. Nothing here is faked — the registry is the user's own
 // `~/.claude/sessions/`, the sockets are the harness's own `/tmp/cc-socks/`.
 //
@@ -32,7 +32,7 @@ import { exampleAppRoot, repoRoot } from './paths.js'
 // standard `pty` module hold one open. It is a string here, not a file, because
 // everything in this repository is TypeScript; `python3 -c` runs it.
 //
-// The safety rules (spec, *Testing Decisions*, seam 3) live in this file, each
+// The safety rules (spec, *Testing Decisions*, the Claude suite) live in this file, each
 // where it bites:
 //
 // - the environment is scrubbed of every `CLAUDE*` variable, so the session
@@ -65,10 +65,10 @@ export const SOCKET_DIR = '/tmp/cc-socks'
 /** Where the harness keeps transcripts, one directory per cwd. */
 const PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
-const SCRATCH_PREFIX = 'pointout-seam3-'
+const SCRATCH_PREFIX = 'pointout-claude-'
 
 // ---------------------------------------------------------------------------
-// Can this machine run seam 3 at all?
+// Can this machine run the Claude suite at all?
 // ---------------------------------------------------------------------------
 
 export type Preflight =
@@ -128,7 +128,7 @@ export function preflight(): Preflight {
 /**
  * This process's environment with every `CLAUDE*` variable removed —
  * `CLAUDE_CODE_CHILD_SESSION` above all, which makes a session never register —
- * and every `POINTOUT_*` override too, since seam 3 fakes nothing.
+ * and every `POINTOUT_*` override too, since the Claude suite fakes nothing.
  * `extra` is applied last: it is how a canary deliberately puts one back.
  */
 export function scrubbedEnv(extra: Record<string, string> = {}): Record<string, string> {
@@ -140,7 +140,7 @@ export function scrubbedEnv(extra: Record<string, string> = {}): Record<string, 
   return { ...env, ...extra }
 }
 
-/** A variable seam 3 never hands on: the harness's own, and this plugin's overrides. */
+/** A variable the Claude suite never hands on: the harness's own, and this plugin's overrides. */
 function isScrubbed(name: string): boolean {
   return name.startsWith('CLAUDE') || name.startsWith('POINTOUT_')
 }
@@ -179,12 +179,12 @@ export function refuseRealWorktree(dir: string): void {
   const root = realpathSync(top)
   if (root === resolved) {
     throw new Error(
-      `seam 3 refuses to start: its temporary directory ${resolved} is the root of a ` +
+      `the Claude suite refuses to start: its temporary directory ${resolved} is the root of a ` +
         'real worktree, and the suite would start a Claude session and a dev server in it',
     )
   }
   throw new Error(
-    `seam 3 refuses to start: its temporary directory ${resolved} lies inside the real ` +
+    `the Claude suite refuses to start: its temporary directory ${resolved} lies inside the real ` +
       `worktree ${root}`,
   )
 }
@@ -214,12 +214,18 @@ export function createScratchRepo(): ScratchRepo {
   const git = (...args: string[]) =>
     execFileSync(
       'git',
-      ['-c', 'user.name=seam 3', '-c', 'user.email=seam3@localhost', ...args],
+      [
+        '-c',
+        'user.name=claude suite',
+        '-c',
+        'user.email=claude-suite@localhost',
+        ...args,
+      ],
       { cwd: dir, stdio: 'ignore' },
     )
   git('init', '-q', '-b', 'main')
   git('add', '-A')
-  git('commit', '-q', '-m', 'seam 3 scratch copy of the example app')
+  git('commit', '-q', '-m', 'Claude-suite scratch copy of the example app')
 
   return {
     dir,
@@ -919,7 +925,7 @@ export async function startRealDevServer(root: string): Promise<RealDevServer> {
   if (!address || typeof address !== 'object') {
     await server.close()
     restore()
-    throw new Error('the seam 3 dev server is not listening on a TCP port')
+    throw new Error('the Claude-suite dev server is not listening on a TCP port')
   }
   return {
     url: `http://127.0.0.1:${address.port}`,

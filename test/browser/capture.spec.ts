@@ -1,0 +1,916 @@
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { expect, test } from '@playwright/test'
+import type { Page, Request, Route } from '@playwright/test'
+
+// The browser suite: Screen Capture as the developer meets it (spec §7's footer, §10,
+// stories 66 to 68, 70, 71 and 74). The camera toggle in the Panel footer, the
+// capture that fires at every pick whether or not it is on, the shutter the
+// Overlay closes for it, and what a move, a discard and a Send do to the file.
+//
+// The dev server is the browser suite's own, with ticket 17's fake `screencapture` first on
+// its `PATH`, writing a known PNG. That server lives in Playwright's
+// `globalSetup` process, so a spec cannot change the fake's mode between picks;
+// the two cases that need a server this one is not — a capture whose answer is
+// held back, and a server whose capture is disabled — are made at the
+// network, with the server's own 409 written out below as the contract it is.
+// The server suite (`capture.test.ts`) is where the real 409 is proved.
+//
+// Every string is written out rather than imported (docs/agents/testing.md).
+
+/** Where the fake session's inbox writes what it received (test/harness/serve.ts). */
+const FRAMES_LOG_ENV = 'BROWSER_FRAMES_LOG'
+
+/** Where every dev server keeps its captures: `<os tmp>/<this>/<pid>-<hex>/<id>.png`. */
+const CAPTURE_ROOT = join(tmpdir(), 'pointout-captures')
+
+const CAPTURE = '**/__agent/capture'
+
+const PICKED = '[data-fixture="card-heading"]'
+const SECOND_PICKED = '[data-fixture="passed-down-badge"]'
+const THIRD_PICKED = 'h1'
+
+const HOST = 'pointout-overlay'
+const PICKER = '[data-part="picker"]'
+const HIGHLIGHT = '[data-part="highlight"]'
+const PANEL = '[data-part="panel"]'
+const MINIMIZED = '[data-part="minimized"]'
+const LIGHT = '[data-part="light"]'
+const MINIMIZED_CAMERA = '[data-part="minimized-camera"]'
+const NOTE = '[data-part="note"]'
+const FOOTER = '[data-part="footer"]'
+const CAMERA = '[data-part="camera"]'
+const CAMERA_OFF = '[data-part="camera-off"]'
+
+/** What the minimized Panel's camera says, in its title and its name. */
+const CAPTURE_SENT = 'Sent with a Screen Capture'
+
+/** What a disabled capture endpoint answers (ticket 17), written out. */
+const DISABLED_REASON =
+  "this dev server is not running on macOS (platform: linux), and v0 takes a Screen Capture with macOS's own screencapture tool"
+
+/** The toggle's standing choice, by origin, as the Overlay keeps it. */
+const TOGGLE_KEY = 'pointout:screen-capture:'
+
+/**
+ * Accepted: the Panel closes, and the Pick rests minimized in the Stack, its
+ * light titled Sent (overlay-polish 08).
+ */
+async function sent(page: Page): Promise<void> {
+  await expect(page.locator(PANEL)).toHaveCount(0)
+  await expect(page.locator(`${MINIMIZED} ${LIGHT}`).last()).toHaveAttribute(
+    'title',
+    'Sent',
+  )
+}
+
+function probe(name: string): string {
+  return `${name}-${Math.random().toString(16).slice(2)}`
+}
+
+async function open(page: Page, token: string): Promise<void> {
+  await page.goto(`?probe=${token}`)
+  await expect(page.locator(PICKER)).toBeVisible()
+}
+
+async function centre(page: Page, selector: string): Promise<{ x: number; y: number }> {
+  // Every fixture in the example app sits below the fold.
+  await page.locator(selector).first().scrollIntoViewIfNeeded()
+  const box = await page.locator(selector).first().boundingBox()
+  if (!box) throw new Error(`${selector} has no box`)
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+}
+
+async function arm(page: Page): Promise<void> {
+  const picker = page.locator(PICKER)
+  await picker.click()
+  if ((await picker.getAttribute('data-armed')) === null) await picker.click()
+  await expect(picker).toHaveAttribute('data-armed', '')
+}
+
+async function pick(page: Page, selector: string): Promise<void> {
+  const at = await centre(page, selector)
+  await page.mouse.move(at.x, at.y)
+  await expect(page.locator(HIGHLIGHT).first()).toBeVisible()
+  await page.mouse.click(at.x, at.y)
+  await expect(page.locator(PANEL)).toBeVisible()
+}
+
+/** Alt held, and one click: with an unsubmitted Panel open, that moves the Pick. */
+async function altClick(page: Page, selector: string): Promise<void> {
+  const at = await centre(page, selector)
+  await page.keyboard.down('Alt')
+  await page.mouse.click(at.x, at.y)
+  await page.keyboard.up('Alt')
+}
+
+/** Every `user` frame's rendered content, oldest first. */
+function deliveredContents(): string[] {
+  const log = process.env[FRAMES_LOG_ENV]
+  if (!log)
+    throw new Error(
+      `${FRAMES_LOG_ENV} is unset: the browser suite's globalSetup did not run`,
+    )
+  return readFileSync(log, 'utf8')
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .filter((frame) => frame.type === 'user')
+    .map((frame) => (frame.message as { content: string }).content)
+}
+
+/** The one delivered body whose Note carries this test's probe token. */
+async function delivered(token: string): Promise<string> {
+  let found: string | undefined
+  await expect
+    .poll(
+      () => {
+        found = deliveredContents().find((content) => content.includes(token))
+        return found !== undefined
+      },
+      { timeout: 10_000 },
+    )
+    .toBe(true)
+  return found ?? ''
+}
+
+/** Where a capture with this id is on disk, or null when it is on disk nowhere. */
+function captureFile(id: string): string | null {
+  if (!existsSync(CAPTURE_ROOT)) return null
+  for (const server of readdirSync(CAPTURE_ROOT)) {
+    const file = join(CAPTURE_ROOT, server, `${id}.png`)
+    if (existsSync(file)) return file
+  }
+  return null
+}
+
+/** One capture request, as the page made it. */
+interface CaptureCall {
+  method: string
+  /** The id a DELETE names, or the id a POST was answered with. */
+  id: string | null
+  body: Record<string, unknown> | null
+}
+
+/**
+ * Every request the page makes to the capture endpoints, in the order it made
+ * them, with each POST's answer filled in once it arrives.
+ */
+function recordCaptures(page: Page): CaptureCall[] {
+  const calls: CaptureCall[] = []
+  const byRequest = new Map<Request, CaptureCall>()
+  page.on('request', (request) => {
+    const url = new URL(request.url())
+    if (!url.pathname.startsWith('/__agent/capture')) return
+    const post = request.method() === 'POST'
+    const call: CaptureCall = {
+      method: request.method(),
+      id: post
+        ? null
+        : decodeURIComponent(url.pathname.slice('/__agent/capture/'.length)),
+      body: post ? (request.postDataJSON() as Record<string, unknown>) : null,
+    }
+    calls.push(call)
+    byRequest.set(request, call)
+  })
+  page.on('response', async (response) => {
+    const call = byRequest.get(response.request())
+    if (!call || call.method !== 'POST' || !response.ok()) return
+    // A test that has already finished with the page may end before the body
+    // is read, and nothing is waiting on the id by then.
+    const body = (await response.json().catch(() => ({}))) as { captureId?: string }
+    call.id = body.captureId ?? null
+  })
+  return calls
+}
+
+const posts = (calls: CaptureCall[]) => calls.filter((call) => call.method === 'POST')
+
+/** The id of the n-th capture the page started, once its POST has answered. */
+async function startedId(calls: CaptureCall[], index: number): Promise<string> {
+  await expect.poll(() => posts(calls)[index]?.id ?? null).not.toBeNull()
+  return posts(calls)[index]?.id ?? ''
+}
+
+/** Answer every capture POST the way a dev server that cannot capture does. */
+async function captureDisabled(page: Page): Promise<void> {
+  await page.route(CAPTURE, (route: Route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'capture-disabled', reason: DISABLED_REASON }),
+        })
+      : route.continue(),
+  )
+}
+
+/** A developer who turned the toggle on at some earlier visit. */
+async function cameraLeftOn(page: Page): Promise<void> {
+  await page.addInitScript(
+    (key) => localStorage.setItem(key + location.origin, 'on'),
+    TOGGLE_KEY,
+  )
+}
+
+async function turnCameraOn(page: Page): Promise<void> {
+  await page.locator(CAMERA).click()
+  await expect(page.locator(CAMERA)).toHaveAttribute('aria-pressed', 'true')
+}
+
+type Seen = Record<string, unknown>
+
+/** What of the Overlay is on screen, each part `shown`, `hidden` or `none`. */
+type OnScreen = Record<'outline' | 'fill' | 'chip' | 'picker' | 'stack', string>
+
+/**
+ * Teach the page to say what the shutter leaves on it: the Highlight's outline,
+ * its fill and its chip, and the Picker and the Stack beside them. The shutter
+ * takes only the fill and the chip (overlay-polish ticket 03): the outline
+ * marks the picked element inside the capture's margin, and nothing else the
+ * Overlay draws is worth hiding from it.
+ */
+async function teachOnScreen(page: Page): Promise<void> {
+  await page.evaluate((tag) => {
+    const shown = (element: Element | null | undefined): string => {
+      if (!element) return 'none'
+      const style = getComputedStyle(element)
+      return style.visibility === 'visible' && style.opacity === '1' ? 'shown' : 'hidden'
+    }
+    const read = (): Record<string, string> => {
+      const root = document.querySelector(tag)?.shadowRoot
+      const box = root?.querySelector('[data-part="highlight"]')
+      const style = box ? getComputedStyle(box) : null
+      const clear = style?.backgroundColor === 'rgba(0, 0, 0, 0)'
+      return {
+        outline:
+          style && style.outlineStyle !== 'none' && shown(box) === 'shown'
+            ? 'shown'
+            : 'hidden',
+        fill: style ? (clear ? 'hidden' : 'shown') : 'none',
+        chip: shown(box?.querySelector('[data-part="chip"]')),
+        picker: shown(root?.querySelector('[data-part="picker-peek"]')),
+        stack: shown(root?.querySelector('[data-part="stack"]')),
+      }
+    }
+    Object.assign(window, { onScreen: read })
+  }, HOST)
+}
+
+async function onScreen(page: Page): Promise<OnScreen> {
+  return page.evaluate(() =>
+    (window as unknown as { onScreen: () => OnScreen }).onScreen(),
+  )
+}
+
+/**
+ * The shutter, as the page saw it: every time the host closed or opened it,
+ * what of the Overlay was on screen at that moment, and every property that
+ * began to ease anywhere in the Overlay afterwards.
+ */
+async function watchShutter(page: Page): Promise<void> {
+  await teachOnScreen(page)
+  await page.evaluate((tag) => {
+    const host = document.querySelector(tag)
+    const root = host?.shadowRoot
+    if (!host || !root) throw new Error('the Overlay is not mounted')
+    const read = (window as unknown as { onScreen: () => Record<string, string> })
+      .onScreen
+    const seen: Array<Record<string, unknown>> = []
+    Object.assign(window, { seenShutter: seen })
+    new MutationObserver(() => {
+      seen.push({
+        closed: host.hasAttribute('data-shutter'),
+        at: performance.now(),
+        ...read(),
+      })
+    }).observe(host, { attributes: true, attributeFilter: ['data-shutter'] })
+    root.addEventListener('transitionrun', (event) => {
+      const target = event.target as Element
+      seen.push({
+        eased: `${target.getAttribute('data-part')} ${(event as TransitionEvent).propertyName}`,
+      })
+    })
+  }, HOST)
+}
+
+/**
+ * The shutter is open and nothing in the Overlay is still easing. CSS
+ * transitions do not run on `page.clock`, so a fade is waited out here, by
+ * what the page says is running, rather than by a guess at how long it takes.
+ */
+async function settled(page: Page): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate((tag) => {
+        const host = document.querySelector(tag)
+        if (!host?.shadowRoot || host.hasAttribute('data-shutter')) return -1
+        // A status dot's pulse and rings loop for as long as its state lasts,
+        // so they never settle: those two, by name, are left out of the count.
+        return host.shadowRoot
+          .getAnimations()
+          .filter(
+            (animation) =>
+              !['dot-working', 'dot-needs'].includes(
+                (animation as CSSAnimation).animationName,
+              ),
+          ).length
+      }, HOST),
+    )
+    .toBe(0)
+}
+
+/**
+ * The Picker's own lines taken out. A Pick disarms the Picker, so its colours,
+ * its lift and its width change on the same click that closes the shutter
+ * (overlay-polish ticket 04). That is the Picker saying it is no longer armed,
+ * not the shutter hiding it, and it is read on its own where it matters.
+ *
+ * The Panel's controls are taken out too, for the same reason. They fade their
+ * colours when their state changes (overlay-polish ticket 05), and some change
+ * as the Pick lands: the camera turns unavailable when the server refuses the
+ * capture, and Send is enabled once the Target is read. Neither is the shutter.
+ *
+ * So is the Panel's own arrival: it fades in, and grows where movement is
+ * allowed, on the same click (overlay-polish ticket 07). Its entrance is never
+ * gated on a capture, and it is held on its own below.
+ */
+/** A sequence with what eased after the opening sorted, since it eased at once. */
+function easedTogether(sequence: string[]): string[] {
+  const opened = sequence.findIndex((line) => line.startsWith('opened'))
+  if (opened === -1) return sequence
+  return [...sequence.slice(0, opened + 1), ...sequence.slice(opened + 1).toSorted()]
+}
+
+function apartFromControls(sequence: string[]): string[] {
+  return sequence.filter(
+    (line) =>
+      !/^eased (picker(-tail)?|camera|send|cancel|target(-row)?|panel) /.test(line),
+  )
+}
+
+async function shutterSeen(page: Page): Promise<Seen[]> {
+  return page.evaluate(
+    () => (window as unknown as { seenShutter?: Seen[] }).seenShutter ?? [],
+  )
+}
+
+/**
+ * The shutter's story with its clock taken out: what happened, in order. At
+ * the close, everything the page shows is read; at the opening only the
+ * outline is, because the fill and the chip are just starting to fade back in
+ * and are neither one thing nor the other.
+ */
+function sequenceOf(seen: Seen[]): string[] {
+  return seen.map((entry) => {
+    if ('eased' in entry) return `eased ${String(entry.eased)}`
+    if (!entry.closed) return `opened, outline ${String(entry.outline)}`
+    const parts = ['outline', 'fill', 'chip', 'picker', 'stack']
+    return `closed, ${parts.map((part) => `${part} ${String(entry[part])}`).join(', ')}`
+  })
+}
+
+/** How long the shutter stayed closed, from the first close to the first open. */
+function heldFor(seen: Seen[]): number {
+  const closed = seen.find((entry) => entry.closed === true)
+  const opened = seen.find((entry) => entry.closed === false)
+  return Number(opened?.at) - Number(closed?.at)
+}
+
+/** Closed, as the capture needs it: the fill and the chip gone, the outline on. */
+async function closedForCapture(page: Page): Promise<boolean> {
+  await teachOnScreen(page)
+  const closed = await page.evaluate(
+    (tag) => document.querySelector(tag)?.hasAttribute('data-shutter') === true,
+    HOST,
+  )
+  const seen = await onScreen(page)
+  return (
+    closed && seen.outline === 'shown' && seen.fill === 'hidden' && seen.chip === 'hidden'
+  )
+}
+function escaped(text: string): string {
+  return text.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+test.describe('the camera toggle', () => {
+  test('is the leftmost thing in the Panel footer', async ({ page }) => {
+    await open(page, probe('camera-footer'))
+    await arm(page)
+    await pick(page, PICKED)
+
+    const camera = page.locator(CAMERA)
+    await expect(camera).toBeVisible()
+    await expect(camera).toHaveAttribute('aria-pressed', 'false')
+    const first = await page
+      .locator(FOOTER)
+      .evaluate((footer) => footer.firstElementChild?.getAttribute('data-part'))
+    expect(first).toBe('camera')
+  })
+
+  test('stays as it was left across Picks and a reload', async ({ page }) => {
+    await open(page, probe('camera-persists'))
+    await arm(page)
+    await pick(page, PICKED)
+    await turnCameraOn(page)
+
+    // A second Pick, after discarding the first.
+    await page.keyboard.press('Escape')
+    await expect(page.locator(PANEL)).toHaveCount(0)
+    await pick(page, SECOND_PICKED)
+    await expect(page.locator(CAMERA)).toHaveAttribute('aria-pressed', 'true')
+
+    await page.reload()
+    await expect(page.locator(PICKER)).toBeVisible()
+    await arm(page)
+    await pick(page, PICKED)
+    await expect(page.locator(CAMERA)).toHaveAttribute('aria-pressed', 'true')
+
+    // Off again is remembered the same way.
+    await page.locator(CAMERA).click()
+    await expect(page.locator(CAMERA)).toHaveAttribute('aria-pressed', 'false')
+    await page.reload()
+    await expect(page.locator(PICKER)).toBeVisible()
+    await arm(page)
+    await pick(page, PICKED)
+    await expect(page.locator(CAMERA)).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  test('is shown disabled, with the reason, when the server cannot capture', async ({
+    page,
+  }) => {
+    await captureDisabled(page)
+    const calls = recordCaptures(page)
+    await open(page, probe('camera-disabled'))
+    await arm(page)
+    await pick(page, PICKED)
+
+    const camera = page.locator(CAMERA)
+    await expect(camera).toBeVisible()
+    await expect(camera).toHaveAttribute('aria-disabled', 'true')
+    await expect(camera).toHaveAttribute('aria-pressed', 'false')
+    await expect(camera).toHaveAttribute('title', new RegExp(escaped(DISABLED_REASON)))
+
+    // Asking for the reason shows it, and never turns the toggle on. Forced,
+    // because Playwright will not click what says it is disabled; a developer
+    // can, and that is how the reason is asked for.
+    await camera.click({ force: true })
+    await expect(page.locator(CAMERA_OFF)).toContainText(DISABLED_REASON)
+    await expect(camera).toHaveAttribute('aria-pressed', 'false')
+
+    // Told once, the page stops asking: the next Pick sends no capture request.
+    await page.keyboard.press('Escape')
+    await pick(page, SECOND_PICKED)
+    await expect(page.locator(CAMERA)).toHaveAttribute('aria-disabled', 'true')
+    expect(posts(calls)).toHaveLength(1)
+  })
+
+  test('left on, says so out loud when the server cannot capture', async ({ page }) => {
+    await cameraLeftOn(page)
+    await captureDisabled(page)
+    await open(page, probe('camera-on-disabled'))
+    await arm(page)
+    await pick(page, PICKED)
+    // No click asked for it: a developer who wants a capture is told there will
+    // be none before they send, not afterwards by the agent.
+    await expect(page.locator(CAMERA_OFF)).toContainText(DISABLED_REASON)
+  })
+
+  test('left on, a capture that could not be taken is said to the agent', async ({
+    page,
+  }) => {
+    const token = probe('camera-intended')
+    await cameraLeftOn(page)
+    // The browser suite's server can capture, so it is the page that is refused here; the
+    // Pick then names no capture, and the server says one was meant and why
+    // there is none. The server suite holds the same line for a server that cannot.
+    await captureDisabled(page)
+    await open(page, token)
+    await arm(page)
+    await pick(page, PICKED)
+    await expect(page.locator(CAMERA_OFF)).toBeVisible()
+
+    await page.locator(NOTE).fill(`what is this ${token}`)
+    await page.locator(NOTE).press('Enter')
+    await sent(page)
+    // Meant and not taken: nothing went, so no camera claims one did.
+    await expect(page.locator(`${MINIMIZED} ${MINIMIZED_CAMERA}`)).toHaveCount(0)
+
+    expect(await delivered(token)).toMatch(
+      /screen capture\s+a capture was intended, and failed/,
+    )
+  })
+})
+
+test.describe('a capture at every pick', () => {
+  test('is asked for at once, with where the element is, toggle or no toggle', async ({
+    page,
+  }) => {
+    const calls = recordCaptures(page)
+    await open(page, probe('capture-at-pick'))
+    await arm(page)
+    await pick(page, PICKED)
+    await expect(page.locator(CAMERA)).toHaveAttribute('aria-pressed', 'false')
+
+    await expect.poll(() => calls.length).toBe(1)
+    const call = calls[0]
+    expect(call?.method).toBe('POST')
+    const box = await page.locator(PICKED).first().boundingBox()
+    const seen = await page.evaluate(() => ({
+      screenX: window.screenX,
+      screenY: window.screenY,
+      chromeWidth: window.outerWidth - window.innerWidth,
+      chromeHeight: window.outerHeight - window.innerHeight,
+      screen: { width: window.screen.width, height: window.screen.height },
+    }))
+    const body = call?.body as { rect: Record<string, number> } & Record<string, unknown>
+    expect({
+      x: Math.round(body.rect.x ?? NaN),
+      y: Math.round(body.rect.y ?? NaN),
+      width: Math.round(body.rect.width ?? NaN),
+      height: Math.round(body.rect.height ?? NaN),
+    }).toEqual({
+      x: Math.round(box?.x ?? 0),
+      y: Math.round(box?.y ?? 0),
+      width: Math.round(box?.width ?? 0),
+      height: Math.round(box?.height ?? 0),
+    })
+    expect({
+      screenX: body.screenX,
+      screenY: body.screenY,
+      chromeWidth: body.chromeWidth,
+      chromeHeight: body.chromeHeight,
+      screen: body.screen,
+    }).toEqual(seen)
+  })
+
+  test('never holds the Panel back, however long the capture takes', async ({ page }) => {
+    // A capture whose answer is held until this test lets it go. The request
+    // goes through at once and its answer waits, which is the slower of the two
+    // cases: ticket 17's server answers the id at once and runs the tool behind
+    // it.
+    let answered = false
+    let release: () => void = () => {}
+    const released = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    await page.route(CAPTURE, async (route: Route) => {
+      const response = await route.fetch()
+      await released
+      answered = true
+      await route.fulfill({ response })
+    })
+    await open(page, probe('capture-slow'))
+    await arm(page)
+    const at = await centre(page, PICKED)
+    await page.mouse.move(at.x, at.y)
+    await expect(page.locator(HIGHLIGHT).first()).toBeVisible()
+
+    const clicked = Date.now()
+    await page.mouse.click(at.x, at.y)
+    await expect(page.locator(PANEL)).toBeVisible({ timeout: 1000 })
+    expect(Date.now() - clicked).toBeLessThan(1000)
+    expect(answered).toBe(false)
+    // Let the held answer go, and see it land. A route left holding one throws
+    // into whichever test the worker runs next, so it is unrouted as well.
+    release()
+    await expect.poll(() => answered).toBe(true)
+    await page.unrouteAll({ behavior: 'ignoreErrors' })
+  })
+})
+
+test.describe('the shutter', () => {
+  test.use({ reducedMotion: 'no-preference' })
+
+  /** One Pick, and the shutter it closed and opened, with nothing else moving. */
+  async function shutterOf(page: Page, name: string): Promise<Seen[]> {
+    await open(page, probe(name))
+    await arm(page)
+    // Hover first and let the Highlight settle, so what is recorded is the Pick
+    // and nothing before it.
+    const at = await centre(page, PICKED)
+    await page.mouse.move(at.x, at.y)
+    await expect(page.locator(HIGHLIGHT).first()).toBeVisible()
+    await settled(page)
+    await watchShutter(page)
+    await page.mouse.click(at.x, at.y)
+    await expect(page.locator(PANEL)).toBeVisible()
+    await expect.poll(async () => (await shutterSeen(page)).length).toBeGreaterThan(2)
+    await settled(page)
+    return shutterSeen(page)
+  }
+
+  test('reads the same with the toggle on, off, and with capture disabled', async ({
+    browser,
+  }) => {
+    const setUps: Array<[string, (page: Page) => Promise<void>]> = [
+      ['shutter-on', cameraLeftOn],
+      ['shutter-off', async () => {}],
+      ['shutter-disabled', captureDisabled],
+    ]
+    const runs: Seen[][] = []
+    for (const [name, setUp] of setUps) {
+      const context = await browser.newContext({ reducedMotion: 'no-preference' })
+      const page = await context.newPage()
+      await setUp(page)
+      runs.push(await shutterOf(page, name))
+      const on = name === 'shutter-on' ? 'true' : 'false'
+      await expect(page.locator(CAMERA)).toHaveAttribute('aria-pressed', on)
+      await context.close()
+    }
+
+    const [first, ...rest] = runs.map((run) => apartFromControls(sequenceOf(run)))
+    // Closed with the fill and the chip gone at once and the outline left on,
+    // opened, and the two eased back in — and exactly that, in the same order,
+    // in every run. The Picker never leaves; no Pick is outstanding, so there
+    // is no Stack.
+    expect(first?.slice(0, 2)).toEqual([
+      'closed, outline shown, fill hidden, chip hidden, picker shown, stack none',
+      'opened, outline shown',
+    ])
+    expect(first).toContain('eased highlight background-color')
+    expect(first).toContain('eased chip opacity')
+    // The two fades back in start together, at the opening, and which of them
+    // the engine reports first is its own business: on Next.js it changed from
+    // run to run (ticket 06 of the Next.js Connector). So they are compared as
+    // a set, and everything up to the opening in order.
+    for (const run of rest) expect(easedTogether(run)).toEqual(easedTogether(first ?? []))
+    // What the Panel's controls did as the Pick landed is taken out above, and
+    // held here: a colour fade, or a press, and never anything that hides.
+    for (const run of runs) {
+      const controls = sequenceOf(run).filter((line) =>
+        /^eased (camera|send|cancel|target(-row)?) /.test(line),
+      )
+      for (const line of controls) {
+        expect(line).toMatch(/ (color|background-color|border-\w+-color|scale)$/)
+      }
+      // The Panel arrives: a fade and a grow, and nothing that travels.
+      const panel = sequenceOf(run).filter((line) => line.startsWith('eased panel '))
+      expect(panel).toContain('eased panel opacity')
+      for (const line of panel) expect(line).toMatch(/ (opacity|transform)$/)
+    }
+    for (const run of runs) {
+      expect(heldFor(run)).toBeGreaterThanOrEqual(200)
+      expect(heldFor(run)).toBeLessThan(600)
+    }
+  })
+
+  test('is closed while the capture is asked for', async ({ page }) => {
+    let closedAtRequest: boolean | null = null
+    await page.route(CAPTURE, async (route: Route) => {
+      closedAtRequest = await closedForCapture(page)
+      await route.continue()
+    })
+    await open(page, probe('shutter-closed'))
+    await arm(page)
+    await pick(page, PICKED)
+    await expect.poll(() => closedAtRequest).toBe(true)
+  })
+
+  test('never hides the Stack or the Picker', async ({ page }) => {
+    // A Pick sent first, so there is a Stack for the second Pick's shutter to
+    // leave alone. Its chip sits bottom-right and the Picker bottom-centre:
+    // neither is anywhere near the element, and hiding them only made the
+    // Overlay blink.
+    const token = probe('shutter-stack')
+    await open(page, token)
+    await arm(page)
+    await pick(page, SECOND_PICKED)
+    await page.locator(NOTE).fill(`first ${token}`)
+    await page.locator(NOTE).press('Enter')
+    await sent(page)
+    await expect(page.locator('[data-part="stack"]')).toBeVisible()
+
+    await page.keyboard.press('Escape')
+    await expect(page.locator(PANEL)).toHaveCount(0)
+    await arm(page)
+    const at = await centre(page, PICKED)
+    await page.mouse.move(at.x, at.y)
+    // Settled: the first Pick's shutter is open and nothing in the Overlay is
+    // still easing, so what is recorded is this Pick alone.
+    await settled(page)
+    await watchShutter(page)
+    await page.mouse.click(at.x, at.y)
+    await expect(page.locator(PANEL)).toBeVisible()
+    await expect.poll(async () => (await shutterSeen(page)).length).toBeGreaterThan(1)
+
+    const closed = (await shutterSeen(page)).find((entry) => entry.closed === true)
+    expect({ picker: closed?.picker, stack: closed?.stack }).toEqual({
+      picker: 'shown',
+      stack: 'shown',
+    })
+    // Nothing of either fades out. The Picker does change on this click — it is
+    // disarmed, so its fill and its words change — but it never goes.
+    const eased = sequenceOf(await shutterSeen(page)).filter((line) =>
+      line.startsWith('eased'),
+    )
+    expect(eased.filter((line) => /(picker|stack)\S* opacity$/.test(line))).toEqual([])
+    expect(eased.filter((line) => line.startsWith('eased stack'))).toEqual([])
+  })
+})
+
+test.describe('the shutter under reduced motion', () => {
+  test.use({ reducedMotion: 'reduce' })
+
+  test('hides at once, only fades back in, and is still closed for the capture', async ({
+    page,
+  }) => {
+    let closedAtRequest: boolean | null = null
+    await page.route(CAPTURE, async (route: Route) => {
+      closedAtRequest = await closedForCapture(page)
+      await route.continue()
+    })
+    await open(page, probe('shutter-reduced'))
+    await arm(page)
+    const at = await centre(page, PICKED)
+    await page.mouse.move(at.x, at.y)
+    await expect(page.locator(HIGHLIGHT).first()).toBeVisible()
+    await watchShutter(page)
+    await page.mouse.click(at.x, at.y)
+    await expect(page.locator(PANEL)).toBeVisible()
+    await expect.poll(() => closedAtRequest).toBe(true)
+    await expect.poll(async () => (await shutterSeen(page)).length).toBeGreaterThan(1)
+    await settled(page)
+
+    // Closed at once, opened, and faded back in — a fade is not movement, so it
+    // is the one thing that eases for a developer who asked for less motion
+    // (the review-animations gate). Nothing else did.
+    const seen = sequenceOf(await shutterSeen(page))
+    const sequence = apartFromControls(seen)
+    expect(sequence.slice(0, 2)).toEqual([
+      'closed, outline shown, fill hidden, chip hidden, picker shown, stack none',
+      'opened, outline shown',
+    ])
+    expect(sequence).toContain('eased highlight background-color')
+    expect(sequence).toContain('eased chip opacity')
+    for (const entry of sequence.filter((line) => line.startsWith('eased'))) {
+      expect(entry).toMatch(/ (opacity|background-color)$/)
+    }
+    // The Picker, disarmed by this Pick, only fades too: it does not come down
+    // from a lift it never made, and its width snaps.
+    // So do the Panel's controls, whatever of theirs changed as the Pick landed,
+    // and so does the Panel itself as it arrives.
+    const taken = seen.filter((line) => !sequence.includes(line))
+    for (const entry of taken.filter((line) => !line.startsWith('eased panel '))) {
+      expect(entry).toMatch(/ (color|background-color|border-\w+-color)$/)
+    }
+    expect(seen.filter((line) => line.startsWith('eased panel '))).toEqual([
+      'eased panel opacity',
+    ])
+    expect(await onScreen(page)).toEqual({
+      outline: 'shown',
+      fill: 'shown',
+      chip: 'shown',
+      picker: 'shown',
+      stack: 'none',
+    })
+  })
+})
+
+test.describe('a capture that is moved, discarded or sent', () => {
+  test('a move deletes the capture it leaves before it takes the next', async ({
+    page,
+  }) => {
+    const calls = recordCaptures(page)
+    await open(page, probe('capture-move'))
+    await arm(page)
+    await pick(page, PICKED)
+    const first = await startedId(calls, 0)
+
+    // Watch the disk the whole time the Pick is moved through three elements.
+    const ids = new Set<string>()
+    let most = 0
+    const watching = setInterval(() => {
+      for (const call of calls) if (call.id) ids.add(call.id)
+      const present = [...ids].filter((id) => captureFile(id) !== null).length
+      most = Math.max(most, present)
+    }, 2)
+    try {
+      await altClick(page, SECOND_PICKED)
+      const second = await startedId(calls, 1)
+      await altClick(page, THIRD_PICKED)
+      const third = await startedId(calls, 2)
+      await expect.poll(() => captureFile(third)).not.toBeNull()
+
+      expect(calls.map((call) => `${call.method} ${call.id}`)).toEqual([
+        `POST ${first}`,
+        `DELETE ${first}`,
+        `POST ${second}`,
+        `DELETE ${second}`,
+        `POST ${third}`,
+      ])
+      expect(captureFile(first)).toBeNull()
+      expect(captureFile(second)).toBeNull()
+
+      // Discarded: `Escape` deletes the last one too.
+      await page.keyboard.press('Escape')
+      await expect(page.locator(PANEL)).toHaveCount(0)
+      await expect
+        .poll(() => calls.map((call) => `${call.method} ${call.id}`).at(-1))
+        .toBe(`DELETE ${third}`)
+      await expect.poll(() => captureFile(third)).toBeNull()
+    } finally {
+      clearInterval(watching)
+    }
+    expect(most).toBe(1)
+  })
+
+  test('sent with the toggle on, the agent is handed the file', async ({ page }) => {
+    const token = probe('capture-kept')
+    const calls = recordCaptures(page)
+    await open(page, token)
+    await arm(page)
+    await pick(page, PICKED)
+    await turnCameraOn(page)
+    const id = await startedId(calls, 0)
+
+    await page.locator(NOTE).fill(`what is this ${token}`)
+    await page.locator(NOTE).press('Enter')
+    await sent(page)
+    // The minimized Panel says a Screen Capture went, in a camera and its words.
+    const camera = page.locator(`${MINIMIZED} ${MINIMIZED_CAMERA}`)
+    await expect(camera).toHaveCount(1)
+    await expect(camera).toHaveAccessibleName(CAPTURE_SENT)
+    await expect(camera).toHaveAttribute('title', CAPTURE_SENT)
+
+    const body = await delivered(token)
+    const line = new RegExp(`^.*screen capture\\s+(\\S*${id}\\.png)`, 'm').exec(body)
+    const file = line?.[1] ?? ''
+    expect(file).not.toBe('')
+    expect(existsSync(file)).toBe(true)
+    // It is the server's to keep now: nothing on the page deletes it.
+    expect(calls.filter((call) => call.method === 'DELETE')).toHaveLength(0)
+  })
+
+  test('sent with the toggle off, no line travels and the file is gone', async ({
+    page,
+  }) => {
+    const token = probe('capture-deleted')
+    const calls = recordCaptures(page)
+    await open(page, token)
+    await arm(page)
+    await pick(page, PICKED)
+    const id = await startedId(calls, 0)
+    await expect.poll(() => captureFile(id)).not.toBeNull()
+
+    await page.locator(NOTE).fill(`what is this ${token}`)
+    await page.locator(NOTE).press('Enter')
+    await sent(page)
+    // Deleted, not sent: no camera on the minimized Panel.
+    await expect(page.locator(`${MINIMIZED} ${MINIMIZED_CAMERA}`)).toHaveCount(0)
+
+    const body = await delivered(token)
+    expect(body).not.toContain('screen capture')
+    expect(body).not.toContain(id)
+    expect(captureFile(id)).toBeNull()
+  })
+
+  test('a reload with a Pick still open deletes its capture', async ({ page }) => {
+    const calls = recordCaptures(page)
+    await open(page, probe('capture-reload'))
+    await arm(page)
+    await pick(page, PICKED)
+    const id = await startedId(calls, 0)
+    await expect.poll(() => captureFile(id)).not.toBeNull()
+
+    await page.reload()
+    await expect(page.locator(PICKER)).toBeVisible()
+    await expect.poll(() => captureFile(id)).toBeNull()
+  })
+
+  test('a move while the Send is in flight leaves the sent capture alone', async ({
+    page,
+  }) => {
+    const token = probe('capture-in-flight')
+    const calls = recordCaptures(page)
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    await page.route('**/__agent/pick', async (route: Route) => {
+      await held
+      await route.continue()
+    })
+    await open(page, token)
+    await arm(page)
+    await pick(page, PICKED)
+    await turnCameraOn(page)
+    const sentId = await startedId(calls, 0)
+
+    await page.locator(NOTE).fill(`what is this ${token}`)
+    await page.locator(NOTE).press('Enter')
+    // The Send is on its way and not yet answered; the developer moves the Pick.
+    await altClick(page, SECOND_PICKED)
+    const moved = await startedId(calls, 1)
+    release()
+    await sent(page)
+
+    const body = await delivered(token)
+    expect(body).toContain(`${sentId}.png`)
+    expect(captureFile(sentId)).not.toBeNull()
+    expect(
+      calls.filter((call) => call.method === 'DELETE' && call.id === sentId),
+    ).toEqual([])
+    // The one the move took belongs to no Pick once the Send is accepted.
+    await expect.poll(() => captureFile(moved)).toBeNull()
+  })
+})

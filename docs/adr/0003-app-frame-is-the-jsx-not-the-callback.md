@@ -51,7 +51,7 @@ plausibly why React DevTools' upstream context differs from ours. v0 is not that
 - **Spec §12's sentence is now wrong** where it describes the rule. It is right about
   everything else in that bullet — the content sniff, both sentinel spellings, popping
   React's top frame. Ticket 22 should correct the sentence rather than the paragraph.
-- The change is one loop in `readAppFrame`. Two tests hold it: a seam-1 test that sends
-  one stack carrying both frames and asserts which comes back, and the seam-2 badge
-  journey. The seam-1 one was verified to fail under the old rule before being kept —
+- The change is one loop in `readAppFrame`. Two tests hold it: a server-suite test that sends
+  one stack carrying both frames and asserts which comes back, and the browser-suite badge
+  journey. The server-suite one was verified to fail under the old rule before being kept —
   a test for a one-line choice is worthless if it passes either way.

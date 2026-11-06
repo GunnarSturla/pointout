@@ -44,7 +44,7 @@ export interface StartNextOptions {
   /** What Next binds to; loopback by default, as the Vite harness does. */
   host?: string
   /**
-   * The port to bind; by default Next chooses one. Seam 2 names its own, so a
+   * The port to bind; by default Next chooses one. The browser suite names its own, so a
    * Playwright project can carry the Next page's origin as its `baseURL`.
    */
   port?: number

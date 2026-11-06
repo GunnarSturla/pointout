@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 
-// The four test-only overrides seam 1 fakes the harness through. The names are
+// The four test-only overrides the server suite fakes the harness through. The names are
 // normative and documented in docs/agents/testing.md; the plugin reads them
 // from `process.env` by the same strings (ticket 02 onward).
 export const ENV_REGISTRY_DIR = 'POINTOUT_REGISTRY_DIR'
@@ -20,7 +20,7 @@ export const ENV_PATH = 'PATH'
 
 /**
  * The operating system the server believes it is on. Screen Capture is macOS
- * only, so seam 1 states the platform rather than inheriting it: the capture
+ * only, so the server suite states the platform rather than inheriting it: the capture
  * journeys then read the same on a Linux checkout as on a mac, and "not macOS"
  * is observable from a mac. Test-only, like the four above.
  */
@@ -28,7 +28,7 @@ export const ENV_PLATFORM = 'POINTOUT_PLATFORM'
 
 /**
  * Not a harness boundary — the server's own clock. Thirty minutes is longer
- * than any test is allowed to take, so seam 1 moves the clock instead of
+ * than any test is allowed to take, so the server suite moves the clock instead of
  * waiting for it. Test-only, like the four above; a consumer never sets it.
  */
 export const ENV_CLOCK_SKEW = 'POINTOUT_CLOCK_SKEW_MS'
@@ -41,7 +41,7 @@ export const ENV_CLOCK_SKEW = 'POINTOUT_CLOCK_SKEW_MS'
 export const ENV_CLOCK_SKEW_FILE = 'POINTOUT_CLOCK_SKEW_FILE'
 
 /**
- * This test process's skew file, one per process. Seam 1 runs each file in a
+ * This test process's skew file, one per process. The server suite runs each file in a
  * forked process of its own, so a file's clock reaches the Next servers it
  * started and no other file's.
  */

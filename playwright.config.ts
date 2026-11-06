@@ -1,15 +1,15 @@
 import { defineConfig, devices } from '@playwright/test'
-import { PARAMETERIZED_SUITES, SEAM2_PORT, TEST_BEDS } from './test/harness/hosts.js'
-import { SEAM2_LOCK_WAIT_MS } from './test/harness/seam2-lock.js'
+import { PARAMETERIZED_SUITES, BROWSER_PORT, TEST_BEDS } from './test/harness/hosts.js'
+import { BROWSER_LOCK_WAIT_MS } from './test/harness/browser-lock.js'
 
-// Seam 2: the browser, in all three engines, against the same dev server seam 1
+// The browser suite: the browser, in all three engines, against the same dev server the server suite
 // boots — the harness faked at the same four boundaries.
 //
 // The server is started by `globalSetup` rather than by `webServer`: the module
 // that boots it is TypeScript, Playwright compiles its own, and `node` on this
 // repo's Node floor cannot run it. The port is bound strictly, so a leftover
 // server fails the run loudly instead of being attached to (see serve.ts).
-const baseURL = `http://127.0.0.1:${SEAM2_PORT}`
+const baseURL = `http://127.0.0.1:${BROWSER_PORT}`
 
 const ENGINES = [
   { name: 'chromium', device: devices['Desktop Chrome'] },
@@ -18,7 +18,7 @@ const ENGINES = [
 ]
 
 /**
- * What a whole run may take once it holds the machine's seam-2 lock. A healthy
+ * What a whole run may take once it holds the machine's browser-suite lock. A healthy
  * all-engine run took 12.4 minutes at a load of 10 to 20 once ten suites ran on
  * Next's two test beds as well (Next.js Connector ticket 06), and overran 15 at a
  * load of 36; this bounds a stall, such as one the machine's sleep caused.
@@ -28,10 +28,10 @@ const ENGINES = [
 const RUN_BUDGET_MS = 40 * 60 * 1000
 
 export default defineConfig({
-  testDir: 'test/seam2',
+  testDir: 'test/browser',
   testMatch: '**/*.spec.ts',
   globalSetup: './test/harness/serve.ts',
-  globalTimeout: RUN_BUDGET_MS + SEAM2_LOCK_WAIT_MS,
+  globalTimeout: RUN_BUDGET_MS + BROWSER_LOCK_WAIT_MS,
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   reporter: process.env.CI ? 'list' : [['list']],

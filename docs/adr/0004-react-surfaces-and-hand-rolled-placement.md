@@ -67,7 +67,7 @@ dependency.
   prebundles them with the app's own dependencies rather than discovering them on the
   first page load. If a later version ever supports another framework's Overlay, this
   is the decision it reopens.
-- **The Trusted Types claim changes hands.** The seam-1 test that reads the built
+- **The Trusted Types claim changes hands.** The server-suite test that reads the built
   Overlay for markup-string APIs still passes — react-dom is the consumer's module, not
   ours — but the guarantee that nothing in the Overlay builds DOM from a string now
   rests on react-dom's behaviour under `require-trusted-types-for 'script'`. That has

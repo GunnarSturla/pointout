@@ -1,12 +1,12 @@
 import { defineConfig } from 'vitest/config'
 
-// Seam 1: the dev server's HTTP surface, plus the repo-shape checks that have
-// nowhere else to live. This is the default run. Seam 3 has its own config and
+// The server suite: the dev server's HTTP surface, plus the repo-shape checks that have
+// nowhere else to live. This is the default run. The Claude suite has its own config and
 // its own command, and is never included here (see docs/agents/testing.md).
 export default defineConfig({
   test: {
-    name: 'seam1',
-    include: ['test/seam1/**/*.test.ts'],
+    name: 'server',
+    include: ['test/server/**/*.test.ts'],
     environment: 'node',
     // Files run side by side, each in a forked process of its own. A file owns
     // `process.env` while it runs, and `advanceClock` moves the clock through

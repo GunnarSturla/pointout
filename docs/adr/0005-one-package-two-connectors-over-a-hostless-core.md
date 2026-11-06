@@ -52,7 +52,7 @@ no Host.**
 
 - `GLOSSARY.md` gains **Host** and **Connector**. "Adapter" stays reserved for delivery to
   other harnesses.
-- Seams 1 and 2 run against both Hosts, parameterized by Host. A test still imports no
+- The server and browser suites run against both Hosts, parameterized by Host. A test still imports no
   server module.
 - The core has to stop importing Vite's `Logger` type, and grows its own.
 - Out of scope remains: other harnesses, and other UI frameworks than React.

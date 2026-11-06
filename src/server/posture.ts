@@ -2,7 +2,7 @@
 // out loud" line that belongs to startup lands here, in the spec's order, and
 // nothing logs a posture line of its own anywhere else: a service hands its line
 // to the block and says nothing itself. `docs/posture.md` lists every line and
-// what it means for the developer; the seam-1 posture test holds the wording.
+// what it means for the developer; the server-suite posture test holds the wording.
 
 import { DIRECTORY_MISSING, SHAPE_UNRECOGNISED } from '../wire.js'
 import type { HostName } from './host-name.js'

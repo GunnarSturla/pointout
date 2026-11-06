@@ -42,7 +42,7 @@ The bin, `pointout`, is the CLI and belongs to no Host. `vite` is an **optional*
 Connector.
 
 **A Connector lives in its own directory**, `src/<host>/`, and is the only code that
-imports its Host, even a type. `test/seam1/connectors.test.ts` reads the emitted `dist/`
+imports its Host, even a type. `test/server/connectors.test.ts` reads the emitted `dist/`
 and fails any module outside `dist/vite/` that imports `vite`, any outside `dist/next/`
 that imports `next`, and either Connector importing the other's Host. The Next.js
 Connector imports nothing from `next` at all, not even a type: Next's declarations make

@@ -5,7 +5,7 @@
 // Every node in the Overlay is built with `createElement` and `textContent`, or
 // by React out of the same two calls, and none is ever built from a markup
 // string: a consumer with `require-trusted-types-for 'script'` would throw on
-// that, and it costs nothing to never write it. A seam-1 test reads the emitted
+// that, and it costs nothing to never write it. A server-suite test reads the emitted
 // files for the property, so the prose here does not name the API either.
 
 import { HOST_STYLE, OVERLAY_STYLESHEET } from './styles.js'

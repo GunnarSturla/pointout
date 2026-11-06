@@ -30,28 +30,28 @@ Vite and Next, never `src/`.
 A test against the real harness asserts on harness artefacts — registry files, frames,
 the transcript on disk — and never on what the model says.
 
-## Three seams
+## Three suites
 
-| seam | what it is | tool | command |
+| suite | what it is | tool | command |
 | --- | --- | --- | --- |
-| 1 | the dev server's HTTP surface | Vitest | `npm run test:seam1` |
-| 2 | the browser, in three engines | Playwright | `npm run test:seam2` |
-| 3 | a real Claude Code harness, no model | Vitest, own config | `npm run test:seam3` |
-| 3 | a real Claude Code harness, with a model | the same config, `--mode model` | `npm run test:seam3:model` |
+| server | the dev server's HTTP surface | Vitest | `npm run test:server` |
+| browser | the browser, in three engines | Playwright | `npm run test:browser` |
+| Claude | a real Claude Code harness, no model | Vitest, own config | `npm run test:claude` |
+| Claude | a real Claude Code harness, with a model | the same config, `--mode model` | `npm run test:claude:model` |
 
-`npm test` runs seams 1 and 2. **Seam 3 is never in the default run**: it spawns a real
+`npm test` runs the server and browser suites. **The Claude suite is never in the default run**: it spawns a real
 session on the developer's own account and touches the real registry, and its model tier
 costs tokens. It needs the `claude` CLI and a login, skips with that reason when either
 is missing, and never runs in CI. Ticket 20 built the no-model tier and ticket 21 the
 model tier, on the same launcher. The two are separate commands so the free one can run
-often: `vitest.seam3.config.ts` includes the model tier's files only in `--mode model`,
-and the model test file also refuses to run unless that mode set `SEAM3_TIER=model`.
+often: `vitest.claude.config.ts` includes the model tier's files only in `--mode model`,
+and the model test file also refuses to run unless that mode set `TEST_CLAUDE_TIER=model`.
 
-**Seam 1** is where most tests live. `test/harness/dev-server.ts` starts a real Vite dev
+**The server suite** is where most tests live. `test/harness/dev-server.ts` starts a real Vite dev
 server, with the plugin, against the real example app, so the module graph and the
 sourcemaps are real. Tests POST and GET against it.
 
-Seam 1 runs its files side by side, each in a forked process of its own
+The server suite runs its files side by side, each in a forked process of its own
 (`pool: 'forks'`, `maxWorkers: 4`, in `vitest.config.ts`). A file owns `process.env`
 while it runs, and `advanceClock` moves the clock through it, so the pool is pinned:
 `threads` would run files in one process, sharing its working directory, its signal
@@ -85,20 +85,20 @@ Four helpers sit beside it, all of them fixture code under the same rule:
   startup posture block is read through it — the server's own output, which is the kind
   of observation these conventions ask for, and a passing run stays quiet.
 
-**Seam 2** exists because a browser is the only honest way to produce a real owner stack.
+**The browser suite** exists because a browser is the only honest way to produce a real owner stack.
 Few journeys, chosen for what only a browser can show. It runs against the same server,
 booted by `test/harness/serve.ts` on a fixed port — Playwright's `globalSetup`, not its
 `webServer`: the module is TypeScript, Playwright compiles its own, and `node` on this
 repo's Node floor cannot run it (type stripping is unflagged only from 22.18; the floor
 is 22.12). The port is bound strictly, so a dev server left over
-from an interrupted run fails seam 2 loudly with the port named, rather than being
+from an interrupted run fails the browser suite loudly with the port named, rather than being
 silently attached to.
 
-**One full seam 2 runs at a time on the machine.** Two browser suites side by side,
+**One full browser suite runs at a time on the machine.** Two browser suites side by side,
 from two worktrees, roughly double every test's time. So `globalSetup` first takes a
-lock, `pointout-seam2.lock` under the OS temp dir, holding its pid
-(`test/harness/seam2-lock.ts`), whatever `SEAM2_PORT` says. A second run prints
-*waiting for another seam-2 run, pid N* once, and waits for up to 10 minutes before it
+lock, `pointout-browser.lock` under the OS temp dir, holding its pid
+(`test/harness/browser-lock.ts`), whatever `BROWSER_PORT` says. A second run prints
+*waiting for another browser-suite run, pid N* once, and waits for up to 10 minutes before it
 fails with that reason. A lock whose pid is dead, from a run that was killed, is taken
 over. The lock is released on teardown, and on exit if teardown never ran.
 Playwright's `globalTimeout` is 15 minutes plus that wait, since it counts
@@ -113,10 +113,10 @@ done Pick's ~8 s dismiss and the 1.5 s tick. CSS transitions do not run on that 
 so a wait for one to settle stays real.
 
 **Run the final full suite as `caffeinate -i npm test` on macOS.** Idle sleep has been
-measured stretching one seam-2 run to 18.6 minutes. `caffeinate -i` stops idle sleep
+measured stretching one browser-suite run to 18.6 minutes. `caffeinate -i` stops idle sleep
 for as long as the command runs; it does not stop a lid close.
 
-**Seam 3** exists because the first two fake the harness, and v0 depends on undocumented
+**The Claude suite** exists because the first two fake the harness, and v0 depends on undocumented
 surfaces that have already churned. A suite that fakes them can pass forever against a
 harness that has moved.
 
@@ -155,7 +155,7 @@ each beside the code that enforces it.
 
 ### The model tier
 
-`test/seam3/model/canaries.test.ts`, on the same fixture code. It spends a handful of
+`test/claude/model/canaries.test.ts`, on the same fixture code. It spends a handful of
 turns on haiku, the cheapest model the CLI names; a full run is about 100 s. It runs
 `init` in the scratch checkout exactly as a consumer would, from the installed bin, and
 then starts these throwaway sessions:
@@ -166,7 +166,7 @@ then starts these throwaway sessions:
   `queued-unaddressed`. The bystander is never sent a Pick. Its one turn, spike 16's
   duplicate read raw at a probe, goes to the blackhole.
 - **an allowlisted session**, in manual permission mode, handed the **fixture
-  allowlist** (`test/seam3/model/fixture-allowlist.ts`) with `--settings` from a
+  allowlist** (`test/claude/model/fixture-allowlist.ts`) with `--settings` from a
   temporary directory. It exists so that the ack canary can run unattended. It is a
   `PreToolUse` hook, not a `permissions.allow` rule, because a rule can only glob:
   `Bash(curl *<route>*)` would also allow a `curl` that uploads a file elsewhere and
@@ -177,8 +177,8 @@ then starts these throwaway sessions:
   chaining ack and done, and echoing. Anything else falls through to the
   permission prompt, which the suite refuses. It is a test fixture, it ships nowhere,
   and it is never configuration to recommend (spec §19).
-  `test/seam3/fixture-allowlist.test.ts` holds the shape to what it must and must never
-  allow, and `test/seam3/shipped.test.ts` reads every packed file and `src/` and finds
+  `test/claude/fixture-allowlist.test.ts` holds the shape to what it must and must never
+  allow, and `test/claude/shipped.test.ts` reads every packed file and `src/` and finds
   the fixture in none. Both tiers run both.
 - **a manual-mode session** with no allowlist, whose permission prompts are approved
   through the pty. The same hook, allowing nothing, logs every Bash call exactly, and a
@@ -202,7 +202,7 @@ One canary is **model-dependent** and says so in its title and output: the ack a
 reaching the dev server depend on the model following the skill. If that canary fails
 alone, the model may be at fault rather than the harness.
 
-**On success it records the version.** A reporter (`test/seam3/model/record-version.ts`)
+**On success it records the version.** A reporter (`test/claude/model/record-version.ts`)
 rewrites `src/server/claude/verified-harness.ts` when every test in the run passed and
 none was skipped:
 
@@ -283,11 +283,11 @@ file after a green run.
 the connection rather than truncating; and the `held`, `denied`, `expired`, `refused`
 and `delivered` Receipts, which need a Target in a different inbound policy. All six
 statuses pass through the one emitter that `dropped` was proven through (spike 16), and
-seam 1 covers what v0 does with each.
+the server suite covers what v0 does with each.
 
 ## Faking the harness — the four overrides
 
-Seam 1 fakes the harness at its boundaries, through environment overrides the plugin
+The server suite fakes the harness at its boundaries, through environment overrides the plugin
 needs anyway. These names are normative; the plugin reads them from `process.env` by
 exactly these strings, and `test/harness/fixture-env.ts` sets them.
 
@@ -305,10 +305,10 @@ Each override is test-only. A consumer never sets any of them.
 `POINTOUT_CLOCK_SKEW_MS` is a fifth override, and the odd one out: it is
 not a harness boundary but the server's own clock, read afresh on every call. Spec
 §15 gives every queue entry thirty minutes, which is longer than a test is allowed
-to take, so seam 1 moves the clock rather than waiting for it —
+to take, so the server suite moves the clock rather than waiting for it —
 `advanceClock(31 * 60 * 1000)` from `test/harness/fixture-env.ts`, and
 `advanceClock(0)` in `afterEach` to put it back. It is process-wide, so it moves
-every dev server the file has open. Seam 1 runs its files side by side, but each in a
+every dev server the file has open. The server suite runs its files side by side, but each in a
 forked process of its own, so a file's clock never reaches another file; that is what
 makes it safe, and why the pool is pinned to `forks`. Like the four above, a consumer
 never sets it.
@@ -326,12 +326,12 @@ Vite, where the variable can be set in-process.
 
 `POINTOUT_PLATFORM` is a sixth override, and the last one that is not a
 harness boundary: it is the platform the server believes it is on. Screen Capture is
-macOS only (spec §10), so seam 1 states the platform rather than inheriting it.
+macOS only (spec §10), so the server suite states the platform rather than inheriting it.
 `createFixtureEnv` sets it to `darwin`, which makes the capture journeys read the
 same on a Linux checkout as on a mac; a test that wants the disabled-with-reason
 path passes `platform: 'linux'`. Like the others, a consumer never sets it.
 
-What it does not do is make seam 1 a test of macOS. The tool is faked; whether a real
+What it does not do is make the server suite a test of macOS. The tool is faked; whether a real
 `screencapture` behaves as documented is what the dev server's own startup probe asks,
 on the machine it is actually running on, every time it starts.
 
@@ -340,7 +340,7 @@ on the machine it is actually running on, every time it starts.
 `POINTOUT_VERIFIED_HARNESS` is a seventh override (ticket 19). The posture
 block prints the Claude Code version the model-tier canaries last passed against,
 which ticket 21 records in `src/server/claude/verified-harness.ts`. That record
-changes every time the canaries pass. So seam 1 states the version it wants,
+changes every time the canaries pass. So the server suite states the version it wants,
 `<version>@<YYYY-MM-DD>` or `never`, and the posture snapshots do not move when the
 record does. Like the others, a consumer never sets it. `docs/posture.md` lists every
 posture line.
@@ -373,7 +373,7 @@ with a server snapshot (`FullViewportDecoy.tsx`), so hydration never warns.
 
 The shared folder is outside both apps, so each lets it in: Vite's
 `server.fs.allow` names it (Vite then serves its files under `/@fs/<absolute path>`,
-which is the URL a seam-1 test fetches), and Next's `turbopack.root` is the repository
+which is the URL a server-suite test fetches), and Next's `turbopack.root` is the repository
 root.
 
 ### Choosing a Host
@@ -381,7 +381,7 @@ root.
 A test names the Host it wants; one that names none gets Vite, which is how every test
 written before the Next.js Connector still runs.
 
-- **Seam 1:** `startExampleServer({ on: 'next' })` from `test/harness/dev-server.ts`.
+- **The server suite:** `startExampleServer({ on: 'next' })` from `test/harness/dev-server.ts`.
   It takes `env`, `claudePid`, `gitShim`, `host` and `port` (Next chooses one unless
   it is named), but no `root` or `configFile`. A suite that is the same on both Hosts runs `describe.each(['vite', 'next'])`
   over it, as `guard.test.ts` does. `startNextServer` in `test/harness/next-server.ts`
@@ -389,7 +389,7 @@ written before the Next.js Connector still runs.
   (`POINTOUT_EXAMPLE_WITHOUT_POINTOUT`), `webpack: true` runs `next dev --webpack`,
   and `copy: true` serves a copy of the app at `examples/.harness-next-<name>/`, so a
   test can edit its `next.config.ts` without restarting every other file's server.
-- **Seam 1, temp apps** (Next.js Connector ticket 05): `tempApps('next')` writes a
+- **The server suite, temp apps** (Next.js Connector ticket 05): `tempApps('next')` writes a
   Next.js consumer instead (`next.config.mjs` calling `withPointout(config,
   options)`, a one-page App Router, `next`, `react` and `react-dom` linked in) and
   serves each with `startNextServer({ app })`. Its page never compiles, since
@@ -403,9 +403,9 @@ written before the Next.js Connector still runs.
   serving pid, once started, is in the capture directory's name. Mid-test, the fake `screencapture` is switched with
   `fixture.captureBecomes(mode)`, a file the fake reads, since a change to this
   process's environment never reaches `next dev`.
-- **Seam 2:** `globalSetup` starts both apps: Vite on `SEAM2_PORT`, Next on
-  `SEAM2_NEXT_PORT` (the next port up unless set), and Next is handed Vite's fixture
-  environment, so both read one registry and every seam-2 session is a Candidate on
+- **The browser suite:** `globalSetup` starts both apps: Vite on `BROWSER_PORT`, Next on
+  `BROWSER_NEXT_PORT` (the next port up unless set), and Next is handed Vite's fixture
+  environment, so both read one registry and every browser-suite session is a Candidate on
   either. Each engine has three projects, one per **test bed** (`TEST_BEDS` in
   `test/harness/hosts.ts`): `chromium` is Vite's, `chromium-next-app` the App Router
   route and `chromium-next-pages` the Pages Router route, and the project's `baseURL`
@@ -414,9 +414,9 @@ written before the Next.js Connector still runs.
   A parameterized suite opens its page **relative** to the bed, `page.goto('?probe=…')`
   and never `'/?probe=…'`, which would drop the route; it reaches `/__agent` by an
   absolute path, which keeps only the origin, and a drain posts the secret of the
-  server the page is on (`SEAM2_NEXT_DISCOVERY_ENTRY` beside `SEAM2_DISCOVERY_ENTRY`).
+  server the page is on (`BROWSER_NEXT_DISCOVERY_ENTRY` beside `BROWSER_DISCOVERY_ENTRY`).
   A spec on Vite's projects reaches Next by name, with
-  `page.goto(hostURL('next', '/pages-router'))`. `test:seam2:fast` runs `chromium`,
+  `page.goto(hostURL('next', '/pages-router'))`. `test:browser:fast` runs `chromium`,
   Vite only; `--project='chromium*'` adds Next's two beds.
 
 ### What starting Next costs, and how it is started
@@ -458,9 +458,9 @@ git and left out of `npm run typecheck`.
 
 Measured (October 2026, 8-core laptop, load average 4 to 14): a `next dev` is ready in
 about 0.3 s and closes in well under a second; the first request for `/` compiles in
-about 1.2 s and `/pages-router` in about 0.6 s. Seam 1 went from about 25.3 s to
+about 1.2 s and `/pages-router` in about 0.6 s. The server suite went from about 25.3 s to
 27.7 s with the two Next files (`next-app.test.ts`, `next-harness.test.ts`, four
-servers between them). Seam 2's globalSetup boots Next beside Vite, at the same time;
+servers between them). The browser suite's globalSetup boots Next beside Vite, at the same time;
 the Chromium-only run went from about 1.0 to 1.1 minutes with `next-app.spec.ts`'s six
 journeys. With the ten suites parameterized (ticket 06), Next's two beds add 255
 Chromium journeys, about 2.2 minutes on their own, and 496 Firefox and WebKit journeys,
@@ -475,7 +475,7 @@ bed, in all three engines: the Owner chain React keeps for an element on each ro
 each link with the raw stack React captured where it was created. They hold Turbopack
 client-chunk frames on both routers and the `about://React/Server/file://…` frames of
 a server chunk, with the run's origin written `{origin}` and its output folder
-`{distDir}`. Resolvers are tested against them through seam 1, without a browser, by
+`{distDir}`. Resolvers are tested against them through the server suite, without a browser, by
 putting a fresh server's origin and folder back. `npm run capture:next-frames`
 (`playwright.capture.config.ts`, `test/capture/`) writes them; it is not in `npm test`.
 Two captures a few minutes apart were identical apart from WebKit's stack depth.
@@ -486,7 +486,7 @@ the fix is to capture again.
 loads what a page would have first (`loadCapturedChunks`: both routes, then every chunk
 the captures name). Load before you Pick: Turbopack writes a chunk only when a page asks
 for it. The Next.js Connector judges a client frame's file against the Pick's
-`pageLoadedAt`, when the page began to load; a body without one, as most seam-1 bodies
+`pageLoadedAt`, when the page began to load; a body without one, as most server-suite bodies
 are, is judged against when pointout started, so a file edited since then reads
 approximate. `test/harness/call-sites.ts`
 gives a suite the three call sites of `OwnerChainDepth.tsx` on either Host — the
@@ -501,14 +501,14 @@ and a test bed that shimmers on its own would make that assertion meaningless.
 
 One fixture is written to by a test:
 `examples/shared/fixtures/hot-update.css` holds a single
-declaration that `test/seam2/highlight.spec.ts` rewrites to make a real hot update
+declaration that `test/browser/highlight.spec.ts` rewrites to make a real hot update
 happen, and writes back exactly as it found it. It runs in one engine, because a hot
 update is the dev server moving the page rather than anything an engine does, and three
 engines at once would be three writers of one file.
 
-## Seam 1 also holds the repo-shape checks
+## The server suite also holds the repo-shape checks
 
-`test/seam1/repo-shape.test.ts` asserts on files rather than on HTTP: that the
+`test/server/repo-shape.test.ts` asserts on files rather than on HTTP: that the
 repository is TypeScript, and that the lint and format configuration and the two gates are
 what `packaging.md` says they are. They are still
 outside-in — they read what is on disk — and they have nowhere better to live.

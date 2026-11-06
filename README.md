@@ -458,7 +458,7 @@ never refuses, when yours is newer. Every line and what it means is in
 npm install
 npm run dev            # builds dist/, then serves examples/react-app/ with the plugin
 npm run build && npm run dev --workspace pointout-example-next   # the Next.js test bed
-npm test               # seams 1 and 2: the dev server's HTTP surface, then three browsers
+npm test               # the server and browser suites: the dev server's HTTP surface, then three browsers
 npm run lint && npm run format:check && npm run typecheck
 ```
 
@@ -482,8 +482,8 @@ runs.
 
 | command | what it costs | what it checks |
 | --- | --- | --- |
-| `npm run test:seam3` | **no tokens.** The session's model traffic goes to a loopback port that drops it unread | the registry entry's shape, the key file, the socket, the idle notice at the dev server's socket, and that a child session does not register |
-| `npm run test:seam3:model` | **tokens**: a handful of turns on haiku, about 100 s | a real Pick landing byte for byte, the duplicate Receipt, the manual-mode stall and its approval, the agent's ack and done (the one model-dependent canary), and both hooks draining a queued Pick. On a fully green run it rewrites `src/server/claude/verified-harness.ts`. Commit that file |
+| `npm run test:claude` | **no tokens.** The session's model traffic goes to a loopback port that drops it unread | the registry entry's shape, the key file, the socket, the idle notice at the dev server's socket, and that a child session does not register |
+| `npm run test:claude:model` | **tokens**: a handful of turns on haiku, about 100 s | a real Pick landing byte for byte, the duplicate Receipt, the manual-mode stall and its approval, the agent's ack and done (the one model-dependent canary), and both hooks draining a queued Pick. On a fully green run it rewrites `src/server/claude/verified-harness.ts`. Commit that file |
 
 Run the free tier often. Run the model tier after every Claude Code upgrade, when the
 posture block's `harness version` line warns, and on a regular cadence.
@@ -491,7 +491,7 @@ posture block's `harness version` line warns, and on a regular cadence.
 **Not exercised live**, and kept as static reads of the harness: the rate limit (a
 burst of thirty needs thirty turns); the 1 MiB line limit, where the harness drops the
 connection rather than truncating; and the `held`, `denied`, `expired`, `refused` and
-`delivered` Receipts, which need a Target with a different inbound policy. Seam 1
+`delivered` Receipts, which need a Target with a different inbound policy. The server suite
 covers what v0 does with each of them. A frame with a mismatched `session_id` is
 dropped with no Receipt at all (measured, Claude Code 2.1.280).
 

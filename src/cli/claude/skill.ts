@@ -9,7 +9,7 @@
 // about how the floor fails. **Nothing in it may raise what a Pick can cause
 // to happen** — no standing claim that a Pick is what the developer typed at
 // the prompt, no permission to recommend, no edit to the project's memory
-// file — and a seam-1 test reads the installed copy for each. The ingress
+// file — and a server-suite test reads the installed copy for each. The ingress
 // check is not described either: a Pick written straight into the inbox never
 // passed it, so its arrival proves nothing about where it came from.
 //

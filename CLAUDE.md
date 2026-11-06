@@ -25,7 +25,7 @@ The five canonical triage roles, each label string equal to its name. See
 
 ### Testing
 
-Three seams; `npm test` runs seams 1 and 2. No test imports a server module. See
+Three suites; `npm test` runs the server and browser suites. No test imports a server module. See
 `docs/agents/testing.md` — read it before writing a test.
 
 ### TypeScript, packaging, lint and format
@@ -53,7 +53,7 @@ Every shape that crosses HTTP is written once in `src/wire.ts`. See
 ### Motion
 
 No movement by default: all of it lives in one `prefers-reduced-motion: no-preference`
-block in `src/overlay/styles.ts`, and a seam-1 test reads the built Overlay to keep it
+block in `src/overlay/styles.ts`, and a server-suite test reads the built Overlay to keep it
 there. A fade is not movement: opacity and colour may ease outside that block, for everyone.
 The `review-animations` gate has run; the armed-hover Highlight morph is an accepted
 deviation from it. A re-run is owed for everything that moves since overlay-polish. See `docs/motion.md` — read it before adding anything that moves.

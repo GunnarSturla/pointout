@@ -40,7 +40,7 @@ it.
 The startup posture block is complete and ordered (ticket 19); every line and what it
 means is in `docs/posture.md`. It is logged once, at `warn` when any line degrades.
 `src/server/claude/harness-version.ts` compares the registry's newest `version` with
-`VERIFIED_HARNESS` and warns, never refuses; seam 1 overrides the record with
+`VERIFIED_HARNESS` and warns, never refuses; the server suite overrides the record with
 `POINTOUT_VERIFIED_HARNESS` (`<semver>@<YYYY-MM-DD>` or `never`), test-only.
 A Pick refused at the cap no longer spends its capture: `ingestPick` takes the claim
 only after `fitPayload` accepts. The §21 audit table, one test per item, is in ticket
@@ -109,9 +109,9 @@ server (`src/server/report-back.ts`), the 30 s countdown in the page
 offer. The offer is not a Pick state; `reportBack.state` on the status row says
 whether a `sent` or `unknown` Pick is offered. Each TTL case has its own sentence.
 
-Seam 3's no-model tier (ticket 20) spawns a real, scrubbed, throwaway session through
+The Claude suite's no-model tier (ticket 20) spawns a real, scrubbed, throwaway session through
 `test/harness/claude-session.ts` and checks the harness shapes v0 pins, at no token
-cost. Its model tier (ticket 21, `npm run test:seam3:model`) costs tokens, runs a
+cost. Its model tier (ticket 21, `npm run test:claude:model`) costs tokens, runs a
 blackholed bystander session beside the real one, and on a fully green run rewrites
 `src/server/claude/verified-harness.ts` — `VERIFIED_HARNESS` is `null` or a three-line
 `{ version, verifiedAt }` literal, and nothing but its reporter may change that shape.
@@ -139,7 +139,7 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
   block at the bottom of `src/overlay/styles.ts`. A fade is not movement: just above
   that block, a fade — `opacity`, `color`, `background-color`, `border-color`,
   `outline-color` — may ease, for every developer, and `transition: none` may stop it. A module that animates in script has to name `prefers-reduced-motion`
-  itself. A seam-1 test reads the built Overlay for all of it. See `docs/motion.md`,
+  itself. A server-suite test reads the built Overlay for all of it. See `docs/motion.md`,
   which also records the `review-animations` gate's outcome and the deviations it
   accepted.
 - **Borrowed code is credited**: a provenance header, an end-of-borrow marker, and a
@@ -161,21 +161,21 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 - **`Origin` cannot be stripped from a browser request** in any engine — Chromium,
   Firefox and WebKit all restore their own on `route.continue({ headers })`. Any test
   that wants a real 4xx should refuse on something else, such as the method.
-- **`npx vitest` skips the `pretest` build hook**, and seam 1 exercises the emitted
-  `dist/`. Run `npm run test:seam1`, or your test is grading the last build.
+- **`npx vitest` skips the `pretest` build hook**, and the server suite exercises the emitted
+  `dist/`. Run `npm run test:server`, or your test is grading the last build.
 - **Closing a Vite dev server while its optimizer runs never returns.**
   `test/harness/dev-server.ts` awaits `waitForRequestsIdle()` before `close()`, and
   gives the two 20 s, failing with the server's root and port if they hang.
-- **Seam 1 runs its files in parallel, in forked workers** (`pool: 'forks'`, four at
+- **The server suite runs its files in parallel, in forked workers** (`pool: 'forks'`, four at
   a time). A file still owns `process.env` and `advanceClock`, because it owns its
   process; never switch the pool to `threads`. Tests and hooks get 30 s; a test that
   runs a whole command gives its own longer timeout beside itself.
-- **A hot update reaches every page on the seam-2 server**, in every worker and
+- **A hot update reaches every page on the browser-suite server**, in every worker and
   engine, and re-measures each Highlight. `highlight.spec.ts` keeps its hot update
   and its frame-by-frame morph apart with `apartFromHotUpdates`
   (`test/harness/hot-update-lock.ts`); a new journey that watches frames takes the
   same lock.
-- **Every example-app fixture sits below the fold.** A seam-2 test must
+- **Every example-app fixture sits below the fold.** A browser-suite test must
   `scrollIntoViewIfNeeded` before measuring; `elementsFromPoint` outside the viewport
   answers nothing.
 - **`ours(event)` may not be `composedPath().includes(host)`** — with the shield up
@@ -183,23 +183,23 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 
 - **A `session_id`-mismatched frame produces no Receipt** (Claude Code 2.1.280,
   ticket 20). It is dropped silently. Spec §15's sentence saying it comes back as a
-  Receipt, and the premise of the stand-in in `test/seam1/receipts.test.ts`, are wrong.
+  Receipt, and the premise of the stand-in in `test/server/receipts.test.ts`, are wrong.
 - **An idle notice from a session that has never finished a turn carries no
   `finished_at`.** v0 subscribes only after a Pick, so it is not affected.
 - **A session registers only after the folder-trust prompt is accepted**, and a
   session that inherits `CLAUDE_CODE_CHILD_SESSION` publishes a key file and a socket
   but never registers.
-- **The Overlay's import graph is checked for harness words.** `test/seam1/overlay-harness-neutral.test.ts`
+- **The Overlay's import graph is checked for harness words.** `test/server/overlay-harness-neutral.test.ts`
   fails any Claude Code mechanism string in `src/overlay/**`, and
-  `test/seam1/overlay-words.test.ts` fails a second spelling of *approve it in your
+  `test/server/overlay-words.test.ts` fails a second spelling of *approve it in your
   terminal* or any "delivered" that is not "Not delivered". Import the constant from
   `words.ts`.
-- **A seam-2 spec can send real Receipts**: read `from` and `msg_id` off the delivered
-  frame in `SEAM2_FRAMES_LOG` and call `replyTo(from)` from
+- **A browser-suite spec can send real Receipts**: read `from` and `msg_id` off the delivered
+  frame in `BROWSER_FRAMES_LOG` and call `replyTo(from)` from
   `test/harness/session-socket.ts`. Nothing fakes `/status`.
-- **An idle notice offers back every Pick outstanding to its Target.** A seam-2 spec
+- **An idle notice offers back every Pick outstanding to its Target.** A browser-suite spec
   that ends a turn on purpose must use a session no other spec addresses — the fifth
-  seam-2 session, `seam 2 report-back session` (`SEAM2_REPORT_BACK_FRAMES_LOG`), exists
+  browser-suite session, `browser-suite report-back session` (`BROWSER_REPORT_BACK_FRAMES_LOG`), exists
   for that. Ending the default session's turn broke `receipts.spec.ts`'s silence
   journey in every engine.
 - **A session started below the repo root runs none of the root's hooks** (2.1.280,
@@ -214,10 +214,10 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 - **A lone Candidate is preselected**, so a Pick with no Target never stays
   `queued-unaddressed`; a hook canary needs a second, bystander session.
 - **`manual` is today's CLI name** for the spec's "default" permission mode.
-- **A drain takes every `queued-unaddressed` Pick on the seam-2 server**, whichever worker
+- **A drain takes every `queued-unaddressed` Pick on the browser-suite server**, whichever worker
   or engine made it. A journey that drains, or that holds a Pick in that queue while it
   reads what became of it, takes `apartFromDrains` (`test/harness/drain-lock.ts`). The
-  drain's secret is at `SEAM2_DISCOVERY_ENTRY`, set by `globalSetup`. A null-Target Pick
+  drain's secret is at `BROWSER_DISCOVERY_ENTRY`, set by `globalSetup`. A null-Target Pick
   cannot make a queued one there: the server preselects the started-this-server session;
   an offer left for the next prompt does.
 - **WebKit runs no listener in a frame sandboxed without `allow-scripts`**, not even
@@ -226,7 +226,7 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
   such a frame with a frame shield, so in WebKit only the shield route is exercised.
 - **A `ResizeObserver` reports every target once when it starts observing it.** That
   report is not a change; taken for one, it cancelled the Highlight's morph about 33 ms
-  in. `highlight.ts` skips each target's first report, and a seam-2 journey samples the
+  in. `highlight.ts` skips each target's first report, and a browser-suite journey samples the
   morph frame by frame to keep it so.
 - **A clone of a `textarea` does not reliably carry what was typed** (Chromium's does,
   others do not), so `presence.ts` copies field values into a leaving copy by hand.
@@ -283,20 +283,20 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 | | |
 | --- | --- |
 | `npm run lint` / `format:check` / `typecheck` | **under 2s each** — run them constantly |
-| `npm run test:seam1` | ~2 min, four files at a time; each Next test boots a `next dev`. About 900 tests |
-| `npm run test:seam2:fast` | ~1 min, Chromium, Vite's bed only |
-| `npm run test:seam2` | ~10 min, three engines × three beds (Vite, Next's App Router, Next's Pages Router) — once, at the end |
+| `npm run test:server` | ~2 min, four files at a time; each Next test boots a `next dev`. About 900 tests |
+| `npm run test:browser:fast` | ~1 min, Chromium, Vite's bed only |
+| `npm run test:browser` | ~10 min, three engines × three beds (Vite, Next's App Router, Next's Pages Router) — once, at the end |
 
 **Iterate on single files; all three engines once at the end.** Run the file you are
-changing (`npx vitest run test/seam1/<file>` after `npm run build`, or
-`npx playwright test --project=chromium test/seam2/<file>`), and the full
+changing (`npx vitest run test/server/<file>` after `npm run build`, or
+`npx playwright test --project=chromium test/browser/<file>`), and the full
 `caffeinate -i npm test` once, when you are done. Timings were measured on an 8-core
-laptop at a load average of 10 to 25, build included (October 2026). Seam 2 can run one
+laptop at a load average of 10 to 25, build included (October 2026). The browser suite can run one
 bed of one engine: `--project=chromium-next-app`.
 
-**Seam 2 binds a fixed port (5178).** Agents running in parallel worktrees must each
-set `SEAM2_PORT` to their own port, or a bind failure reads as a broken test.
-`npm run test:seam3` really spawns a session; it is never in `npm test`.
+**The browser suite binds a fixed port (5178).** Agents running in parallel worktrees must each
+set `BROWSER_PORT` to their own port, or a bind failure reads as a broken test.
+`npm run test:claude` really spawns a session; it is never in `npm test`.
 
 Warnings are denied. Fix a finding; never suppress it. A rule may be configured in
 `.oxlintrc.json` only with a comment line directly above saying why, and a test fails
@@ -309,14 +309,14 @@ Several agents share one working tree. **`git add` only your own paths — never
 your hunks rather than the file. If a commit lands under you, rebase your thinking onto
 it before committing. Your ticket names which files are yours.
 
-**Only one full seam 2 runs on the machine at a time.** Its `globalSetup` takes a
-lock under the OS temp dir; a second run prints *waiting for another seam-2 run,
+**Only one full browser suite runs on the machine at a time.** Its `globalSetup` takes a
+lock under the OS temp dir; a second run prints *waiting for another browser-suite run,
 pid N* and waits, for up to 10 minutes, rather than doubling both runs' times. A
 lock left by a killed run is taken over. So a wait there is another agent, not a
 hang.
 
 **Run your final full suite as `caffeinate -i npm test` on macOS.** Idle sleep once
-stretched a seam-2 run to 18.6 minutes; `caffeinate -i` stops idle sleep while the
+stretched a browser-suite run to 18.6 minutes; `caffeinate -i` stops idle sleep while the
 command runs, though not a lid close.
 
 **Report the tree you proved green, and nothing is proved twice.** After your final
@@ -332,7 +332,7 @@ tree an agent reported green, and then once per batch of merges, not once per me
 - **A server chunk's staleness is judged against the chunk's mtime**, not when the page
   rendered: an edit after Turbopack rewrote the chunk, with the page still showing the
   old render, reads `exact`. A hot update refetches the RSC payload in practice, but
-  nothing proves it. Pinned by a seam-1 test and filed as Next.js Connector issue 12
+  nothing proves it. Pinned by a server-suite test and filed as Next.js Connector issue 12
   (needs-triage), with why the Pick's `pageLoadedAt` does not settle it.
 
 - **The Overlay still names the harness in three places** (ticket 16): spec §17's

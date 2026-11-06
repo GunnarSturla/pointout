@@ -16,7 +16,7 @@
 
   "rules": {
     // The Overlay publishes `__pointout` to the consumer's page. The
-    // name is the contract a seam-2 test reads, not a style choice. `_debugOwner`
+    // name is the contract a browser-suite test reads, not a style choice. `_debugOwner`
     // and `_debugStack` are React's own fiber field names, which this repo reads
     // and does not get to choose; reading them is the whole owner-chain mechanism
     // (spec §4, §6). `_getActiveHandles` is Node's own, and the only way the
@@ -44,7 +44,7 @@
     // per-server tsconfigs beside it.
     "**/.next/**",
     "**/.harness/**",
-    // A copy of examples/next-app that one seam-1 test edits while it runs.
+    // A copy of examples/next-app that one server-suite test edits while it runs.
     "examples/.harness-next-*/**"
   ],
 
@@ -57,7 +57,7 @@
       // Two `it.skip`s hold the place tickets 20 and 21 fill. They are the
       // suite's current answer to "what does this command do today", not
       // forgotten tests.
-      "files": ["test/seam3/**/*.ts"],
+      "files": ["test/claude/**/*.ts"],
       "plugins": ["vitest"],
       "rules": { "vitest/no-disabled-tests": "off" }
     },

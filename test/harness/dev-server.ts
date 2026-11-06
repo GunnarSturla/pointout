@@ -128,7 +128,7 @@ export interface ExampleServerOptions extends Partial<StartServerOptions> {
 }
 
 /**
- * Seam 1's default server: the real example app, so the module graph and the
+ * The server suite's default server: the real example app, so the module graph and the
  * sourcemaps are real. A test names the Host it wants with `on`.
  */
 export async function startExampleServer(
@@ -160,7 +160,7 @@ export async function startExampleServer({
 
 /**
  * How long `close()` may take. A healthy close takes a fraction of this; it is
- * below seam 1's 30 s hook timeout, so the named error is the one a hung close
+ * below the server suite's 30 s hook timeout, so the named error is the one a hung close
  * reports, rather than the runner's anonymous timeout.
  */
 const CLOSE_DEADLINE_MS = 20_000

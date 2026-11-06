@@ -6,7 +6,7 @@ import { repoRoot } from './paths.js'
 // The owner stacks `npm run capture:next-frames` recorded on the Next.js test
 // bed (`test/fixtures/next-frames/<engine>.json`), put back on a running
 // server: its origin where the capture wrote `{origin}`, its output folder
-// where it wrote `{distDir}`. Seam 1 has no browser, so these are how a test
+// where it wrote `{distDir}`. The server suite has no browser, so these are how a test
 // sends a frame a real engine printed against a real Turbopack chunk.
 
 /** The engines a capture was made in; V8, Gecko and JavaScriptCore grammar. */

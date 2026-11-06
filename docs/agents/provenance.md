@@ -73,5 +73,5 @@ above:
 | --- | --- | --- |
 | Remix Icon | Remix Icon License v1.0 | overlay-polish 04 (`crosshair-line`, the Picker) |
 
-`test/seam1/docs.test.ts` holds the list: the five code projects and the credited icon
+`test/server/docs.test.ts` holds the list: the five code projects and the credited icon
 sets, and no other entry. It also proves that a header no entry credits fails.

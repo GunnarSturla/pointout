@@ -1,9 +1,9 @@
-// A lock across Playwright's worker processes, for the seam-2 journeys that
+// A lock across Playwright's worker processes, for the browser-suite journeys that
 // must not overlap one another (hot-update-lock.ts, drain-lock.ts).
 //
 // It is a directory, because making one is atomic across processes. Only one
-// seam 2 runs on the machine at a time (seam2-lock.ts), so one path serves
-// every checkout, and seam 2's `globalSetup` clears whatever a killed run left
+// browser suite runs on the machine at a time (browser-lock.ts), so one path serves
+// every checkout, and the browser suite's `globalSetup` clears whatever a killed run left
 // behind before any worker can take it.
 import { mkdirSync, rmSync } from 'node:fs'
 
@@ -33,7 +33,7 @@ export async function holding<T>(
   }
 }
 
-/** For `globalSetup` only, holding the machine's seam-2 lock: a killed run's leftover. */
+/** For `globalSetup` only, holding the machine's browser-suite lock: a killed run's leftover. */
 export function clearLock(lock: string): void {
   rmSync(lock, { recursive: true, force: true })
 }
