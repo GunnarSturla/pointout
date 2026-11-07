@@ -54,60 +54,11 @@ const FAILED = 'Failed'
 const WAITING_NAME = 'the browser suite waiting session'
 
 /**
- * Ticket 13's table, as the harness's machine values reach it. The sentence is
- * the server's; this suite's half is that it reaches the Panel as it is.
+ * One row of ticket 13's table. The server suite holds every sentence
+ * (`receipts.test.ts`); this suite's half is that the sentence reaches the Panel
+ * as it is, and every row reaches it by the one route.
  */
-const REASON_TABLE: Array<{
-  row: string
-  receipt: Record<string, unknown>
-  sentence: string
-}> = [
-  {
-    row: 'dropped as a duplicate',
-    receipt: { status: 'dropped', drop_reason: 'duplicate' },
-    sentence: 'Not delivered — an identical pick was just sent.',
-  },
-  {
-    row: 'dropped by a rate limit',
-    receipt: { status: 'dropped', drop_reason: 'rate_limit' },
-    sentence: 'Not delivered — too many picks too quickly.',
-  },
-  {
-    row: 'dropped against a full queue',
-    receipt: { status: 'dropped', drop_reason: 'full_queue' },
-    sentence: `Not delivered — ${TARGET_NAME} has too much queued.`,
-  },
-  {
-    row: 'dropped as a relay loop',
-    receipt: { status: 'dropped', drop_reason: 'relay_loop' },
-    sentence: 'Not delivered — it came back to where it started.',
-  },
-  {
-    row: 'refused by the session',
-    receipt: { status: 'refused' },
-    sentence: `Not delivered — ${TARGET_NAME} isn't accepting picks.`,
-  },
-  {
-    row: 'denied by the developer',
-    receipt: { status: 'denied' },
-    sentence: `Not delivered — you declined it in ${TARGET_NAME}.`,
-  },
-  {
-    row: 'expired before approval',
-    receipt: { status: 'expired' },
-    sentence: "Not delivered — it wasn't approved in time.",
-  },
-  {
-    // A machine value v0 does not know: the harness's own prose, verbatim.
-    row: 'dropped for a reason v0 does not know',
-    receipt: {
-      status: 'dropped',
-      drop_reason: 'session_mismatch',
-      reason: 'the message named a session this socket does not serve',
-    },
-    sentence: 'the message named a session this socket does not serve',
-  },
-]
+const DUPLICATE = 'Not delivered — an identical pick was just sent.'
 
 /** One probe token per test, carried in the url and the Note so its frame can be found. */
 function probe(name: string): string {
@@ -309,21 +260,21 @@ test('a held Pick keeps the Picker and its own Panel out where the developer can
   await expect(page.locator(STACK)).toBeVisible()
 })
 
-for (const { row, receipt: fields, sentence } of REASON_TABLE) {
-  test(`a Pick ${row} reads as not delivered, with the sentence`, async ({ page }) => {
-    const token = probe('failed')
-    await open(page, token)
-    const delivered = await send(page, token)
+test('a Pick dropped as a duplicate reads as not delivered, with the sentence', async ({
+  page,
+}) => {
+  const token = probe('failed')
+  await open(page, token)
+  const delivered = await send(page, token)
 
-    await receipt(delivered, fields)
+  await receipt(delivered, { status: 'dropped', drop_reason: 'duplicate' })
 
-    await expect(minimized(page)).toHaveAttribute('data-state', 'failed')
-    await expect(light(page)).toHaveAttribute('title', FAILED)
-    await expect(light(page).locator(DOT)).toHaveAttribute('data-status', 'failed')
-    await expect(minimized(page).locator(MINIMIZED_WORDS)).toHaveText(sentence)
-    await expect(minimized(page).locator(MINIMIZED_NEXT)).toHaveText(SEND_AGAIN)
-  })
-}
+  await expect(minimized(page)).toHaveAttribute('data-state', 'failed')
+  await expect(light(page)).toHaveAttribute('title', FAILED)
+  await expect(light(page).locator(DOT)).toHaveAttribute('data-status', 'failed')
+  await expect(minimized(page).locator(MINIMIZED_WORDS)).toHaveText(DUPLICATE)
+  await expect(minimized(page).locator(MINIMIZED_NEXT)).toHaveText(SEND_AGAIN)
+})
 
 test('silence says nothing: a Pick no Receipt was sent for never reads as delivered', async ({
   page,

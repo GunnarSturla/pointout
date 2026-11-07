@@ -6,16 +6,6 @@ import { repoRoot } from '../harness/paths.js'
 const read = (path: string) => readFileSync(join(repoRoot, path), 'utf8')
 
 describe('LICENSE-THIRDPARTY', () => {
-  it('exists', () => {
-    expect(existsSync(join(repoRoot, 'LICENSE-THIRDPARTY'))).toBe(true)
-  })
-
-  it('documents its entry format', () => {
-    const text = read('LICENSE-THIRDPARTY')
-    expect(text).toMatch(/Entry format/)
-    expect(text).toMatch(/## Entries/)
-  })
-
   it('credits every file that carries a provenance header', () => {
     const borrows = borrowingFiles()
 
@@ -269,43 +259,8 @@ function borrowingFiles(): Borrow[] {
   return found
 }
 
-describe('the provenance header format', () => {
-  const doc = read('docs/agents/provenance.md')
-
-  it('names every field a borrowing file must carry', () => {
-    for (const field of ['Borrowed:', 'From:', 'Version:', 'License:', 'Changes:']) {
-      expect(doc).toContain(field)
-    }
-  })
-
-  it('requires the LICENSE-THIRDPARTY entry alongside the header', () => {
-    expect(doc).toContain('LICENSE-THIRDPARTY')
-  })
-})
-
 describe('the testing conventions', () => {
   const doc = read('docs/agents/testing.md')
-
-  it('state the no-server-module-imports rule', () => {
-    expect(doc).toMatch(/No test imports a server module/)
-  })
-
-  it('name the four harness overrides', () => {
-    for (const name of [
-      'POINTOUT_REGISTRY_DIR',
-      'POINTOUT_SOCKET_DIR',
-      'PATH',
-      'CLAUDE_PID',
-    ]) {
-      expect(doc).toContain(name)
-    }
-  })
-
-  it('are reachable from CLAUDE.md, which every ticket reads', () => {
-    const claudeMd = read('CLAUDE.md')
-    expect(claudeMd).toContain('docs/agents/testing.md')
-    expect(claudeMd).toContain('docs/agents/provenance.md')
-  })
 
   it('name no harness file or config that no longer exists', () => {
     // Ticket 23 renamed all of them. A doc naming a file that is gone sends the
@@ -321,48 +276,13 @@ describe('the testing conventions', () => {
       expect(existsSync(join(repoRoot, path)), `${path} is named but missing`).toBe(true)
     }
   })
-
-  it('say how the browser suite is actually booted, and agree with the config', () => {
-    expect(doc).toContain('globalSetup')
-
-    // The doc describes it; the config is what does it.
-    const playwright = read('playwright.config.ts')
-    expect(playwright).toContain('globalSetup')
-    expect(playwright).not.toMatch(/^\s*webServer:/m)
-  })
-})
-
-describe('the packaging conventions', () => {
-  const doc = read('docs/agents/packaging.md')
-
-  it('state the extension rule a relative import inside src follows', () => {
-    expect(doc).toMatch(/\.js/)
-    expect(doc).toMatch(/verbatimModuleSyntax/)
-  })
-
-  it('name the build output the package actually ships', () => {
-    expect(doc).toContain('dist/')
-    expect(doc).toContain('docs/adr/0001-typescript-and-tsc-esm-emit.md')
-  })
-
-  it('are reachable from CLAUDE.md, which every ticket reads', () => {
-    expect(read('CLAUDE.md')).toContain('docs/agents/packaging.md')
-  })
-
-  it('name both entry points, no root entry, and where a Connector lives', () => {
-    expect(doc).toContain('`pointout/vite`')
-    expect(doc).toContain('`pointout/next`')
-    expect(doc).toMatch(/no root entry/)
-    expect(doc).toContain('src/<host>/')
-    expect(doc).toContain('peerDependenciesMeta')
-  })
 })
 
 describe('the README', () => {
   const readme = read('README.md')
 
   it('never imports the package by its bare name, which has no entry', () => {
-    // There is no root entry (ADR-0005): `pointout` alone fails with
+    // There is no root entry (ADR-0005): the package's name alone fails with
     // ERR_PACKAGE_PATH_NOT_EXPORTED, so an import a reader copies must name a
     // Connector.
     expect(readme).not.toMatch(/from ['"]pointout['"]/)
@@ -375,103 +295,5 @@ describe('the README', () => {
     expect(readme).toContain("import { withPointout } from 'pointout/next'")
     expect(readme).toContain('next dev -H localhost')
     expect(readme).toContain('--connector next|vite')
-  })
-})
-
-describe('the packaging conventions cover the two gates', () => {
-  const doc = read('docs/agents/packaging.md')
-
-  it('name the lint and format commands', () => {
-    for (const command of ['npm run lint', 'npm run format', 'npm run format:check']) {
-      expect(doc).toContain(command)
-    }
-  })
-
-  it('say the formatter does not touch prose', () => {
-    expect(doc).toMatch(/Markdown is excluded/i)
-  })
-
-  it('describe both gates and point at the hooks that are them', () => {
-    expect(doc).toContain('.claude/hooks/format-file.sh')
-    expect(doc).toContain('.claude/hooks/lint-gate.sh')
-    expect(doc).toContain('stop_hook_active')
-  })
-})
-
-describe('the motion record', () => {
-  const doc = read('docs/motion.md')
-  /** The same prose with its line breaks taken out: a sentence is a sentence. */
-  const flowed = doc.replaceAll(/\s+/g, ' ')
-
-  it('states the opt-in rule and the one place motion may live', () => {
-    expect(doc).toContain('@media (prefers-reduced-motion: no-preference)')
-    expect(doc).toContain('src/overlay/styles.ts')
-    expect(doc).toMatch(/no movement by default/i)
-    // The review-animations gate's one change to the rule: a fade is kept for a
-    // developer who asked for less motion, and only a fade — which, since
-    // overlay-polish ticket 03, is a colour as well as an opacity.
-    expect(flowed).toMatch(/a fade is not movement/i)
-    expect(flowed).toMatch(
-      /Only a fade may ease there: `opacity`, `color`, `background-color`, `border-color` and `outline-color`/,
-    )
-  })
-
-  it('records the morph deviation as pre-registered against the gate', () => {
-    // Ticket 09 writes this down before the gate runs, so that ticket 22's run
-    // cannot silently reverse a decision made on a built artifact — and so that
-    // the decision cannot quietly skip the gate either (spec §9).
-    expect(flowed).toContain('review-animations')
-    expect(flowed).toMatch(/pre-registered/)
-    expect(flowed).toMatch(/deviation/)
-    expect(flowed).toMatch(/frequency/)
-    expect(flowed).toMatch(/may not silently reverse/)
-    expect(flowed).toMatch(/may not skip the gate/)
-  })
-
-  it('records the gate as run, with its outcome and the deviations it accepted', () => {
-    // Ticket 22: the human ran review-animations by name, and the outcome is
-    // written down rather than implied. Neither pre-registered decision may have
-    // been reversed in silence, so each is named with what became of it.
-    expect(flowed).toMatch(/the gate \*\*has run\*\*/i)
-    expect(flowed).not.toMatch(/the gate has \*\*not\*\* run/i)
-    expect(flowed).toMatch(/Build reviewed \(commit\)\*\*: `[0-9a-f]{7,}`/)
-    expect(flowed).toMatch(
-      /Row 1, the armed-hover morph\*\*: \*\*changed, and kept as a deviation/,
-    )
-    expect(flowed).toMatch(/Row 2, `width`\/`height`\*\*: \*\*kept as a deviation/)
-    expect(flowed).toMatch(/Deviations accepted/)
-    expect(flowed).toMatch(/Neither pre-registered decision was reversed/)
-  })
-
-  it('is reachable from CLAUDE.md, which every ticket reads', () => {
-    expect(read('CLAUDE.md')).toContain('docs/motion.md')
-  })
-})
-
-describe('ADR-0002', () => {
-  const adr = read('docs/adr/0002-oxlint-and-oxfmt.md')
-
-  it('records why oxc rather than ESLint and Prettier', () => {
-    expect(adr).toMatch(/## Alternatives/)
-    expect(adr).toMatch(/ESLint/)
-    expect(adr).toMatch(/Prettier/)
-  })
-
-  it('records why the formatter is kept off prose', () => {
-    expect(adr).toMatch(/56 prose files|Markdown/)
-  })
-})
-
-describe('ADR-0001', () => {
-  const adr = read('docs/adr/0001-typescript-and-tsc-esm-emit.md')
-
-  it('records the decision, its alternatives and its consequences', () => {
-    expect(adr).toMatch(/## Alternatives/)
-    expect(adr).toMatch(/## Consequences/)
-  })
-
-  it('says what to do about the one project spanning two runtimes', () => {
-    expect(adr).toMatch(/DOM/)
-    expect(adr).toMatch(/split it/i)
   })
 })

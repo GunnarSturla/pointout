@@ -409,9 +409,13 @@ written before the Next.js Connector still runs.
   either. Each engine has three projects, one per **test bed** (`TEST_BEDS` in
   `test/harness/hosts.ts`): `chromium` is Vite's, `chromium-next-app` the App Router
   route and `chromium-next-pages` the Pages Router route, and the project's `baseURL`
-  is the bed's origin and route. The suites in `PARAMETERIZED_SUITES` run on all three
-  beds (Next.js Connector ticket 06); every other spec runs on Vite's projects only.
-  A parameterized suite opens its page **relative** to the bed, `page.goto('?probe=…')`
+  is the bed's origin and route. Not every project runs every suite (`nextBedSuites`):
+  Vite's three projects run every spec; `chromium-next-app` also runs the suites that show
+  the page; and Next's other five projects run only `HOST_SENSITIVE_SUITES` (`hit-test`,
+  `owner-chain`, `confidence`, `excerpts`), whose answer depends on the Host and router as
+  well as the engine. The rest are the same Overlay once it is mounted, and
+  `next-app.spec.ts`, on Vite's projects, holds mounting and hydration on both routers in
+  every engine. A parameterized suite opens its page **relative** to the bed, `page.goto('?probe=…')`
   and never `'/?probe=…'`, which would drop the route; it reaches `/__agent` by an
   absolute path, which keeps only the origin, and a drain posts the secret of the
   server the page is on (`BROWSER_NEXT_DISCOVERY_ENTRY` beside `BROWSER_DISCOVERY_ENTRY`).
@@ -460,13 +464,12 @@ Measured (October 2026, 8-core laptop, load average 4 to 14): a `next dev` is re
 about 0.3 s and closes in well under a second; the first request for `/` compiles in
 about 1.2 s and `/pages-router` in about 0.6 s. The server suite went from about 25.3 s to
 27.7 s with the two Next files (`next-app.test.ts`, `next-harness.test.ts`, four
-servers between them). The browser suite's globalSetup boots Next beside Vite, at the same time;
-the Chromium-only run went from about 1.0 to 1.1 minutes with `next-app.spec.ts`'s six
-journeys. With the ten suites parameterized (ticket 06), Next's two beds add 255
-Chromium journeys, about 2.2 minutes on their own, and 496 Firefox and WebKit journeys,
-about 4.3 minutes, at a load average around 10 to 20. Ticket 08 added `owner-chain`,
-`confidence` and `excerpts` to them: 17 journeys per bed, 102 more across Next's beds in
-three engines.
+servers between them). The browser suite's globalSetup boots Next beside Vite, at the same time.
+
+Measured (November 2026, same laptop, load average 7 to 25): 763 browser journeys in 4.7
+minutes, about 1,070 s of worker time. Each of Vite's three projects and `chromium-next-app`
+take about 230 s of that; Next's other five projects take 19 to 33 s each. Running every
+suite on all nine projects took 1,401 journeys and 9.9 minutes.
 
 ### Captured frames
 

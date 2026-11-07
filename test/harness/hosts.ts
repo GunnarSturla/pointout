@@ -10,8 +10,8 @@
 //   project's `baseURL`, origin *and* route, so a spec that runs on every bed
 //   opens its page with a URL relative to it (`page.goto('?probe=…')`, never
 //   `'/?probe=…'`, which would drop the route) and reaches `/__agent` with an
-//   absolute path, which keeps only the origin. The suites that run on every
-//   bed are `PARAMETERIZED_SUITES`; every other spec runs on Vite's projects only.
+//   absolute path, which keeps only the origin. Which suites a Next project runs
+//   is `nextBedSuites`; every other spec runs on Vite's projects only.
 // - **By name.** `hostURL('next', '/pages-router')` from a spec that runs on
 //   Vite's projects, as `next-app.spec.ts` does.
 //
@@ -52,11 +52,8 @@ export const TEST_BEDS: readonly TestBed[] = [
   },
 ]
 
-/**
- * The suites that run on every test bed (ticket 06 of the Next.js Connector):
- * everything the page shows, on Vite and on both of Next's routers.
- */
-export const PARAMETERIZED_SUITES = [
+/** What a Next.js Chromium run on the App Router adds: everything the page shows. */
+const PARAMETERIZED_SUITES = [
   'surfaces',
   'highlight',
   'hit-test',
@@ -70,7 +67,24 @@ export const PARAMETERIZED_SUITES = [
   'owner-chain',
   'confidence',
   'excerpts',
-].map((name) => `**/${name}.spec.ts`)
+]
+
+/**
+ * The suites whose answer depends on the Host and the router as well as the
+ * engine: what Next's stacks and frames carry, and what its dev tools cover. The
+ * others are the same Overlay once it is mounted, so one Next bed holds them, and
+ * `next-app.spec.ts` holds mounting and hydration on both routers in every engine.
+ */
+const HOST_SENSITIVE_SUITES = ['hit-test', 'owner-chain', 'confidence', 'excerpts']
+
+/** The spec files a Next bed runs in an engine. */
+export function nextBedSuites(engine: string, bed: TestBed): string[] {
+  const suites =
+    engine === 'chromium' && bed.suffix === '-next-app'
+      ? PARAMETERIZED_SUITES
+      : HOST_SENSITIVE_SUITES
+  return suites.map((name) => `**/${name}.spec.ts`)
+}
 
 /** `path` on the browser-suite server of Host `on`. */
 export function hostURL(on: HostName, path: string): string {

@@ -283,15 +283,15 @@ claim-once queue exactly while its state is `queued-unaddressed`, `sent` or `hel
 | | |
 | --- | --- |
 | `npm run lint` / `format:check` / `typecheck` | **under 2s each** — run them constantly |
-| `npm run test:server` | ~2 min, four files at a time; each Next test boots a `next dev`. About 900 tests |
+| `npm run test:server` | ~1.5 min, four files at a time; each Next test boots a `next dev`. About 600 tests |
 | `npm run test:browser:fast` | ~1 min, Chromium, Vite's bed only |
-| `npm run test:browser` | ~10 min, three engines × three beds (Vite, Next's App Router, Next's Pages Router) — once, at the end |
+| `npm run test:browser` | ~5 min, three engines on Vite, with Next's beds narrowed to what depends on the Host (`nextBedSuites`) — once, at the end |
 
 **Iterate on single files; all three engines once at the end.** Run the file you are
 changing (`npx vitest run test/server/<file>` after `npm run build`, or
 `npx playwright test --project=chromium test/browser/<file>`), and the full
 `caffeinate -i npm test` once, when you are done. Timings were measured on an 8-core
-laptop at a load average of 10 to 25, build included (October 2026). The browser suite can run one
+laptop at a load average of 7 to 25 (November 2026). The browser suite can run one
 bed of one engine: `--project=chromium-next-app`.
 
 **The browser suite binds a fixed port (5178).** Agents running in parallel worktrees must each

@@ -26,22 +26,17 @@ describe('the CommonJS entry', () => {
 describe('the built package', () => {
   // `npm run build` is a `pre` step of this command, so `dist` is what the
   // emit just produced. Ticket 23: one file in, one file out, no bundler.
-  const srcModules = modulesUnder('src').filter((path) => /\.tsx?$/.test(path))
+  it('emits every source module as ESM, with types and a source map', () => {
+    const modules = modulesUnder('src').filter((path) => /\.tsx?$/.test(path))
+    expect(modules.length).toBeGreaterThan(5)
 
-  it('found source modules to account for', () => {
-    expect(srcModules.length).toBeGreaterThan(5)
-  })
-
-  it.each(srcModules)('emits %s as ESM with types and a source map', (module) => {
-    const emitted = module.replace(/^src\//, 'dist/').replace(/\.tsx?$/, '.js')
-
-    expect(existsSync(join(repoRoot, emitted))).toBe(true)
-    expect(existsSync(join(repoRoot, emitted + '.map'))).toBe(true)
-    expect(existsSync(join(repoRoot, emitted.replace(/\.js$/, '.d.ts')))).toBe(true)
-  })
-
-  it('emits the CommonJS stub as CommonJS', () => {
-    expect(existsSync(join(repoRoot, 'dist/vite/cjs-entry.cjs'))).toBe(true)
+    const missing = modules.flatMap((module) => {
+      const emitted = module.replace(/^src\//, 'dist/').replace(/\.tsx?$/, '.js')
+      return [emitted, emitted + '.map', emitted.replace(/\.js$/, '.d.ts')].filter(
+        (path) => !existsSync(join(repoRoot, path)),
+      )
+    })
+    expect(missing).toEqual([])
   })
 
   it('emits no TypeScript source into dist', () => {

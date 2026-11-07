@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
-import { PARAMETERIZED_SUITES, BROWSER_PORT, TEST_BEDS } from './test/harness/hosts.js'
+import { BROWSER_PORT, nextBedSuites, TEST_BEDS } from './test/harness/hosts.js'
 import { BROWSER_LOCK_WAIT_MS } from './test/harness/browser-lock.js'
 
 // The browser suite: the browser, in all three engines, against the same dev server the server suite
@@ -19,9 +19,8 @@ const ENGINES = [
 
 /**
  * What a whole run may take once it holds the machine's browser-suite lock. A healthy
- * all-engine run took 12.4 minutes at a load of 10 to 20 once ten suites ran on
- * Next's two test beds as well (Next.js Connector ticket 06), and overran 15 at a
- * load of 36; this bounds a stall, such as one the machine's sleep caused.
+ * run takes about 5 minutes (docs/agents/testing.md); this bounds a stall, such as one
+ * the machine's sleep caused, and leaves a loaded machine plenty of room.
  * Playwright counts `globalSetup` in `globalTimeout`, so the wait for the lock is
  * added on top.
  */
@@ -37,13 +36,12 @@ export default defineConfig({
   reporter: process.env.CI ? 'list' : [['list']],
   use: { baseURL, trace: 'on-first-retry' },
   // One project per engine and test bed (test/harness/hosts.ts): Vite's runs
-  // every spec, and each of Next's two routes runs the suites that hold on
-  // every Host.
+  // every spec, and each of Next's two routes runs what `nextBedSuites` names.
   projects: ENGINES.flatMap(({ name, device }) =>
     TEST_BEDS.map((bed) => ({
       name: name + bed.suffix,
       use: { ...device, baseURL: bed.baseURL },
-      ...(bed.suffix ? { testMatch: PARAMETERIZED_SUITES } : {}),
+      ...(bed.suffix ? { testMatch: nextBedSuites(name, bed) } : {}),
     })),
   ),
 })
