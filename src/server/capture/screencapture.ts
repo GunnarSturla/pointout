@@ -19,6 +19,12 @@ const TOOL = 'screencapture'
 /** Long enough for any real capture, short enough that a Send is not held. */
 const TIMEOUT_MS = 5_000
 
+/**
+ * The startup probe holds no Send, and a timeout here turns capture off until the
+ * dev server restarts, so a machine that is merely busy gets longer to answer.
+ */
+const PROBE_TIMEOUT_MS = 15_000
+
 /** The eight bytes every PNG opens with. The content half of the probe. */
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
@@ -42,7 +48,11 @@ export interface RunningCapture {
 }
 
 /** Start one capture. Never throws: a tool that could not be run is a reason. */
-export function runScreencapture(region: Region, file: string): RunningCapture {
+export function runScreencapture(
+  region: Region,
+  file: string,
+  timeoutMs: number = TIMEOUT_MS,
+): RunningCapture {
   let aborted = false
   let kill = () => {}
 
@@ -50,7 +60,7 @@ export function runScreencapture(region: Region, file: string): RunningCapture {
     const child = execFile(
       TOOL,
       ['-x', '-R', `${region.x},${region.y},${region.width},${region.height}`, file],
-      { timeout: TIMEOUT_MS },
+      { timeout: timeoutMs },
       (error, _stdout, stderr) => {
         if (aborted) {
           return resolve({ ok: false, reason: 'it was aborted', aborted: true })
@@ -58,7 +68,7 @@ export function runScreencapture(region: Region, file: string): RunningCapture {
         if (error) {
           return resolve({
             ok: false,
-            reason: failureReason(error, stderr),
+            reason: failureReason(error, stderr, timeoutMs),
             aborted: false,
           })
         }
@@ -89,7 +99,7 @@ export async function probeScreencapture(directory: string): Promise<string | nu
   const file = join(directory, 'probe.png')
   const region: Region = { x: 0, y: 0, width: 1, height: 1, offsetBy: null }
   try {
-    const result = await runScreencapture(region, file).settled
+    const result = await runScreencapture(region, file, PROBE_TIMEOUT_MS).settled
     return result.ok ? null : result.reason
   } finally {
     rmSync(file, { force: true })
@@ -107,14 +117,14 @@ function holdsAnImage(file: string): boolean {
   }
 }
 
-function failureReason(error: Error, stderr: string): string {
+function failureReason(error: Error, stderr: string, timeoutMs: number): string {
   const said = stderr.trim().split('\n')[0]
   if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
     return `${TOOL} is not on this dev server's PATH`
   }
   // `execFile` kills a run that outlived its timeout, and reports it as killed.
   if ((error as { killed?: boolean }).killed) {
-    return `the capture took too long (more than ${TIMEOUT_MS / 1000} s) and was stopped`
+    return `the capture took too long (more than ${timeoutMs / 1000} s) and was stopped`
   }
   return `${TOOL} failed${said ? `: ${said}` : ''}`
 }

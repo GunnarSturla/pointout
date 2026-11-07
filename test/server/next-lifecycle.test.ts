@@ -144,7 +144,13 @@ describe('next dev, stopped with SIGINT', () => {
         screen: { width: 1920, height: 1080 },
       }),
     })
-    expect(captured.status).toBe(200)
+    // The body too: a refusal says why, and a failure should show it.
+    expect({
+      status: captured.status,
+      body: await captured.clone().text(),
+    }).toMatchObject({
+      status: 200,
+    })
 
     const socket = /reply socket\s+bound at (\S+\.sock)/.exec(log())?.[1]
     const entry = /discovery entry\s+(\S+\.json)/.exec(log())?.[1]

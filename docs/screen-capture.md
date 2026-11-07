@@ -52,7 +52,7 @@ Pick itself if one was meant to travel:
 | not macOS | v0 takes a Screen Capture with macOS's `screencapture`; nothing equivalent is shipped for Linux or Windows |
 | no Screen Recording permission | `screencapture` exits successfully and writes nothing when the process that started the dev server has not been granted Screen Recording. Grant it to your **terminal** (System Settings → Privacy & Security → Screen Recording) and restart the dev server — the permission is the parent process's, not the browser's |
 | the probe failed | the startup capture could not be taken at all, with the tool's own words |
-| the capture took too long | a capture that has not landed in five seconds is killed |
+| the capture took too long | a capture that has not landed in five seconds is killed; the startup probe gets fifteen, since it holds no Send |
 
 A Pick whose capture was intended and failed still sends. It carries one line
 saying so, with the reason:
