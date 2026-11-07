@@ -11,6 +11,17 @@ import { skillFor } from './skill.js'
 // property of this checkout, and a teammate who clones it gets it by
 // committing `.claude/`.
 
+/** What going without the skill costs, as measured on Claude Code 2.1.319. */
+const NO_SKILL_NOTE =
+  '  Without the skill, requests still reach your session and Claude can act on ' +
+  'them, but nothing tells it how to report back, so the browser is likely to show ' +
+  'them as not acknowledged. Run init without --no-skill to add it.'
+
+/** `--no-skill` over a skill that is already installed. */
+const SKILL_LEFT_NOTE =
+  '  --no-skill does not remove a skill that is already there. Delete the file ' +
+  'if you do not want it.'
+
 /** The two events the floor rides (spec §15): the next prompt, and turn end. */
 const EVENTS = ['UserPromptSubmit', 'Stop'] as const
 
@@ -48,6 +59,7 @@ export const claudeSetup: HarnessSetup = {
     return {
       items: [...settings.items, ...skill.items],
       writes: [...settings.writes, ...skill.writes],
+      notes: skill.notes ?? [],
     }
   },
 }
@@ -155,6 +167,15 @@ function planSkill(project: Project): SetupPlan {
   const path = join(project.root, '.claude', 'skills', 'pointout', 'SKILL.md')
   const before = existsSync(path) ? readFileSync(path, 'utf8') : null
   const what = 'setup skill'
+  // Skipping never removes: a copy already here may be one a teammate committed
+  // on purpose, and not installing a file is a different act from deleting one.
+  if (project.skipSkill) {
+    return {
+      items: [{ what, path, action: before === null ? 'skipped' : 'left alone' }],
+      writes: [],
+      notes: [before === null ? NO_SKILL_NOTE : SKILL_LEFT_NOTE],
+    }
+  }
   const skill = skillFor(project.host)
   if (before === skill)
     return { items: [{ what, path, action: 'already present' }], writes: [] }

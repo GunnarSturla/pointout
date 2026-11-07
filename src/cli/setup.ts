@@ -27,7 +27,12 @@ const PACKAGE_NAME = '@gunnarsturla/pointout'
 export const INSTALLED_DRAIN_BIN = `${PACKAGE_NAME}/dist/cli/main.js`
 
 /** What `init` did about one item, in the words it prints. */
-export type SetupAction = 'wrote' | 'updated' | 'already present'
+export type SetupAction =
+  | 'wrote'
+  | 'updated'
+  | 'already present'
+  | 'skipped'
+  | 'left alone'
 
 /** One line of the report: an item, the file it lives in, and what was done. */
 export interface SetupItem {
@@ -45,6 +50,8 @@ export interface SetupWrite {
 export interface SetupPlan {
   items: SetupItem[]
   writes: SetupWrite[]
+  /** What the person should know about this run, printed after the report. */
+  notes?: string[]
 }
 
 /** The project `init` was run in, as a harness needs to know it. */
@@ -59,6 +66,8 @@ export interface Project {
   drainBin: string
   /** The Host the project's dev server is, which the setup skill names. */
   host: HostSetup
+  /** `--no-skill`: the setup skill is neither written nor removed. */
+  skipSkill: boolean
 }
 
 export interface HarnessSetup {
@@ -80,11 +89,12 @@ export async function runSetup(
   harness: HarnessSetup,
   cwd: string,
   chooseHost: (cwd: string) => Promise<HostSetup>,
+  { skipSkill }: { skipSkill: boolean },
 ): Promise<void> {
   const root = normalizeToWorktreeRoot(cwd)
   const drainBin = drainBinFrom(cwd, root)
   const host = await chooseHost(cwd)
-  const plan = harness.plan({ root, drainBin, host })
+  const plan = harness.plan({ root, drainBin, host, skipSkill })
 
   // A write can still fail after the plan was made — a read-only directory, a
   // full disk. The files already written are named in the refusal, so a
@@ -114,6 +124,7 @@ export async function runSetup(
     ...plan.items.map(
       ({ what, path, action }) => `  ${action.padEnd(width)}  ${what} — ${path}`,
     ),
+    ...(plan.notes ?? []),
     // What the Host's own files need is said here and never done.
     ...host.instructions(cwd),
   ]

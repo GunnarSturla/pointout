@@ -50,7 +50,8 @@ The CLI: `drain`, and `init` (ticket 16), which writes the two hook entries into
 project's `.claude/settings.json` and the setup skill into `.claude/skills/`. It first
 chooses the Host (`src/cli/hosts.ts`, Next.js Connector 09) from the `package.json` it
 runs beside, or `--connector next|vite`; both named asks on a TTY and refuses without
-one. On Next.js it prints the `withPointout()` wrap and `next dev -H localhost` and edits
+one. `--no-skill` leaves the skill out, never removes one, and saves no preference. On
+Next.js it prints the `withPointout()` wrap and `next dev -H localhost` and edits
 neither file. The
 harness-neutral half is `src/cli/setup.ts` (`HarnessSetup`); the Claude half, and the
 skill text, live in `src/cli/claude/`. It mirrors `DeliveryRoute` in

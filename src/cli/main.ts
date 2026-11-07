@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { claudeSetup } from './claude/setup.js'
 import { runDrain } from './drain.js'
-import { chooseHost, connectorFlag } from './hosts.js'
+import { chooseHost, initFlags } from './hosts.js'
 import { runSetup } from './setup.js'
 
 // The package's one binary, `pointout`, with a subcommand per job
@@ -21,8 +21,10 @@ const COMMANDS: Record<string, { run: () => Promise<void>; failsQuietly: boolean
   // The Host is read off the manifest where it runs, or named by --connector.
   init: {
     run: async () => {
-      const flag = connectorFlag(process.argv.slice(3))
-      await runSetup(claudeSetup, process.cwd(), (cwd) => chooseHost(cwd, flag))
+      const { connector, skipSkill } = initFlags(process.argv.slice(3))
+      await runSetup(claudeSetup, process.cwd(), (cwd) => chooseHost(cwd, connector), {
+        skipSkill,
+      })
     },
     failsQuietly: false,
   },

@@ -75,9 +75,17 @@ const NEXT: HostSetup = {
 
 const HOSTS: Record<ConnectorName, HostSetup> = { next: NEXT, vite: VITE }
 
-/** `init`'s own arguments: `--connector <name>` or `--connector=<name>`. */
-export function connectorFlag(args: readonly string[]): string | null {
+/** What `init` was asked for on its command line. */
+export interface InitFlags {
+  connector: string | null
+  /** `--no-skill`: leave the setup skill out of this run. */
+  skipSkill: boolean
+}
+
+/** `init`'s own arguments: `--connector <name>`, `--connector=<name>`, `--no-skill`. */
+export function initFlags(args: readonly string[]): InitFlags {
   let connector: string | null = null
+  let skipSkill = false
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!
     if (arg === '--connector') {
@@ -86,14 +94,16 @@ export function connectorFlag(args: readonly string[]): string | null {
       connector = value
     } else if (arg.startsWith('--connector=')) {
       connector = arg.slice('--connector='.length)
+    } else if (arg === '--no-skill') {
+      skipSkill = true
     } else {
       throw new Error(
-        `init does not take ${JSON.stringify(arg)}; it takes only ${FLAG}. ` +
+        `init does not take ${JSON.stringify(arg)}; it takes only ${FLAG} and --no-skill. ` +
           'Nothing was written.',
       )
     }
   }
-  return connector
+  return { connector, skipSkill }
 }
 
 /** The Host to set up for, from the flag or else the manifest in `cwd`. */

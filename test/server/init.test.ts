@@ -74,11 +74,15 @@ interface CliRun {
  * `node_modules`, in a directory inside their project. `HOME` is a fresh
  * directory, so a test can see that nothing user-level was touched.
  */
-function runInit(app: TempApp, cwd = app.appDir): Promise<CliRun> & { home: string } {
+function runInit(
+  app: TempApp,
+  cwd = app.appDir,
+  ...args: string[]
+): Promise<CliRun> & { home: string } {
   const home = mkdtempSync(join(tmpdir(), 'pointout-home-'))
   homes.push(home)
   const bin = join(app.playground, 'node_modules/@gunnarsturla/pointout/dist/cli/main.js')
-  const run = spawnCollect(process.execPath, [bin, 'init'], {
+  const run = spawnCollect(process.execPath, [bin, 'init', ...args], {
     cwd,
     env: { ...process.env, HOME: home, USERPROFILE: home },
   })
@@ -277,6 +281,54 @@ describe('init', () => {
     expect(run.code).not.toBe(0)
     expect(run.stderr).toMatch(/not installed/)
     expect(existsSync(join(elsewhere, '.claude'))).toBe(false)
+  })
+})
+
+describe('init --no-skill', () => {
+  it('writes the hooks but no skill, and says what that costs', async () => {
+    const app = apps.create({ git: true })
+    const run = await runInit(app, app.appDir, '--no-skill')
+
+    expectOk(run)
+    for (const event of EVENTS) {
+      expect(oursFor(readSettings(app), event)).toHaveLength(1)
+    }
+    expect(existsSync(join(app.checkout, SKILL))).toBe(false)
+    expect(lineAbout(run.stdout, 'setup skill')).toContain('skipped')
+    expect(run.stdout).toContain('Without the skill, requests still reach your session')
+  })
+
+  it('leaves a skill that is already there exactly as it was, and says so', async () => {
+    const app = apps.create({ git: true })
+    mkdirSync(join(app.checkout, '.claude/skills/pointout'), { recursive: true })
+    writeFileSync(join(app.checkout, SKILL), 'a copy somebody committed\n')
+
+    const run = await runInit(app, app.appDir, '--no-skill')
+
+    expectOk(run)
+    expect(readSkill(app)).toBe('a copy somebody committed\n')
+    expect(lineAbout(run.stdout, 'setup skill')).toContain('left alone')
+    expect(run.stdout).toContain('does not remove a skill')
+  })
+
+  it('remembers nothing: init without the flag writes the skill', async () => {
+    const app = apps.create({ git: true })
+    expectOk(await runInit(app, app.appDir, '--no-skill'))
+
+    const run = await runInit(app)
+
+    expectOk(run)
+    expect(lineAbout(run.stdout, 'setup skill')).toContain('wrote')
+    expect(existsSync(join(app.checkout, SKILL))).toBe(true)
+  })
+
+  it('still refuses a flag it does not know, and writes nothing', async () => {
+    const app = apps.create({ git: true })
+    const run = await runInit(app, app.appDir, '--no-hooks')
+
+    expect(run.code).not.toBe(0)
+    expect(run.stderr).toContain('--no-skill')
+    expect(existsSync(join(app.checkout, SETTINGS))).toBe(false)
   })
 })
 
