@@ -9,6 +9,14 @@ front of your browser at that moment is in the picture. That is the whole reason
 this page exists: an image of your display must never be something you discover by
 accident, months later, in a temp directory.
 
+## The toggle
+
+Off by default. A camera toggle sits in the Panel's footer, and it remembers its state
+per origin. A capture is taken at the moment you pick, whatever the toggle says, so that
+it shows what you pointed at. The toggle decides only whether it travels. No file contents
+are sent anywhere: the Pick carries the file's path, and the agent opens it. The capture
+runs on the machine the dev server runs on, not where your browser is.
+
 ## Where they live
 
 ```

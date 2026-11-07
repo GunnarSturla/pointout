@@ -4,7 +4,9 @@ A dev-server package, for Vite and Next.js, that lets a developer pick an elemen
 running app, type a request about it, and have it reach the Claude Code session they are
 already working in, with the element's source location attached.
 
-See `README.md` for the idea and `GLOSSARY.md` for the domain language.
+See `README.md` for the idea and `GLOSSARY.md` for the domain language. The README is
+written for newcomers and avoids glossary terms on purpose: leave its plain English alone.
+The precise terms belong in `docs/`.
 
 ## Start here
 

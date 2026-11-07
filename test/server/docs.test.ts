@@ -291,9 +291,9 @@ describe('the README', () => {
 
   it('installs each Connector the way its Host takes it', () => {
     expect(readme).toContain("import { pointout } from '@gunnarsturla/pointout/vite'")
-    expect(readme).toContain('await import("@gunnarsturla/pointout/vite")')
     expect(readme).toContain("import { withPointout } from '@gunnarsturla/pointout/next'")
     expect(readme).toContain('next dev -H localhost')
-    expect(readme).toContain('--connector next|vite')
+    expect(readme).toContain('npx pointout init --connector vite')
+    expect(readme).toContain('--connector next')
   })
 })

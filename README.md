@@ -1,123 +1,28 @@
 # pointout
 
-> Point at something in your running app, type what's wrong, and have it land in the
-> Claude Code session you already have open for this repository.
+**Click an element in your browser and tell Claude Code what to do.** Your request lands
+in the session you already have open, with the exact file and line of the element
+attached, and an optional screenshot.
 
-**Status:** v0, unpublished, dev server only, on Vite or Next.js. It is not on npm. v0 is not yet declared
-done: two human checks remain (see [Before v0 is called done](#before-v0-is-called-done)).
+<!-- DEMO PLACEHOLDER: a recording of 10 seconds or less, browser and terminal side by
+side. Link it by absolute URL: the npm package does not ship images. -->
 
----
+**Early release (0.1.0).** pointout relies on undocumented Claude Code internals, so a
+Claude Code update can break direct delivery. The dev server warns at startup when your
+Claude Code is newer than the last version tested. If it can't read your session list,
+it warns and delivers requests with your next prompt instead.
 
-## What it does
+## Quick start
 
-You are looking at your app in the browser and one element is wrong. Hold Alt/Option,
-or click the Picker, and a Highlight follows whatever you hover, with a chip naming the
-component and its file. Click, and a Panel opens beside the element. Type a Note and
-press Enter. The Pick goes into the inbox of a Claude Code session working in this
-checkout, with the element's Owner chain attached:
-every JSX call site that produced the element, innermost first, each as
-`path:line:col` with a stated Confidence.
-
-- **The Picker** is a small tab at the bottom centre of the page, peeking up from the
-  edge with a crosshair and the word **Pick**. It comes out when you hover it or give it
-  focus, and stays out while anything is unresolved. Armed, it turns solid blue and
-  reads **Picking…**; click it again to stop. When the open Panel has scrolled out of
-  view with its element, **Back to your pick** appears beside it.
-- **Enter** sends, **Shift+Enter** starts a new line, **Escape** discards. `Escape`
-  unwinds one level at a time: picked, then armed, then off.
-- With an empty Note the button reads **Locate & stand by**: the agent finds the
-  element, reports where it is and changes nothing.
-- The Note is capped at 4,000 characters. A counter appears from 3,500.
-- **Alt-click another element** before sending and the Pick moves there, keeping your
-  Note. While the Panel is open, holding Alt shows a second Highlight on whatever you
-  hover, so you see what an Alt-click would pick before you make it. After sending,
-  Alt-click starts a new Pick.
-- **A Pick has one Panel for its whole life, in two forms.** Before you send, it is
-  open beside its element, and there is only ever one. Send shrinks it into the
-  **Stack**, bottom right, where it rests **minimized** until its fate is settled: one
-  line with a traffic light, the component, the first line of your Note, and a camera
-  if a Screen Capture went with it. The light's colour, and the words it shows on
-  hover, say what is known: grey *Sent* or *Waiting for the next prompt*; amber
-  *Working*; green *Done* (the agent's claim, and it clears itself after about eight
-  seconds); red *Needs your approval*, ringing where motion is allowed, when it is
-  waiting for you in the terminal; steady red *Failed*, *No acknowledgement yet* or
-  *Never picked up*. A second line underneath says
-  what happened and what to do next. The Overlay never reports a Pick as delivered on
-  the strength of silence.
-- **Click a minimized Panel** and it opens above the Stack to be read: the whole Note,
-  and which session it went to. One opens at a time. Click it again, or press
-  **Escape** inside it, to put it back. The Panel you are still writing keeps its place
-  and its focus.
-- **Withdraw.** A Pick that went wrong — failed, not acknowledged, never picked up, or
-  still queued for your next prompt — has a **×** beside its minimized Panel. It takes
-  back whatever the dev server still holds: the queued Pick, its report-back offer, its
-  Screen Capture. It cannot take back a Pick already written to a session, and says so:
-  *Already sent to `<name>` — it may still act on it*, or, when the hooks carried it,
-  *Already delivered to a session — it may still act on it*. A Pick that is still only sent, working, waiting
-  on your approval, or done cannot be withdrawn.
-
-The Target is the session a Pick goes to, shown in the Panel's footer before you send.
-It is preselected, in this order: the session you last sent to from this origin, while
-it is still running here; the session whose shell started the dev server; the only
-session in this checkout. If none of those applies, Send stays disabled until you
-choose.
-
-## Why this, rather than the tools that exist
-
-Existing tools fall into three groups. Some stop at the clipboard, and you still paste.
-Some spawn an agent of their own, which is a second session you did not ask for. And
-some are clipboard-mediated agent pull: the agent polls a clipboard in a loop that you
-have to arm first.
-
-v0 is better than the third group on four axes:
-
-1. **Push, not an armed loop.** The Pick is written into the session's own inbox. The
-   agent receives it mid-turn if busy and at once if idle. Nothing has to be armed.
-2. **No clipboard clobbering.** v0 never reads or writes your clipboard.
-3. **Addressable sessions.** Each Pick names one Target session, and several sessions
-   sharing one repository do not collide.
-4. **Works over SSH and in containers**, where there is no shared clipboard. There is
-   one condition: the browser's requests must reach the dev server on loopback, so the
-   forward has to arrive there (see [Loopback only](#loopback-only)).
-
-**There is a way to choose the session.** Click the Target row in the Panel's footer
-and it expands to the Session list, every Candidate with a coloured dot and a word
-for how it is doing: *Ready*, *Working* or *Needs you*, with what it is waiting for.
-A session idle a day or more shows its age, such as *3d*, and the one that started
-the dev server says *started this server*. You will rarely need it, because a session is usually
-preselected: the one you last chose, or the one that started the dev server.
-
-## Requirements
-
-| | |
-| --- | --- |
-| Node | 22.12 or later, for the dev server |
-| A Host | one of the two dev servers pointout runs in. Each is an optional peer dependency; you need only the one your app uses |
-| — Vite | 8. The example app uses `@vitejs/plugin-react` |
-| — Next.js | `>=16.3 <17`, under Turbopack, which is `next dev`'s default. Both the App Router and the Pages Router. Not webpack, and not Next 15 |
-| React | **19 or later**, with `react-dom` 19 (peer dependencies). React 18 is not supported: it has no owner stacks, which the Owner chain is read from |
-| Claude Code | the `claude` CLI, with sessions running on the same machine as the dev server. The harness surfaces v0 uses are undocumented. v0 pins on their shapes, not on a version (see [The startup posture block](#the-startup-posture-block)) |
-| Browsers | tested in Chromium, Firefox and WebKit through Playwright. WebKit stands in for Safari, and the test suite does not run Safari itself. See [the Safari limitation](#what-a-location-is-worth) |
-| Screen Capture | macOS only. On any other OS the camera toggle is shown disabled, with the reason |
-
-The package has no runtime dependencies. The Overlay uses your app's own React.
-
-## Install and set up
-
-Install it in your app as a dev dependency:
+Install it as a dev dependency:
 
 ```sh
 npm install --save-dev @gunnarsturla/pointout
 ```
 
-There is one entry point per Host, and none for the package as a whole: `@gunnarsturla/pointout`
-alone cannot be imported. On either Host, pointout runs in the dev server only, and a
-production build contains no Overlay code. Each Connector takes one option, `root`,
-which overrides where it thinks the repository is. You should not need it.
+Add it to your dev server.
 
-### On Vite
-
-Add the plugin to your Vite config:
+**Vite:**
 
 ```ts
 import { defineConfig } from 'vite'
@@ -129,34 +34,7 @@ export default defineConfig({
 })
 ```
 
-The plugin applies to `vite serve` only.
-
-**ESM only.** `@gunnarsturla/pointout/vite` cannot be `require()`d. If your Vite config loads as
-CommonJS, the package throws with this message:
-
-```
-pointout is ESM-only and cannot be require()d.
-
-Your Vite config is being loaded as CommonJS. Either make the config ESM
-(rename it to vite.config.mjs, or set "type": "module" in package.json),
-or keep the CommonJS config and load the plugin with a dynamic import()
-from an async config factory:
-
-    const { defineConfig } = require("vite")
-
-    module.exports = defineConfig(async () => {
-      const { pointout } = await import("@gunnarsturla/pointout/vite")
-      return { plugins: [pointout()] }
-    })
-
-defineConfig(async () => …) is what makes the dynamic import() possible:
-Vite awaits the returned config, so the plugin can be imported at runtime.
-```
-
-### On Next.js
-
-Wrap your Next config in `withPointout()`, whichever form it takes, an object or a
-function:
+**Next.js:**
 
 ```ts
 import type { NextConfig } from 'next'
@@ -167,364 +45,92 @@ const nextConfig: NextConfig = {}
 export default withPointout(nextConfig)
 ```
 
-Then run the dev server bound to this machine only:
+On Next.js, also put `next dev -H localhost` in your `dev` script, because requests are
+only accepted from this machine.
 
-```sh
-next dev -H localhost
-```
-
-Next.js listens on every interface by default, and pointout cannot change that from the
-config. It still works there, but the startup block warns that Picks from the LAN will
-be refused (see [Loopback only](#loopback-only)). Put `-H localhost` in your `dev`
-script.
-
-`withPointout()` acts only in `next dev`, in the worker process that serves your pages,
-under Turbopack. Everywhere else, `next build`, `next start` or a script that imports
-the config, it hands the config back as it was given. It puts the Overlay into every
-page of both routers itself, and waits for React to hydrate the page before it draws,
-so it causes no hydration warning; there is nothing to add to a layout. `@gunnarsturla/pointout/next`
-is ESM, and a CommonJS `next.config.js` can `require()` it on Node 22.12 or later.
-
-**Under `next dev --webpack`**, pointout serves nothing and puts no Overlay in the page,
-and warns that it supports only Turbopack.
-
-**What is different on Next.js.** The page shows the same Overlay as on Vite, with the
-same Targeting, Receipts, report-back, Withdraw and Screen Capture. What differs is
-underneath:
-
-- **A self-check.** pointout answers `/__agent` by reaching into Next's own server from
-  the config, which depends on when Next reads its config. At startup it requests its
-  own status, and the startup block ends in a `self-check` line that warns if anything
-  else answered (see [`docs/posture.md`](docs/posture.md)).
-- **Server Components are on the Owner chain**, each an ordinary link with its own
-  Confidence. In Chrome and Firefox they resolve exactly. In Safari they arrive
-  `absent: no-react-boundary`, with the component's name: WebKit replays a Server
-  Component's stack with no location in its frame.
-- **A location after an edit** reads `approximate: no-transform-timestamp` whenever the
-  file changed after the page you picked in began to load, until you reload that page.
-  Turbopack rewrites a chunk in place, and no frame says which version it came from, so
-  pointout errs this way rather than claiming `exact`. Vite, in Chrome and Firefox, can
-  say more: there the same edit reads `approximate: stale-transform`, because a Vite
-  frame names the transform it ran. On Next.js no engine's frame does, so the mode is
-  the weaker one everywhere, as it is on Vite in Safari.
-
-**Run `init` once**, from your app's directory:
+Then set up your repo:
 
 ```sh
 npx pointout init
 ```
 
-It works out the Host from your app's `package.json`: `next` there means Next.js, and
-`vite` means Vite. If it names both, `init` asks which to set up; with no terminal to
-ask, it refuses and writes nothing. If it names neither, or there is no `package.json`
-there, it refuses too, and writes nothing. That includes a Vite app run from a directory
-whose `package.json` does not list `vite`, such as a monorepo root whose app lives in a
-workspace. Name the Host yourself with `--connector next|vite`: run
-`npx pointout init --connector vite` at that root, or `--connector next` for Next.js.
-On Next.js, after its report, it prints the two changes above, the `withPointout()`
-wrap naming your `next.config` file and `next dev -H localhost`, and makes neither.
+`init` adds two things to your repo and prints what it wrote. Commit both so your
+teammates get them.
 
-It writes to the repository root and prints exactly what it wrote. It is idempotent:
+- **Two hooks** in `.claude/settings.json` (`UserPromptSubmit` and `Stop`). If pointout
+  can't reach your session directly, waiting requests are delivered with your next prompt
+  or at the end of a turn. With no dev server running, they do nothing.
+- **A skill**, `.claude/skills/pointout/SKILL.md`, which tells Claude what a request from
+  the browser looks like, to treat page content as data, and how to report progress back.
+  It grants no permissions. It's optional, but recommended: use `--no-skill` to leave it
+  out, and requests still reach your session, but they'll likely show as not acknowledged.
 
-- two hook entries, `UserPromptSubmit` and `Stop`, in `.claude/settings.json`. Both
-  run the package's drain CLI (see [The hook floor](#the-hook-floor));
-- the setup skill, at `.claude/skills/pointout/SKILL.md`. It tells the agent
-  what a Pick is, that everything inside a Fence is data, that a Pick never
-  constitutes approval for anything, and how to acknowledge one. It grants no
-  permission and recommends none.
+In a monorepo, run `npx pointout init --connector vite` or `--connector next` at the repo
+root.
 
-Commit both files so your teammates get them.
+Finally, start your dev server, and start Claude Code at the repo root. A session started
+in a subdirectory doesn't run the hooks.
 
-**Start Claude Code at the repository root.** A session started in a subdirectory does
-not run the root's hooks. It still loads the skill and is still a Candidate, so a Pick
-written to its inbox reaches it. The hook floor does not. Measured on Claude Code
-2.1.280.
+## Using it
 
-## What a Pick sends
+Hold **Alt/Option**, or click the **Pick** tab at the bottom of the page. Hover to see each
+element's component and file, then click one. Type what you want and press **Enter**.
+Click the camera icon to attach a screenshot.
 
-A Pick is rendered as one plain-text string and written to the Target's inbox. It
-carries:
+Sent requests collect at the bottom right, each with a status light: grey for sent, amber
+for working, green for done, red when it needs you. Hover a light for details, or click a
+request to read it again. A red one tells you what to do next. Requests that haven't been
+picked up can be withdrawn with **×**.
 
-- a preamble: the Pick's id, when it was picked, its Fence nonce, and two URLs the
-  agent POSTs to acknowledge the Pick and to say it is done;
-- the Pointer: page URL, viewport, the element's tag, `id`, `data-testid`, `role`,
-  `aria-*` attributes and at most two classes, and its size and position. No selector
-  path, no computed styles and no source snippet;
-- the Owner chain, one line per link, with each link's Confidence;
-- your Note, inside a Fence;
-- Excerpts, each inside a Fence and introduced as data:
-  - the element's rendered text, as one line of at most 80 characters;
-  - **the value of an input**, a `textarea`'s contents, a `select`'s chosen option,
-    or `contenteditable` text, each capped at 1,000 characters. **This is whatever is
-    in the field**, including anything you typed there. Only inputs whose `type`
-    attribute is `password` or `hidden` are withheld, and the Pick says so when one
-    is;
-  - a short allowlist of attributes: `type`, `name`, `href`, `title`, `placeholder`,
-    `alt`, `for`;
-- when the camera toggle is on, the absolute path of a Screen Capture: a PNG file of
-  **your physical display** around the element (see [Screen Capture](#screen-capture)).
+The session is chosen for you: the one you last sent to, the one that started the dev
+server, or the only one in this checkout. If it can't tell, choose from the list in the
+panel, which shows only sessions in this checkout.
 
-A Pick is capped at 32 KiB. Excerpts are trimmed first, and the trim is stated in the
-Pick. The Pointer and the Note are never trimmed. If the Pick still does not fit, the
-Panel refuses it and says which part is too large.
+## Why this one
 
-## How a Pick reaches the session
+Similar tools tend to stop at the clipboard, so you still have to paste; start their own
+agent, a second session without your context; or have the agent poll in a loop you have to
+start first.
 
-**The dev server reads the session registry.** Claude Code keeps one JSON file per
-running session in `~/.claude/sessions/`. The dev server reads it at startup, and
-afterwards only while the Panel is open or a Pick is outstanding. A session is a Candidate only if
-its working directory is in this same checkout: the same git worktree root, compared
-exactly. Sessions in other repositories or worktrees are never offered.
+pointout pushes into the session you already have open. There's nothing to arm, and your
+clipboard is never touched. Each request names one session, so several sessions in one
+repo don't collide.
 
-**The dev server writes to another process's socket.** To send, it reads the Target's
-peer token from the `<pid>.<hash>.key` file beside its registry entry. It connects to
-the socket the entry names and writes three NDJSON lines: the token, the Pick, and a
-one-time request to be told when the session is next idle. Then it closes the
-connection. With no key file it writes the last two only, and logs that it did. A
-Pick is written once and never resent with the same body.
-
-**The dev server binds a socket of its own**, `/tmp/cc-socks/<its pid>.sock`, where the
-harness sends Receipts about what became of each Pick. It never binds over a path a
-registered session already owns.
-
-What the Stack says comes from those Receipts, from the agent's Ack, from
-the session's status in the registry, and from a clock:
-
-- If the Target stays idle for 60 s after the write, or ends a turn without
-  acknowledging, the Pick's minimized Panel in the Stack offers it back. The offer has a 30 s
-  countdown, and you can send the Pick to another session. If you do nothing, it is
-  left for your next prompt.
-- A Pick nobody has acknowledged reads as not acknowledged, with a next step. It
-  never reads as delivered.
-
-**The manual-mode stall.** The agent acknowledges a Pick by running `curl`. In a
-session in manual permission mode, the mode the spec calls *default*, that is a
-permission prompt, and the session waits on it until you approve it in the terminal.
-The Target row shows the session as waiting, and the report-back clock pauses. v0
-recommends no allowlist entry to avoid this, on purpose: nothing in v0 may raise what
-a Pick is allowed to cause.
-
-### The hook floor
-
-When the registry cannot be read, or has a shape v0 does not recognise, the Panel
-says *Can't see your sessions — sending the slower way*. Picks then queue on the dev
-server. The two hooks `init` installed drain the queue into the next prompt you type
-in any session at this root, and into the end of a turn. A queued Pick expires after
-30 minutes, and the Stack says so. The hooks find the dev server through a discovery
-entry it writes at startup (see below). The hooks never block a prompt: with no dev
-server running they print nothing.
-
-## What it reads and writes on your machine
-
-| | where | when |
-| --- | --- | --- |
-| reads | `~/.claude/sessions/*.json` and `*.key` | while a Panel is open or a Pick is outstanding, and at startup |
-| reads | `git rev-parse --show-toplevel`, run from the Host's root (the Vite root, or the directory `next dev` runs in) and from each session's working directory | once per path, cached |
-| writes | the Target session's inbox socket | once per Pick sent |
-| binds | `/tmp/cc-socks/<pid>.sock` | from startup to shutdown |
-| writes | `$TMPDIR/pointout-captures/<pid>-<6 hex>/`, mode `0700`: Screen Captures | see [Screen Capture](#screen-capture) |
-| writes | `$TMPDIR/pointout-servers-<uid>/`, user-only: the discovery entry, holding the address the server is bound to, its port, and a per-server secret the drain must present | written at startup, removed at shutdown. Entries left by dead dev servers are swept |
-| runs | macOS `screencapture -x -R …` | once at startup as a probe, and at each Pick |
-| writes | `.claude/settings.json`, `.claude/skills/pointout/SKILL.md` | only when you run `init` |
-| writes, in the page | `localStorage` on your app's origin: the last Target you sent to, and the camera toggle | when you send, and when you flip the toggle |
-
-## Loopback only
-
-Every `/__agent` endpoint refuses a connection that does not come from `127.0.0.1` or
-`::1`, and says why. A Pick must also carry an `Origin` equal to one this dev server
-is serving on. An absent `Origin` is refused.
-
-The ack and done URLs a Pick carries, and the address the hooks dial, are the address
-the Host is actually bound to. Vite's default `localhost`, and `next dev -H localhost`,
-are IPv6 `[::1]` alone on a machine whose resolver lists it first, as macOS does, and
-IPv4 `127.0.0.1` on many others; a server bound to every interface is dialled on
-loopback.
-
-- Run with `vite --host`, or `next dev` with no `-H`, and the page still loads from
-  other machines, but no Pick can be made from them. The startup block says so.
-- **Over SSH**, forward the port to the **same port number** on your machine
-  (`ssh -L 5173:localhost:5173`). The forwarded connection arrives on the remote's
-  loopback, and the browser's `Origin` then names a port the dev server serves on.
-- **In a container**, the dev server and the Claude Code session must both run inside
-  it. Forwarding that connects from inside the container, as an editor's port
-  forwarding does, arrives on loopback, and it has to keep the port number, as over
-  SSH. A Docker `-p` port mapping arrives from the bridge address and is refused.
-- Screen Capture runs on the machine the dev server runs on. It does not run where
-  your browser is.
-
-This has not been exercised in the test suite over a real SSH session or in a real
-container. The conditions above follow from the loopback and `Origin` rules, which
-are tested.
-
-## Screen Capture
-
-Off by default. A camera toggle sits in the Panel's footer, and it remembers its state
-per origin. A capture is taken at the moment you pick, whatever the toggle says, so
-that it shows what you pointed at. The toggle decides only whether it travels. It is a
-PNG file of your **physical display**, not of the page, so any window in front of the
-browser at that moment is in it. No file contents are sent anywhere: the Pick carries
-the file's path, and the agent opens it.
-
-- The files live in `$TMPDIR/pointout-captures/<pid>-<6 hex>/`, mode `0700`.
-  The path is printed at every startup.
-- A move of the Pick deletes the capture it left behind. Discarding the Pick, or
-  sending it with the toggle off, deletes its capture.
-- Sending with the toggle on keeps the file until the dev server shuts down. **At
-  shutdown the whole directory is deleted**, including files already handed to an
-  agent. At startup, whatever dead dev servers left behind is swept.
-- It needs Screen Recording permission for the **terminal** that started the dev
-  server. Without it, `screencapture` writes nothing and exits successfully. The
-  startup probe checks the file it wrote, so the toggle is disabled with that reason.
-
-The full account is in [`docs/screen-capture.md`](docs/screen-capture.md).
-
-## What a location is worth
-
-Each Owner-chain link says whether it is `exact`, `approximate` with a reason, or
-`absent` with a reason. A link that cannot be placed keeps the component's name, and a
-Pick is never refused for a poor location. The table of every mode is in
-[`docs/owner-chain-confidence.md`](docs/owner-chain-confidence.md).
-
-- **The Safari limitation.** JavaScriptCore deletes the frame of a component whose
-  body is a bare `return <tag>`. In Safari, an element nested *inside* its
-  component's root element resolves exactly. An element that *is* that root element
-  arrives `absent: call-site-frame-elided-by-engine`, with its component's name.
-  Chrome and Firefox resolve both. Safari also strips the query from a stack URL, so
-  after a hot update its locations read `approximate: no-transform-timestamp`.
-- **Server Components** (Next.js) resolve exactly in Chrome and Firefox, and arrive
-  `absent: no-react-boundary` in Safari, with their names.
-- **Code from a package** in `node_modules` is flagged `dependency`. Whether the link
-  also carries a location depends on what the Host serves for it, so do not count on
-  either.
-- **The ceiling: about 10,000 elements created per second.** Above that, React stops
-  recording owner stacks and hands out one shared placeholder. The Pointer then names
-  components without lines. Ticket 06 measured the placeholder against React 19.3 in
-  all three engines. It names only React's own runtime, never a place in your source,
-  and the dev server marks it `absent` (`unknown-owner-placeholder`, or
-  `no-react-boundary` in WebKit). **v0 has no silently wrong mode**: the ceiling costs
-  a location and never invents one.
-
-## The startup posture block
-
-Every dev-server start prints one block saying where pointout is, what it will
-refuse, and which of its parts work: `root`, `guard`, `registry`, `harness version`,
-`reply socket`, `screen capture`, `temp directory`, `discovery entry`, `self-check` on
-Next.js, and `host` when the Host is bound off loopback. If any line reports something degraded, the whole block
-is logged as a warning. The `harness version` line compares the Claude Code version
-your sessions report with the version the canaries last passed against, and warns,
-never refuses, when yours is newer. Every line and what it means is in
-[`docs/posture.md`](docs/posture.md).
-
-## Before v0 is called done
-
-- **Trusted Types is unverified.** The Panel, Stack and Picker are rendered by your
-  app's `react-dom`. v0's own code builds no DOM from a markup string. Whether
-  `react-dom` itself stays within `require-trusted-types-for 'script'` has not been
-  checked against a real app that enforces it. `connect-src 'self'` is not a problem,
-  because every request goes to the dev server's own origin.
-- **The `review-animations` gate needs a re-run.** It is a human-run review of the
-  Overlay's motion. It ran on 2026-09-23, and its outcome is in
-  [`docs/motion.md`](docs/motion.md#the-outcome). Everything that moves since then —
-  the Picker's lift and widening, the pressed controls, the status dots, the Panel
-  growing, travelling and shrinking into the Stack — was added after that run, and
-  the outcome does not cover it. All movement is opt-in under
-  `prefers-reduced-motion: no-preference`. With reduced motion set, nothing in the
-  Overlay moves; fades still ease.
-
-## What v0 does not do
-
-- Other harnesses than Claude Code, and other frameworks than React.
-- React 18.
-- Staging or production. It runs in the dev server only.
-- Hosts other than Vite and Next.js. On Next.js: webpack (`next dev --webpack`), and
-  Next 15 or earlier.
-- More than one element per Pick, stepping the selection to a parent, line numbers on
-  hover, computed styles, a DOM ancestor chain, a source snippet or a selector path.
-- Screen Capture on Linux or Windows.
-- Reaching a session outside this checkout's worktree root.
-- Pick history. The Stack holds only what is outstanding.
-- Recovering a frame Safari deleted. The agent can search the named component's file.
-- Any configuration whose purpose is to raise what a Pick may cause, including a
-  permission allowlist for the manual-mode stall.
-
----
-
-## Developing this repository
-
-```sh
-npm install
-npm run dev            # builds dist/, then serves examples/react-app/ with the plugin
-npm run build && npm run dev --workspace pointout-example-next   # the Next.js test bed
-npm test               # the server and browser suites: the dev server's HTTP surface, then three browsers
-npm run lint && npm run format:check && npm run typecheck
-```
-
-`examples/react-app/` is the React 19 test bed. Its full-viewport decoy, the fixture that
-covers the page the way a real app's scrim does, is off when the page loads; add
-`?decoy` to the URL to load with it on, or press **Show decoy**, bottom left.
-`examples/next-app/` is the Next.js 16 test bed, built from the same fixtures in
-`examples/shared/`, with an App Router route at `/`, a Pages Router route at
-`/pages-router`, and its config wrapped in `withPointout()`.
-
-The conventions every change follows start at [`CLAUDE.md`](CLAUDE.md), and the domain
-language is in [`GLOSSARY.md`](GLOSSARY.md).
-
-### The canary suites
-
-The default test run fakes Claude Code. The canaries run the real harness. They need
-the `claude` CLI on `PATH` and a logged-in account, skip with that reason when either
-is missing, and never run in CI or in `npm test`. Each spawns throwaway sessions in a
-temporary git repository. Those sessions appear in your real registry while the suite
-runs.
-
-| command | what it costs | what it checks |
-| --- | --- | --- |
-| `npm run test:claude` | **no tokens.** The session's model traffic goes to a loopback port that drops it unread | the registry entry's shape, the key file, the socket, the idle notice at the dev server's socket, and that a child session does not register |
-| `npm run test:claude:model` | **tokens**: a handful of turns on haiku, about 100 s | a real Pick landing byte for byte, the duplicate Receipt, the manual-mode stall and its approval, the agent's ack and done (the one model-dependent canary), and both hooks draining a queued Pick. On a fully green run it rewrites `src/server/claude/verified-harness.ts`. Commit that file |
-
-Run the free tier often. Run the model tier after every Claude Code upgrade, when the
-posture block's `harness version` line warns, and on a regular cadence.
-
-**Not exercised live**, and kept as static reads of the harness: the rate limit (a
-burst of thirty needs thirty turns); the 1 MiB line limit, where the harness drops the
-connection rather than truncating; and the `held`, `denied`, `expired`, `refused` and
-`delivered` Receipts, which need a Target with a different inbound policy. The server suite
-covers what v0 does with each of them. A frame with a mismatched `session_id` is
-dropped with no Receipt at all (measured, Claude Code 2.1.280).
-
-### Documentation
+## Requirements
 
 | | |
 | --- | --- |
-| [`docs/posture.md`](docs/posture.md) | every startup line |
-| [`docs/screen-capture.md`](docs/screen-capture.md) | where captures live and when they go |
-| [`docs/owner-chain-confidence.md`](docs/owner-chain-confidence.md) | every Confidence mode, the Safari limitation and the ceiling |
-| [`docs/motion.md`](docs/motion.md) | what moves, and the `review-animations` gate |
-| [`docs/adr/`](docs/adr/) | decisions that deviate from, or refine, the spec |
-| [`LICENSE-THIRDPARTY`](LICENSE-THIRDPARTY) | the five projects borrowed from, their licences and the files that carry each borrow |
+| Claude Code | The `claude` CLI, running on the same machine as the dev server |
+| Framework | React 19 or later |
+| Dev server | Vite 8, or Next.js 16.3+ with Turbopack (the `next dev` default). Node 22.12+ |
+| Browsers | Chrome and Firefox get full results. In Safari, some elements come back with the component name but no line number ([why](docs/owner-chain-confidence.md#the-safari-limitation)) |
+| Screenshots | macOS only, and the terminal running the dev server needs Screen Recording permission |
 
-## Prior art
+It only runs in your dev server, and nothing is added to a production build. It only
+reaches sessions in the same checkout. Not yet checked against apps enforcing Trusted
+Types.
 
-- **[UI-Locator](https://github.com/amir1824/UI-Locator)**: Shift+click copies a
-  compact AI prompt to the clipboard. v0 borrows its attribute allowlist.
-- **[vite-plugin-herdr](https://github.com/scaccogatto/vite-plugin-herdr)**: pick an
-  element, add a prompt, send it to a herdr agent. v0 borrows its fail-closed
-  same-origin check and the payload format its Pointer prose grew from.
-- **[vite-plugin-opencode](https://github.com/Brendonovich/vite-plugin-opencode)**:
-  picker to OpenCode, with source markers injected into JSX at dev time.
-- **[Pinpoint](https://github.com/ragrivera/pinpoint)**: pins to a file queue to MCP,
-  with a headless worker or a live session blocking in a tool.
-- **[vite-plugin-pilot](https://github.com/2234839/vite-plugin-pilot)**: weighted
-  toward the agent reading and driving the page. It has a `UserPromptSubmit` hook
-  fallback.
-- **[MCP Pointer](https://github.com/etsd-tech/mcp-pointer)**: an extension plus an
-  MCP server, with React Fiber source mapping. Pull-based.
-- **[react-grab](https://github.com/aidenybai/react-grab)**: v0 borrows its deep
-  element-at-point hit test.
-- **[click-to-react-component](https://github.com/ericclemmons/click-to-component)**
-  and **[Locator.js](https://www.locatorjs.com/)**: click to jump to source. v0
-  borrows the armed `pointer-events` rule.
-- **React DevTools**: v0 borrows its stack-frame parser.
-- Agent-to-browser tools (Claude in Chrome, chrome-devtools MCP, Playwright MCP) run
-  the other direction, with the agent driving. They complement v0 rather than compete
-  with it.
+## Worth knowing
+
+What leaves the page with a request:
+
+- The element's location and the attributes that identify it, plus what you typed.
+- The contents of the selected input, so Claude sees what's actually in the field. Only
+  `password` and `hidden` inputs are withheld.
+- A screenshot, if you turn the camera on. It shows your physical display, not just the
+  page, so any window in front of the browser is in it.
+
+The dev server only accepts requests from this machine. For everything pointout reads,
+writes and binds, see [how it works](docs/how-it-works.md).
+
+## Further reading
+
+- [How it works](docs/how-it-works.md): what a request carries, how it travels, and what it
+  touches on your machine, including SSH and containers
+- [Using the overlay in detail](docs/overlay.md)
+- [What a location is worth](docs/owner-chain-confidence.md): how exact a file and line is,
+  and when
+- [Screenshots](docs/screen-capture.md): where they live and when they're deleted
+- [The startup block](docs/posture.md): every line the dev server prints
+- [Contributing](CONTRIBUTING.md)
+- [Prior art](docs/prior-art.md) and [third-party licences](LICENSE-THIRDPARTY)
