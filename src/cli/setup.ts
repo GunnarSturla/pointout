@@ -18,7 +18,7 @@ import type { HostSetup } from './hosts.js'
 // written, so a refusal never leaves a half-set-up project behind it.
 
 /** The package's own name, as a consumer's `node_modules` spells it. */
-const PACKAGE_NAME = 'pointout'
+const PACKAGE_NAME = '@gunnarsturla/pointout'
 
 /**
  * How every installed drain CLI's path ends, wherever the package landed. A

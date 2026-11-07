@@ -18,7 +18,7 @@ import { repoRoot } from './paths.js'
 // A throwaway consumer, laid out so root discovery has something to discover:
 //
 //   <playground>/                    never a git repository
-//   <playground>/node_modules/       pointout, linked as an install
+//   <playground>/node_modules/       @gunnarsturla/pointout, linked as an install
 //   <playground>/checkout/           the git repository, when one is asked for
 //   <playground>/checkout/app/       the Host's root: Vite's, or Next's
 //   <playground>/<worktree>/         linked worktrees, added on demand
@@ -95,8 +95,12 @@ export function createTempApp(
   const checkout = join(playground, 'checkout')
   const appDir = join(checkout, 'app')
   mkdirSync(appDir, { recursive: true })
-  mkdirSync(join(playground, 'node_modules'))
-  symlinkSync(repoRoot, join(playground, 'node_modules', 'pointout'), 'dir')
+  mkdirSync(join(playground, 'node_modules', '@gunnarsturla'), { recursive: true })
+  symlinkSync(
+    repoRoot,
+    join(playground, 'node_modules', '@gunnarsturla', 'pointout'),
+    'dir',
+  )
 
   writeFileSync(
     join(appDir, 'package.json'),
@@ -240,7 +244,7 @@ function writeConfig(
   writeFileSync(
     join(appDir, 'vite.config.js'),
     [
-      "import { pointout } from 'pointout/vite'",
+      "import { pointout } from '@gunnarsturla/pointout/vite'",
       '',
       'export default ' +
         JSON.stringify(config, null, 2).replace(
@@ -261,7 +265,7 @@ function writeNextConfig(appDir: string, pluginOptions: PluginOptions) {
   writeFileSync(
     join(appDir, 'next.config.mjs'),
     [
-      "import { withPointout } from 'pointout/next'",
+      "import { withPointout } from '@gunnarsturla/pointout/next'",
       '',
       'const distDir = process.env.POINTOUT_EXAMPLE_DIST_DIR',
       '',

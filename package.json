@@ -1,5 +1,5 @@
 {
-  "name": "pointout",
+  "name": "@gunnarsturla/pointout",
   "version": "0.1.0",
   "description": "Pick an element in the running app, type a request about it, and have it reach the Claude Code session you are already working in.",
   "license": "MIT",
@@ -22,6 +22,9 @@
     "react",
     "inspector"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "exports": {
     "./vite": {

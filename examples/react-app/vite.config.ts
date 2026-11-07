@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { pointout } from 'pointout/vite'
+import { pointout } from '@gunnarsturla/pointout/vite'
 
 // The test bed renders the fixtures it shares with `examples/next-app`, which
 // sit outside this root in `examples/shared/`, so an Owner chain names the same

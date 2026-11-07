@@ -58,9 +58,9 @@ describe('the core belongs to no Host', () => {
 })
 
 describe('the entry points', () => {
-  it('gives the Vite plugin at pointout/vite', () => {
+  it('gives the Vite plugin at @gunnarsturla/pointout/vite', () => {
     const answer = importFromRepo(
-      "const m = await import('pointout/vite');" +
+      "const m = await import('@gunnarsturla/pointout/vite');" +
         'console.log(JSON.stringify({ named: typeof m.pointout, same: m.default === m.pointout, name: m.pointout().name }))',
     )
     expect(JSON.parse(answer)).toEqual({
@@ -70,9 +70,9 @@ describe('the entry points', () => {
     })
   })
 
-  it('has no root entry, so bare pointout fails', () => {
+  it('has no root entry, so the bare package name fails', () => {
     const answer = importFromRepo(
-      "try { await import('pointout'); console.log('imported') }" +
+      "try { await import('@gunnarsturla/pointout'); console.log('imported') }" +
         ' catch (error) { console.log(error.code) }',
     )
     expect(answer).toBe('ERR_PACKAGE_PATH_NOT_EXPORTED')
@@ -84,9 +84,9 @@ describe('the entry points', () => {
     expect(pkg.peerDependenciesMeta?.vite).toEqual({ optional: true })
   })
 
-  it('gives withPointout at pointout/next, to an ESM config', () => {
+  it('gives withPointout at @gunnarsturla/pointout/next, to an ESM config', () => {
     const answer = importFromRepo(
-      "const m = await import('pointout/next');" +
+      "const m = await import('@gunnarsturla/pointout/next');" +
         'const config = { reactStrictMode: true };' +
         'console.log(JSON.stringify({ named: typeof m.withPointout, same: m.default === m.withPointout, untouched: m.withPointout(config) === config }))',
     )
@@ -99,7 +99,7 @@ describe('the entry points', () => {
       process.execPath,
       [
         '-e',
-        "const { withPointout } = require('pointout/next');" +
+        "const { withPointout } = require('@gunnarsturla/pointout/next');" +
           'const config = { reactStrictMode: true };' +
           'console.log(JSON.stringify({ named: typeof withPointout, untouched: withPointout(config) === config }))',
       ],

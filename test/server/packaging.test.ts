@@ -11,7 +11,7 @@ describe('the CommonJS entry', () => {
     const require = createRequire(import.meta.url)
     let message = ''
     try {
-      require('pointout/vite')
+      require('@gunnarsturla/pointout/vite')
       throw new Error('require() of the package was expected to throw')
     } catch (error) {
       message = error instanceof Error ? error.message : String(error)
@@ -19,7 +19,7 @@ describe('the CommonJS entry', () => {
 
     expect(message).toMatch(/ESM-only/)
     expect(message).toContain('defineConfig(async () =>')
-    expect(message).toContain('await import("pointout/vite")')
+    expect(message).toContain('await import("@gunnarsturla/pointout/vite")')
   })
 })
 

@@ -416,7 +416,7 @@ describe.skipIf(skip)(
       // `init` exactly as a consumer runs it, from the installed bin.
       initOutput = execFileSync(
         'node',
-        [join(repo.dir, 'node_modules/pointout/dist/cli/main.js'), 'init'],
+        [join(repo.dir, 'node_modules/@gunnarsturla/pointout/dist/cli/main.js'), 'init'],
         { cwd: repo.dir, env: scrubbedEnv(), encoding: 'utf8' },
       )
       server = await startRealDevServer(repo.dir)

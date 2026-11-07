@@ -14,7 +14,7 @@ import type { TempApp } from '../harness/temp-app.js'
 
 const SETTINGS = '.claude/settings.json'
 const SKILL = '.claude/skills/pointout/SKILL.md'
-const NEXT_CONFIG = `import { withPointout } from 'pointout/next'\n\nexport default {}\n`
+const NEXT_CONFIG = `import { withPointout } from '@gunnarsturla/pointout/next'\n\nexport default {}\n`
 
 const apps = tempApps()
 const homes: string[] = []
@@ -34,7 +34,7 @@ interface CliRun {
 function runInit(app: TempApp, ...args: string[]): Promise<CliRun> {
   const home = mkdtempSync(join(tmpdir(), 'pointout-home-'))
   homes.push(home)
-  const bin = join(app.playground, 'node_modules/pointout/dist/cli/main.js')
+  const bin = join(app.playground, 'node_modules/@gunnarsturla/pointout/dist/cli/main.js')
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [bin, 'init', ...args], {
       cwd: app.appDir,
@@ -93,7 +93,7 @@ describe('init on a Next.js app', () => {
 
     const said = flat(run.stdout)
     expect(said).toContain('withPointout()')
-    expect(said).toContain('pointout/next')
+    expect(said).toContain('@gunnarsturla/pointout/next')
     expect(said).toContain(join(app.appDir, 'next.config.ts'))
     expect(said).toContain('next dev -H localhost')
 
@@ -107,9 +107,9 @@ describe('init on a Next.js app', () => {
 
     const skill = flat(readFileSync(join(app.checkout, SKILL), 'utf8'))
     expect(skill).toContain('withPointout()')
-    expect(skill).toContain('pointout/next')
+    expect(skill).toContain('@gunnarsturla/pointout/next')
     expect(skill).toContain('next dev -H localhost')
-    expect(skill).not.toContain('pointout/vite')
+    expect(skill).not.toContain('@gunnarsturla/pointout/vite')
   })
 })
 
@@ -142,8 +142,8 @@ describe('init on an app that depends on both vite and next', () => {
     expect(run.stdout).not.toContain('withPointout')
     expect(run.stdout).not.toContain('next dev')
     const skill = flat(readFileSync(join(app.checkout, SKILL), 'utf8'))
-    expect(skill).toContain('pointout/vite')
-    expect(skill).not.toContain('pointout/next')
+    expect(skill).toContain('@gunnarsturla/pointout/vite')
+    expect(skill).not.toContain('@gunnarsturla/pointout/next')
   })
 
   it('with --connector=next, takes Next.js', async () => {

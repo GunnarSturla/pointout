@@ -104,16 +104,13 @@ The package has no runtime dependencies. The Overlay uses your app's own React.
 
 ## Install and set up
 
-The package is not published. Build it from a checkout, then install it into your app
-from that checkout:
+Install it in your app as a dev dependency:
 
 ```sh
-git clone <this repository> pointout
-cd pointout && npm install && npm run build
-cd /path/to/your/app && npm install --save-dev /path/to/pointout
+npm install --save-dev @gunnarsturla/pointout
 ```
 
-There is one entry point per Host, and none for the package as a whole: `pointout`
+There is one entry point per Host, and none for the package as a whole: `@gunnarsturla/pointout`
 alone cannot be imported. On either Host, pointout runs in the dev server only, and a
 production build contains no Overlay code. Each Connector takes one option, `root`,
 which overrides where it thinks the repository is. You should not need it.
@@ -125,7 +122,7 @@ Add the plugin to your Vite config:
 ```ts
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { pointout } from 'pointout/vite'
+import { pointout } from '@gunnarsturla/pointout/vite'
 
 export default defineConfig({
   plugins: [react(), pointout()],
@@ -134,7 +131,7 @@ export default defineConfig({
 
 The plugin applies to `vite serve` only.
 
-**ESM only.** `pointout/vite` cannot be `require()`d. If your Vite config loads as
+**ESM only.** `@gunnarsturla/pointout/vite` cannot be `require()`d. If your Vite config loads as
 CommonJS, the package throws with this message:
 
 ```
@@ -148,7 +145,7 @@ from an async config factory:
     const { defineConfig } = require("vite")
 
     module.exports = defineConfig(async () => {
-      const { pointout } = await import("pointout/vite")
+      const { pointout } = await import("@gunnarsturla/pointout/vite")
       return { plugins: [pointout()] }
     })
 
@@ -163,7 +160,7 @@ function:
 
 ```ts
 import type { NextConfig } from 'next'
-import { withPointout } from 'pointout/next'
+import { withPointout } from '@gunnarsturla/pointout/next'
 
 const nextConfig: NextConfig = {}
 
@@ -185,7 +182,7 @@ script.
 under Turbopack. Everywhere else, `next build`, `next start` or a script that imports
 the config, it hands the config back as it was given. It puts the Overlay into every
 page of both routers itself, and waits for React to hydrate the page before it draws,
-so it causes no hydration warning; there is nothing to add to a layout. `pointout/next`
+so it causes no hydration warning; there is nothing to add to a layout. `@gunnarsturla/pointout/next`
 is ESM, and a CommonJS `next.config.js` can `require()` it on Node 22.12 or later.
 
 **Under `next dev --webpack`**, pointout serves nothing and puts no Overlay in the page,

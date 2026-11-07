@@ -16,7 +16,7 @@ throw new Error(
     '    const { defineConfig } = require("vite")',
     '',
     '    module.exports = defineConfig(async () => {',
-    '      const { pointout } = await import("pointout/vite")',
+    '      const { pointout } = await import("@gunnarsturla/pointout/vite")',
     '      return { plugins: [pointout()] }',
     '    })',
     '',

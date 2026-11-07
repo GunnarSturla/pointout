@@ -37,8 +37,8 @@ finished task, both as hooks; the formatter never touches prose. See
 
 ### Hosts and Connectors
 
-One package over a core that belongs to no Host: `pointout/vite` (`src/vite/`) and
-`pointout/next` (`src/next/`), each the only code that imports its Host. A Connector
+One package over a core that belongs to no Host: `@gunnarsturla/pointout/vite` (`src/vite/`) and
+`@gunnarsturla/pointout/next` (`src/next/`), each the only code that imports its Host. A Connector
 serves the endpoints, injects the Overlay, and supplies the frame resolver the core's
 Owner chain decodes through. See ADR-0005 and ADR-0006 before touching either Connector,
 and `docs/agents/packaging.md` › *The entry points*.

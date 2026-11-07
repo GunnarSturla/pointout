@@ -9,7 +9,7 @@ is stale — say so.
 
 Two Hosts, Vite and Next.js 16 (`>=16.3 <17`, Turbopack only), each with a Connector
 over a core that belongs to no Host (ADR-0005; the Next.js effort's tickets are in
-the local tracker). `pointout/vite` is `src/vite/`; `pointout/next` is
+the local tracker). `@gunnarsturla/pointout/vite` is `src/vite/`; `@gunnarsturla/pointout/next` is
 `src/next/`: `withPointout()` acts only in Next's dev worker, intercepts `/__agent` on
 Next's own listening server (ADR-0006), checks itself with a `self-check` posture line,
 and injects the Overlay through `instrumentationClientInject`, which waits for the page's

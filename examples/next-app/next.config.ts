@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import type { NextConfig } from 'next'
-import { withPointout } from 'pointout/next'
+import { withPointout } from '@gunnarsturla/pointout/next'
 
 // The Next.js test bed, with pointout in it the way a consumer adds it.
 //

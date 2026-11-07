@@ -3,7 +3,7 @@ import { startPointout } from './start.js'
 
 export type { PointoutOptions }
 
-// The Next.js Connector's entry, `pointout/next` (ADR-0005, ADR-0006). A
+// The Next.js Connector's entry, `@gunnarsturla/pointout/next` (ADR-0005, ADR-0006). A
 // consumer wraps their config in `withPointout()`, and the `dev` script stays
 // `next dev`.
 //
@@ -22,7 +22,7 @@ export type { PointoutOptions }
 const PHASE_DEVELOPMENT_SERVER = 'phase-development-server'
 
 /** The Overlay's entry for Next, as the consumer's project resolves it. */
-const OVERLAY_ENTRY = 'pointout/next/overlay'
+const OVERLAY_ENTRY = '@gunnarsturla/pointout/next/overlay'
 
 /** Next's function form of a config, for a config object of type `Config`. */
 export type NextConfigFunction<Config extends object = object> = (

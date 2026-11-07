@@ -26,14 +26,14 @@ Three shapes were on the table:
 | --- | --- |
 | a separate `pointout-next` package | two packages to version against one wire, `GLOSSARY.md` and test suite |
 | a fork of the server for Next.js | every fix to the ledger, delivery or Guard made twice |
-| one package, an entry point per Host (`pointout/vite`, `pointout/next`), a shared core | moving most of `src/server/` out of a Vite-shaped module, once |
+| one package, an entry point per Host (`@gunnarsturla/pointout/vite`, `@gunnarsturla/pointout/next`), a shared core | moving most of `src/server/` out of a Vite-shaped module, once |
 
 ## Decision
 
 **One package. Each Host gets its own Connector and entry point, over a core that belongs to
 no Host.**
 
-- The Vite Connector moves to `pointout/vite`, and the Next.js one is `pointout/next`. The
+- The Vite Connector moves to `@gunnarsturla/pointout/vite`, and the Next.js one is `@gunnarsturla/pointout/next`. The
   package has no root entry: importing bare `pointout` fails, so no Host is the default. It
   has never been published, so nothing depends on the old import.
 - `vite` and `next` are both optional peer dependencies. Each is needed only by its own

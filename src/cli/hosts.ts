@@ -47,7 +47,7 @@ const VITE: HostSetup = {
   name: hostName('Vite'),
   skillSetup:
     'Picks come from a Vite dev server whose config has the `pointout()` plugin,\n' +
-    'from `pointout/vite`, in its `plugins`.',
+    'from `@gunnarsturla/pointout/vite`, in its `plugins`.',
   instructions: () => [],
 }
 
@@ -56,7 +56,7 @@ const NEXT: HostSetup = {
   name: hostName('Next.js'),
   skillSetup:
     'Picks come from a Next.js dev server whose `next.config` is wrapped in\n' +
-    '`withPointout()` from `pointout/next`, started with `next dev -H localhost`.',
+    '`withPointout()` from `@gunnarsturla/pointout/next`, started with `next dev -H localhost`.',
   instructions(appDir) {
     const config = NEXT_CONFIGS.map((name) => join(appDir, name)).find((path) =>
       existsSync(path),
@@ -65,7 +65,7 @@ const NEXT: HostSetup = {
       '',
       'Two changes are yours to make; init has not edited either file:',
       `  1. In ${config ?? 'your next.config'}, wrap the exported config in ` +
-        "withPointout() from pointout/next: `import { withPointout } from 'pointout/next'`, " +
+        "withPointout() from @gunnarsturla/pointout/next: `import { withPointout } from '@gunnarsturla/pointout/next'`, " +
         'then `export default withPointout(nextConfig)`.',
       '  2. Run the dev server as `next dev -H localhost`, so it listens on this ' +
         'machine only (your package.json "dev" script, say).',

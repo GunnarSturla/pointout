@@ -77,7 +77,7 @@ interface CliRun {
 function runInit(app: TempApp, cwd = app.appDir): Promise<CliRun> & { home: string } {
   const home = mkdtempSync(join(tmpdir(), 'pointout-home-'))
   homes.push(home)
-  const bin = join(app.playground, 'node_modules/pointout/dist/cli/main.js')
+  const bin = join(app.playground, 'node_modules/@gunnarsturla/pointout/dist/cli/main.js')
   const run = spawnCollect(process.execPath, [bin, 'init'], {
     cwd,
     env: { ...process.env, HOME: home, USERPROFILE: home },
@@ -199,7 +199,10 @@ describe('init', () => {
     const moved = {
       type: 'command',
       command: 'node',
-      args: ['${CLAUDE_PROJECT_DIR}/old/node_modules/pointout/dist/cli/main.js', 'drain'],
+      args: [
+        '${CLAUDE_PROJECT_DIR}/old/node_modules/@gunnarsturla/pointout/dist/cli/main.js',
+        'drain',
+      ],
     }
     writeFileSync(
       join(app.checkout, SETTINGS),
@@ -224,14 +227,18 @@ describe('init', () => {
   it('names the copy nearest where it ran, relative to the project directory', async () => {
     const app = apps.create({ git: true })
     // A workspace package that alone depends on it, below the checkout root.
-    mkdirSync(join(app.appDir, 'node_modules'))
-    symlinkSync(repoRoot, join(app.appDir, 'node_modules', 'pointout'), 'dir')
+    mkdirSync(join(app.appDir, 'node_modules', '@gunnarsturla'), { recursive: true })
+    symlinkSync(
+      repoRoot,
+      join(app.appDir, 'node_modules', '@gunnarsturla', 'pointout'),
+      'dir',
+    )
 
     expectOk(await runInit(app))
 
     for (const event of EVENTS) {
       expect(oursFor(readSettings(app), event)[0]?.args?.[0]).toBe(
-        '${CLAUDE_PROJECT_DIR}/app/node_modules/pointout/dist/cli/main.js',
+        '${CLAUDE_PROJECT_DIR}/app/node_modules/@gunnarsturla/pointout/dist/cli/main.js',
       )
     }
   })

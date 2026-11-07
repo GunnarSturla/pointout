@@ -285,14 +285,14 @@ describe('the README', () => {
     // There is no root entry (ADR-0005): the package's name alone fails with
     // ERR_PACKAGE_PATH_NOT_EXPORTED, so an import a reader copies must name a
     // Connector.
-    expect(readme).not.toMatch(/from ['"]pointout['"]/)
-    expect(readme).not.toMatch(/import\(['"]pointout['"]\)/)
+    expect(readme).not.toMatch(/from ['"]@gunnarsturla\/pointout['"]/)
+    expect(readme).not.toMatch(/import\(['"]@gunnarsturla\/pointout['"]\)/)
   })
 
   it('installs each Connector the way its Host takes it', () => {
-    expect(readme).toContain("import { pointout } from 'pointout/vite'")
-    expect(readme).toContain('await import("pointout/vite")')
-    expect(readme).toContain("import { withPointout } from 'pointout/next'")
+    expect(readme).toContain("import { pointout } from '@gunnarsturla/pointout/vite'")
+    expect(readme).toContain('await import("@gunnarsturla/pointout/vite")')
+    expect(readme).toContain("import { withPointout } from '@gunnarsturla/pointout/next'")
     expect(readme).toContain('next dev -H localhost')
     expect(readme).toContain('--connector next|vite')
   })

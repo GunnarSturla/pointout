@@ -1,4 +1,4 @@
-// The Overlay's entry on a Next.js page (`pointout/next/overlay`), which
+// The Overlay's entry on a Next.js page (`@gunnarsturla/pointout/next/overlay`), which
 // `withPointout()` adds to `instrumentationClientInject`. Next runs it on every
 // page of both routers, before React hydrates the page, so it draws nothing
 // until React has.
